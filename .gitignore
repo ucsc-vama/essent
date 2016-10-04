@@ -1,0 +1,4 @@
+# sbt related
+target/
+project/project/
+project/target/
