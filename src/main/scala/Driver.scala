@@ -12,6 +12,11 @@ object Driver {
     val inputFirFile = argsList.head
     val parsedInput = firrtl.Parser.parse(Source.fromFile(inputFirFile).getLines,
                                           firrtl.Parser.IgnoreInfo)
-    println(parsedInput)
+    
+    val annotations = new firrtl.Annotations.AnnotationMap(Seq.empty)
+    val outputBuffer = new java.io.CharArrayWriter
+    val highComp = new firrtl.HighFirrtlCompiler
+    highComp.compile(parsedInput, annotations, outputBuffer)
+    print(outputBuffer)
   }
 }
