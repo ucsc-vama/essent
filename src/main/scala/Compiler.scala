@@ -9,12 +9,10 @@ import firrtl.Mappers._
 
 
 object DevHelpers {
-  def findRegisters(s: Statement): Seq[(String,Type)] = {
-    s match {
-      case b: Block => b.stmts flatMap findRegisters
-      case DefRegister(_, name, tpe, _, _, _) => Seq((name,tpe))
-      case _ => Seq()
-    }
+  def findRegisters(s: Statement): Seq[(String,Type)] = s match {
+    case b: Block => b.stmts flatMap findRegisters
+    case DefRegister(_, name, tpe, _, _, _) => Seq((name,tpe))
+    case _ => Seq()
   }
 }
 
@@ -28,6 +26,8 @@ class DevTransform extends Transform {
     TransformResult(circuit)
   }
 }
+
+
 
 class CCCompiler extends Compiler {
   def transforms(writer: Writer): Seq[Transform] = Seq(
