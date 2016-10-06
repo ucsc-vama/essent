@@ -46,7 +46,7 @@ object DevHelpers {
 }
 
 
-class ModuleToCpp extends Transform {
+class ModuleToCpp(writer: Writer) extends Transform {
   def genCppType(tpe: Type) = tpe match {
     case UIntType(w) => "unsigned int"
     case SIntType(w) => "int"
@@ -63,9 +63,9 @@ class ModuleToCpp extends Transform {
       }
       case _ =>
     }
-    println(s"struct $modName {")
-    variableDecs foreach { d => println("  " + d) }
-    println("};")
+    writer write s"struct $modName {\n"
+    variableDecs foreach { d => writer write ("  " + d + "\n") }
+    writer write "};\n"
   }
 
   def processModule(m: Module) = {
@@ -99,7 +99,6 @@ class DevTransform extends Transform {
 }
 
 
-
 class CCCompiler extends Compiler {
   def transforms(writer: Writer): Seq[Transform] = Seq(
     new firrtl.Chisel3ToHighFirrtl,
@@ -111,7 +110,7 @@ class CCCompiler extends Compiler {
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
     // new DevTransform,
-    new ModuleToCpp,
+    new ModuleToCpp(writer),
     new firrtl.EmitFirrtl(writer)
   )
 }
