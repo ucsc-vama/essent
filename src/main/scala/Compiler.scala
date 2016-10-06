@@ -81,7 +81,7 @@ class ModuleToCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
-  def genStruct(m: Module) = {
+  def processModule(m: Module) = {
     val modName = m.name
     val regsAndTypes = DevHelpers.findRegisters(m.body)
     val variableDecs = regsAndTypes map {
@@ -97,10 +97,6 @@ class ModuleToCpp(writer: Writer) extends Transform {
     processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
     writer write tabs + "}\n"
     writer write "};\n"
-  }
-
-  def processModule(m: Module) = {
-    genStruct(m)
   }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
