@@ -55,6 +55,11 @@ class ModuleToCpp(writer: Writer) extends Transform {
     case _ =>
   }
 
+  def processPort(p: Port): Seq[String] = p.tpe match {
+    case ClockType => Seq()
+    case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
+  }
+
   def processExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case m: Mux => {
@@ -91,8 +96,10 @@ class ModuleToCpp(writer: Writer) extends Transform {
       }
       case _ =>
     }
+
     writer write s"struct $modName {\n"
     variableDecs foreach { d => writer write (tabs + d + "\n") }
+    m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
     writer write "\n" + tabs + "void eval() {\n"  
     processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
     writer write tabs + "}\n"
