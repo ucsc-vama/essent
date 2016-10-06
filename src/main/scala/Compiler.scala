@@ -47,10 +47,38 @@ object DevHelpers {
 
 
 class ModuleToCpp(writer: Writer) extends Transform {
+  val tabs = "  "
+
   def genCppType(tpe: Type) = tpe match {
     case UIntType(w) => "unsigned int"
     case SIntType(w) => "int"
     case _ =>
+  }
+
+  def processExpr(e: Expression): String = e match {
+    case w: WRef => w.name
+    case m: Mux => {
+      val condName = processExpr(m.cond)
+      val tvalName = processExpr(m.tval)
+      val fvalName = processExpr(m.fval)
+      s"$condName ? tvalName : fvalName"
+    }
+    case _ => ""
+  }
+
+  def processStmt(s: Statement): Seq[String] = s match {
+    case b: Block => b.stmts flatMap processStmt
+    case d: DefNode => {
+      val lhs = genCppType(d.value.tpe) + " " + d.name
+      val rhs = processExpr(d.value)
+      Seq(s"$lhs = $rhs;")
+    }
+    case c: Connect => {
+      val lhs = processExpr(c.loc)
+      val rhs = processExpr(c.expr)
+      Seq(s"$lhs = $rhs;")
+    }
+    case _ => Seq()
   }
 
   def genStruct(m: Module) = {
@@ -64,7 +92,10 @@ class ModuleToCpp(writer: Writer) extends Transform {
       case _ =>
     }
     writer write s"struct $modName {\n"
-    variableDecs foreach { d => writer write ("  " + d + "\n") }
+    variableDecs foreach { d => writer write (tabs + d + "\n") }
+    writer write "\n" + tabs + "void eval() {\n"  
+    processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
+    writer write tabs + "}\n"
     writer write "};\n"
   }
 
