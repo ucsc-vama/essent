@@ -46,6 +46,41 @@ object DevHelpers {
 }
 
 
+class ModuleToCpp extends Transform {
+  def genCppType(tpe: Type) = tpe match {
+    case UIntType(w) => "unsigned int"
+    case SIntType(w) => "int"
+    case _ =>
+  }
+
+  def genStruct(m: Module) = {
+    val modName = m.name
+    val regsAndTypes = DevHelpers.findRegisters(m.body)
+    val variableDecs = regsAndTypes map {
+      case (regName, regType) => {
+        val typeStr = genCppType(regType)
+        s"$typeStr $regName;"
+      }
+      case _ =>
+    }
+    println(s"struct $modName {")
+    variableDecs foreach { d => println("  " + d) }
+    println("};")
+  }
+
+  def processModule(m: Module) = {
+    genStruct(m)
+  }
+
+  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+    circuit.modules foreach {
+      case m: Module => processModule(m)
+      case m: ExtModule =>
+    }
+    TransformResult(circuit)
+  }
+}
+
 class DevTransform extends Transform {
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     circuit.modules.head match {
@@ -75,7 +110,8 @@ class CCCompiler extends Compiler {
     new firrtl.passes.ReplSeqMem(TransID(-2)),
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
-    new DevTransform,
+    // new DevTransform,
+    new ModuleToCpp,
     new firrtl.EmitFirrtl(writer)
   )
 }
