@@ -80,6 +80,7 @@ class ModuleToCpp(writer: Writer) extends Transform {
 
   def processExpr(e: Expression): String = e match {
     case w: WRef => w.name
+    case u: UIntLiteral => "0x" + u.value.toString(16)
     case m: Mux => {
       val condName = processExpr(m.cond)
       val tvalName = processExpr(m.tval)
@@ -104,6 +105,13 @@ class ModuleToCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def makeResetIf(r: DefRegister): String = {
+    val regName = r.name
+    val resetName = processExpr(r.reset)
+    val resetVal = processExpr(r.init)
+    s"if ($resetName) $regName = $resetVal;"
+  }
+
   def processModule(m: Module) = {
     val modName = m.name
     val registers = DevHelpers.findRegisters(m.body)
@@ -118,6 +126,7 @@ class ModuleToCpp(writer: Writer) extends Transform {
     m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
     writer write "\n" + tabs + "void eval() {\n"  
     processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
+    registers map makeResetIf foreach { d => writer write (tabs*2 + d + "\n") }
     writer write tabs + "}\n"
     writer write "};\n"
   }
