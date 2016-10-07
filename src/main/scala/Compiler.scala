@@ -113,7 +113,6 @@ class ModuleToCpp(writer: Writer) extends Transform {
   }
 
   def processModule(m: Module) = {
-    val modName = m.name
     val registers = DevHelpers.findRegisters(m.body)
     val variableDecs = registers map {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
@@ -121,14 +120,20 @@ class ModuleToCpp(writer: Writer) extends Transform {
       s"$typeStr $regName;"
     }}
 
-    writer write s"struct $modName {\n"
+    val modName = m.name
+    val headerGuardName = modName.toUpperCase + "_H_"
+
+    writer write s"#ifdef $headerGuardName\n"
+    writer write s"#define $headerGuardName\n\n"
+    writer write "typdef struct {\n"
     variableDecs foreach { d => writer write (tabs + d + "\n") }
     m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
     writer write "\n" + tabs + "void eval() {\n"  
     processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
     registers map makeResetIf foreach { d => writer write (tabs*2 + d + "\n") }
     writer write tabs + "}\n"
-    writer write "};\n"
+    writer write s"}  $modName;\n\n"
+    writer write s"#endif  // $headerGuardName\n"
   }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
