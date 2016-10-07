@@ -136,11 +136,32 @@ class ModuleToCpp(writer: Writer) extends Transform {
     writer write s"#endif  // $headerGuardName\n"
   }
 
+  def generateHarness(circuit: Circuit) = {
+    val modName = circuit.main
+    val baseStr = s"""|#include <iostream>
+                      |
+                      |#include "comm_wrapper.h"
+                      |#include "$modName.h"
+                      |
+                      |int main() {
+                      |  $modName dut;
+                      |  CommWrapper<$modName> comm(dut);
+                      |  comm.init_channels();
+                      |  while (!comm.done()) {
+                      |    comm.tick();
+                      |  }
+                      |  return 0;
+                      |}
+                      """.stripMargin
+    baseStr
+  }
+
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     circuit.modules foreach {
       case m: Module => processModule(m)
       case m: ExtModule =>
     }
+    println(generateHarness(circuit))
     TransformResult(circuit)
   }
 }
