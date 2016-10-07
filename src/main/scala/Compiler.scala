@@ -85,7 +85,7 @@ class ModuleToCpp(writer: Writer) extends Transform {
       val condName = processExpr(m.cond)
       val tvalName = processExpr(m.tval)
       val fvalName = processExpr(m.fval)
-      s"$condName ? tvalName : fvalName"
+      s"$condName ? $tvalName : $fvalName"
     }
     case _ => ""
   }
