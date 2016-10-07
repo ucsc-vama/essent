@@ -43,6 +43,25 @@ object DevHelpers {
     }
     case e =>
   }
+
+  def generateHarness(circuitName: String, writer: Writer) = {
+    val baseStr = s"""|#include <iostream>
+                      |
+                      |#include "comm_wrapper.h"
+                      |#include "$circuitName.h"
+                      |
+                      |int main() {
+                      |  $circuitName dut;
+                      |  CommWrapper<$circuitName> comm(dut);
+                      |  comm.init_channels();
+                      |  while (!comm.done()) {
+                      |    comm.tick();
+                      |  }
+                      |  return 0;
+                      |}
+                      """.stripMargin
+    writer write baseStr
+  }
 }
 
 
@@ -64,7 +83,7 @@ class DevTransform extends Transform {
 }
 
 
-class ModuleToCpp(writer: Writer) extends Transform {
+class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
 
   def genCppType(tpe: Type) = tpe match {
@@ -123,9 +142,9 @@ class ModuleToCpp(writer: Writer) extends Transform {
     val modName = m.name
     val headerGuardName = modName.toUpperCase + "_H_"
 
-    writer write s"#ifdef $headerGuardName\n"
+    writer write s"#ifndef $headerGuardName\n"
     writer write s"#define $headerGuardName\n\n"
-    writer write "typdef struct {\n"
+    writer write "typedef struct {\n"
     variableDecs foreach { d => writer write (tabs + d + "\n") }
     m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
     writer write "\n" + tabs + "void eval() {\n"  
@@ -136,32 +155,12 @@ class ModuleToCpp(writer: Writer) extends Transform {
     writer write s"#endif  // $headerGuardName\n"
   }
 
-  def generateHarness(circuit: Circuit) = {
-    val modName = circuit.main
-    val baseStr = s"""|#include <iostream>
-                      |
-                      |#include "comm_wrapper.h"
-                      |#include "$modName.h"
-                      |
-                      |int main() {
-                      |  $modName dut;
-                      |  CommWrapper<$modName> comm(dut);
-                      |  comm.init_channels();
-                      |  while (!comm.done()) {
-                      |    comm.tick();
-                      |  }
-                      |  return 0;
-                      |}
-                      """.stripMargin
-    baseStr
-  }
-
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     circuit.modules foreach {
       case m: Module => processModule(m)
       case m: ExtModule =>
     }
-    println(generateHarness(circuit))
+    println(circuit.serialize)
     TransformResult(circuit)
   }
 }
@@ -177,7 +176,7 @@ class CCCompiler extends Compiler {
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
     // new DevTransform,
-    new ModuleToCpp(writer),
-    new firrtl.EmitFirrtl(writer)
+    new EmitCpp(writer)
+    // new firrtl.EmitFirrtl(writer)
   )
 }
