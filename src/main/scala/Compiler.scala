@@ -10,9 +10,9 @@ import firrtl.Mappers._
 
 object DevHelpers {
   // assumption: registers can only appear in blocks since whens expanded
-  def findRegisters(s: Statement): Seq[(String,Type)] = s match {
+  def findRegisters(s: Statement): Seq[DefRegister] = s match {
     case b: Block => b.stmts flatMap findRegisters
-    case DefRegister(_, name, tpe, _, _, _) => Seq((name,tpe))
+    case d: DefRegister => Seq(d)
     case _ => Seq()
   }
 
@@ -42,6 +42,24 @@ object DevHelpers {
       case s =>
     }
     case e =>
+  }
+}
+
+
+class DevTransform extends Transform {
+  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+    circuit.modules.head match {
+      case m: Module => {
+        val registers = DevHelpers.findRegisters(m.body)
+        val regNames = registers map (_.name)
+        DevHelpers.lastConnected(m.body)
+        val lastExp = regNames map DevHelpers.traceRefs
+        val writeEnables = lastExp map DevHelpers.identifyWE
+        println(regNames zip writeEnables)
+      }
+      case m: ExtModule =>
+    }
+    TransformResult(circuit)
   }
 }
 
@@ -88,14 +106,12 @@ class ModuleToCpp(writer: Writer) extends Transform {
 
   def processModule(m: Module) = {
     val modName = m.name
-    val regsAndTypes = DevHelpers.findRegisters(m.body)
-    val variableDecs = regsAndTypes map {
-      case (regName, regType) => {
-        val typeStr = genCppType(regType)
-        s"$typeStr $regName;"
-      }
-      case _ =>
-    }
+    val registers = DevHelpers.findRegisters(m.body)
+    val variableDecs = registers map {d: DefRegister => {
+      val typeStr = genCppType(d.tpe)
+      val regName = d.name
+      s"$typeStr $regName;"
+    }}
 
     writer write s"struct $modName {\n"
     variableDecs foreach { d => writer write (tabs + d + "\n") }
@@ -114,24 +130,6 @@ class ModuleToCpp(writer: Writer) extends Transform {
     TransformResult(circuit)
   }
 }
-
-class DevTransform extends Transform {
-  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
-    circuit.modules.head match {
-      case m: Module => {
-        val regsAndTypes = DevHelpers.findRegisters(m.body)
-        val regNames = regsAndTypes map (_._1)
-        DevHelpers.lastConnected(m.body)
-        val lastExp = regNames map DevHelpers.traceRefs
-        val writeEnables = lastExp map DevHelpers.identifyWE
-        println(regNames zip writeEnables)
-      }
-      case m: ExtModule =>
-    }
-    TransformResult(circuit)
-  }
-}
-
 
 class CCCompiler extends Compiler {
   def transforms(writer: Writer): Seq[Transform] = Seq(
