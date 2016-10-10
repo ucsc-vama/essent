@@ -151,6 +151,10 @@ class EmitCpp(writer: Writer) extends Transform {
 		writer write tabs + "}\n"
 	}
 
+	def writeCommands(numTabs: Int, commands: Seq[String]) = {
+		commands foreach { s => writer write tabs*numTabs + s + "\n" }
+	}
+
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
     val registerNames = (registers map {r: DefRegister => r.name}).toSet
@@ -166,14 +170,14 @@ class EmitCpp(writer: Writer) extends Transform {
     writer write s"#ifndef $headerGuardName\n"
     writer write s"#define $headerGuardName\n\n"
     writer write s"typedef struct $modName {\n"
-    registerDecs foreach { d => writer write (tabs + d + "\n") }
-    m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
+		writeCommands(1, registerDecs)
+    writeCommands(1, m.ports flatMap processPort)
     writer write "\n" + tabs + "void eval(bool update_registers) {\n"
-    processStmt(m.body, registerNames) foreach { d => writer write (tabs*2 + d + "\n") }
+		writeCommands(2, processStmt(m.body, registerNames))
 		writer write tabs*2 + "if (!update_registers)\n"
 		writer write tabs*3 + "return;\n"
-		regUpdates foreach { d => writer write (tabs*2 + d + "\n") }
-    registers map makeResetIf foreach { d => writer write (tabs*2 + d + "\n") }
+		writeCommands(2, regUpdates)
+    writeCommands(2, registers map makeResetIf)
     writer write tabs + "}\n\n"
 		makeHarnessConnectionsFunction(m)
     writer write s"} $modName;\n\n"
