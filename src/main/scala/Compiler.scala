@@ -54,12 +54,14 @@ object DevHelpers {
                       |  $circuitName dut;
                       |  CommWrapper<$circuitName> comm(dut);
                       |  comm.init_channels();
+										  |  comm.init_sim_data();
+											|  dut.connect_harness(&comm);
                       |  while (!comm.done()) {
                       |    comm.tick();
                       |  }
                       |  return 0;
                       |}
-                      """.stripMargin
+                      |""".stripMargin
     writer write baseStr
   }
 }
@@ -87,8 +89,8 @@ class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
 
   def genCppType(tpe: Type) = tpe match {
-    case UIntType(w) => "unsigned int"
-    case SIntType(w) => "int"
+    case UIntType(w) => "uint64_t"
+    case SIntType(w) => "sint64_t"
     case _ =>
   }
 
@@ -131,6 +133,21 @@ class EmitCpp(writer: Writer) extends Transform {
     s"if ($resetName) $regName = $resetVal;"
   }
 
+	def makeHarnessConnectionsFunction(m: Module) = {
+		writer write tabs + s"void connect_harness(CommWrapper<struct ${m.name}> *comm) {\n"
+		m.ports.reverse foreach {p => p.tpe match {
+			case ClockType =>
+			case _ => {
+				if (p.name == "reset") writer write tabs*2 + s"comm->add_signal(&${p.name});\n"
+				else p.direction match {
+					case Input => writer write tabs*2 + s"comm->add_in_signal(&${p.name});\n"
+					case Output => writer write tabs*2 + s"comm->add_out_signal(&${p.name});\n"
+				}
+			}
+		}}
+		writer write tabs + "}\n"
+	}
+
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
     val variableDecs = registers map {d: DefRegister => {
@@ -144,14 +161,15 @@ class EmitCpp(writer: Writer) extends Transform {
 
     writer write s"#ifndef $headerGuardName\n"
     writer write s"#define $headerGuardName\n\n"
-    writer write "typedef struct {\n"
+    writer write s"typedef struct $modName {\n"
     variableDecs foreach { d => writer write (tabs + d + "\n") }
     m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
     writer write "\n" + tabs + "void eval() {\n"  
     processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
     registers map makeResetIf foreach { d => writer write (tabs*2 + d + "\n") }
-    writer write tabs + "}\n"
-    writer write s"}  $modName;\n\n"
+    writer write tabs + "}\n\n"
+		makeHarnessConnectionsFunction(m)
+    writer write s"} $modName;\n\n"
     writer write s"#endif  // $headerGuardName\n"
   }
 
