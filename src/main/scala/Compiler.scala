@@ -87,6 +87,7 @@ class DevTransform extends Transform {
 
 class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
+	val regUpdates = scala.collection.mutable.ArrayBuffer.empty[String]
 
   def genCppType(tpe: Type) = tpe match {
     case UIntType(w) => "uint64_t"
@@ -111,8 +112,8 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => ""
   }
 
-  def processStmt(s: Statement): Seq[String] = s match {
-    case b: Block => b.stmts flatMap processStmt
+  def processStmt(s: Statement, registerNames: Set[String]): Seq[String] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => processStmt(s, registerNames)}
     case d: DefNode => {
       val lhs = genCppType(d.value.tpe) + " " + d.name
       val rhs = processExpr(d.value)
@@ -121,7 +122,9 @@ class EmitCpp(writer: Writer) extends Transform {
     case c: Connect => {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
-      Seq(s"$lhs = $rhs;")
+			val statement = s"$lhs = $rhs;"
+			if (registerNames contains lhs) {regUpdates += statement; Seq()}
+			else Seq(statement)
     }
     case _ => Seq()
   }
@@ -150,7 +153,8 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
-    val variableDecs = registers map {d: DefRegister => {
+    val registerNames = (registers map {r: DefRegister => r.name}).toSet
+		val registerDecs = registers map {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
       s"$typeStr $regName;"
@@ -162,10 +166,13 @@ class EmitCpp(writer: Writer) extends Transform {
     writer write s"#ifndef $headerGuardName\n"
     writer write s"#define $headerGuardName\n\n"
     writer write s"typedef struct $modName {\n"
-    variableDecs foreach { d => writer write (tabs + d + "\n") }
+    registerDecs foreach { d => writer write (tabs + d + "\n") }
     m.ports flatMap processPort foreach { d => writer write (tabs + d + "\n") }
-    writer write "\n" + tabs + "void eval() {\n"  
-    processStmt(m.body) foreach { d => writer write (tabs*2 + d + "\n") }
+    writer write "\n" + tabs + "void eval(bool update_registers) {\n"
+    processStmt(m.body, registerNames) foreach { d => writer write (tabs*2 + d + "\n") }
+		writer write tabs*2 + "if (!update_registers)\n"
+		writer write tabs*3 + "return;\n"
+		regUpdates foreach { d => writer write (tabs*2 + d + "\n") }
     registers map makeResetIf foreach { d => writer write (tabs*2 + d + "\n") }
     writer write tabs + "}\n\n"
 		makeHarnessConnectionsFunction(m)
