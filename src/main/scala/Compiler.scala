@@ -149,11 +149,7 @@ class EmitCpp(writer: Writer) extends Transform {
         }
       }
     }}
-    writeLines(1, s"void connect_harness(CommWrapper<struct ${m.name}> *comm) {")
-    writeLines(2, inputDecs.reverse)
-    writeLines(2, outputDecs.reverse)
-    writeLines(2, signalDecs.reverse)
-    writer write tabs + "}\n"
+    inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse
   }
 
   def writeLines(indentLevel: Int, lines: String) {
@@ -188,7 +184,9 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, registers map makeResetIf)
     writeLines(1, "}")
     writeLines(0, "")
-    writeHarnessConnections(m)
+    writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
+    writeLines(2, writeHarnessConnections(m))
+    writeLines(1, "}")
     writeLines(0, s"} $modName;")
     writeLines(0, s"#endif  // $headerGuardName")
   }
