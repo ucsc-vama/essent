@@ -100,6 +100,14 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
+  def genMask(tpe: Type): String = tpe match {
+    case gt: GroundType => {
+      val width = gt.width match { case IntWidth(w) => w }
+      val maskValue = BigInt((1 << width.toInt) - 1)
+      s"0x${maskValue.toString(16)}"
+    }
+  }
+
   def processPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
@@ -141,7 +149,7 @@ class EmitCpp(writer: Writer) extends Transform {
     s"if ($resetName) $regName = $resetVal;"
   }
 
-  def writeHarnessConnections(m: Module) = {
+  def harnessConnections(m: Module) = {
     val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
@@ -156,6 +164,18 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }}
     inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse
+  }
+
+  def initialVals(registers: Seq[DefRegister], m: Module) = {
+    def initVal(name: String, tpe:Type) = s"$name = rand() & ${genMask(tpe)};"
+    val regInits = registers map {
+      r: DefRegister => initVal(r.name, r.tpe)
+    }
+    val portInits = m.ports flatMap { p => p.tpe match {
+      case ClockType => Seq()
+      case _ => Seq(initVal(p.name, p.tpe))
+    }}
+    regInits ++ portInits
   }
 
   def writeLines(indentLevel: Int, lines: String) {
@@ -182,6 +202,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
+    writeLines(0, "#include <cstdlib>")
     writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
@@ -193,8 +214,13 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
-    writeLines(2, writeHarnessConnections(m))
+    writeLines(2, harnessConnections(m))
     writeLines(1, "}")
+    writeLines(0, "")
+    writeLines(1, s"$modName() {")
+    writeLines(2, initialVals(registers, m))
+    writeLines(1, "}")
+    writeLines(0, "")
     writeLines(0, s"} $modName;")
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
