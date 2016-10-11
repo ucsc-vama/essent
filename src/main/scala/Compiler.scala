@@ -54,8 +54,8 @@ object DevHelpers {
                       |  $circuitName dut;
                       |  CommWrapper<$circuitName> comm(dut);
                       |  comm.init_channels();
-										  |  comm.init_sim_data();
-											|  dut.connect_harness(&comm);
+                      |  comm.init_sim_data();
+                      |  dut.connect_harness(&comm);
                       |  while (!comm.done()) {
                       |    comm.tick();
                       |  }
@@ -87,7 +87,6 @@ class DevTransform extends Transform {
 
 class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
-	val regUpdates = scala.collection.mutable.ArrayBuffer.empty[String]
 
   def genCppType(tpe: Type) = tpe match {
     case UIntType(w) => "uint64_t"
@@ -122,9 +121,9 @@ class EmitCpp(writer: Writer) extends Transform {
     case c: Connect => {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
-			val statement = s"$lhs = $rhs;"
-			if (registerNames contains lhs) {regUpdates += statement; Seq()}
-			else Seq(statement)
+      val statement = s"$lhs = $rhs;"
+      if (registerNames contains lhs) Seq("if (!update_registers)", tabs+statement)
+      else Seq(statement)
     }
     case _ => Seq()
   }
@@ -136,39 +135,39 @@ class EmitCpp(writer: Writer) extends Transform {
     s"if ($resetName) $regName = $resetVal;"
   }
 
-	def writeHarnessConnections(m: Module) = {
-		val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
-		val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
-		val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
-		m.ports foreach {p => p.tpe match {
-			case ClockType =>
-			case _ => {
-				if (p.name == "reset") signalDecs += s"comm->add_signal(&${p.name});"
-				else p.direction match {
-					case Input => inputDecs += s"comm->add_in_signal(&${p.name});"
-					case Output => outputDecs += s"comm->add_out_signal(&${p.name});"
-				}
-			}
-		}}
-		writeLines(1, s"void connect_harness(CommWrapper<struct ${m.name}> *comm) {")
-		writeLines(2, inputDecs.reverse)
-		writeLines(2, outputDecs.reverse)
-		writeLines(2, signalDecs.reverse)
-		writer write tabs + "}\n"
-	}
+  def writeHarnessConnections(m: Module) = {
+    val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
+    val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
+    val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
+    m.ports foreach {p => p.tpe match {
+      case ClockType =>
+      case _ => {
+        if (p.name == "reset") signalDecs += s"comm->add_signal(&${p.name});"
+        else p.direction match {
+          case Input => inputDecs += s"comm->add_in_signal(&${p.name});"
+          case Output => outputDecs += s"comm->add_out_signal(&${p.name});"
+        }
+      }
+    }}
+    writeLines(1, s"void connect_harness(CommWrapper<struct ${m.name}> *comm) {")
+    writeLines(2, inputDecs.reverse)
+    writeLines(2, outputDecs.reverse)
+    writeLines(2, signalDecs.reverse)
+    writer write tabs + "}\n"
+  }
 
-	def writeLines(indentLevel: Int, lines: String) {
+  def writeLines(indentLevel: Int, lines: String) {
     writeLines(indentLevel, Seq(lines))
-	}
+  }
 
-	def writeLines(indentLevel: Int, lines: Seq[String]) {
-		lines foreach { s => writer write tabs*indentLevel + s + "\n" }
-	}
+  def writeLines(indentLevel: Int, lines: Seq[String]) {
+    lines foreach { s => writer write tabs*indentLevel + s + "\n" }
+  }
 
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
     val registerNames = (registers map {r: DefRegister => r.name}).toSet
-		val registerDecs = registers map {d: DefRegister => {
+    val registerDecs = registers map {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
       s"$typeStr $regName;"
@@ -179,20 +178,17 @@ class EmitCpp(writer: Writer) extends Transform {
 
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
-		writeLines(0, "")
+    writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
-		writeLines(1, registerDecs)
+    writeLines(1, registerDecs)
     writeLines(1, m.ports flatMap processPort)
-		writeLines(0, "")
+    writeLines(0, "")
     writeLines(1, "void eval(bool update_registers) {")
-		writeLines(2, processStmt(m.body, registerNames))
-		writeLines(2, "if (!update_registers)")
-		writeLines(3, "return;")
-		writeLines(2, regUpdates)
+    writeLines(2, processStmt(m.body, registerNames))
     writeLines(2, registers map makeResetIf)
     writeLines(1, "}")
-		writeLines(0, "")
-		writeHarnessConnections(m)
+    writeLines(0, "")
+    writeHarnessConnections(m)
     writeLines(0, s"} $modName;")
     writeLines(0, s"#endif  // $headerGuardName")
   }
