@@ -181,6 +181,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
+    writeLines(0, "#include <cstdint>")
+    writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, m.ports flatMap processPort)
@@ -194,6 +196,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, writeHarnessConnections(m))
     writeLines(1, "}")
     writeLines(0, s"} $modName;")
+    writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
   }
 
