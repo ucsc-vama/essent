@@ -89,9 +89,15 @@ class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
 
   def genCppType(tpe: Type) = tpe match {
-    case UIntType(w) => "uint64_t"
-    case SIntType(w) => "sint64_t"
-    case _ =>
+    case UIntType(IntWidth(w)) => {
+      if (w <= 64) "uint64_t"
+      else throw new Exception(s"UInt too wide!")
+    }
+    case SIntType(IntWidth(w)) => {
+      if (w <= 64) "sint64_t"
+      else throw new Exception(s"SInt too wide!")
+    }
+    case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
   def processPort(p: Port): Seq[String] = p.tpe match {
