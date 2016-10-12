@@ -7,6 +7,7 @@ import firrtl._
 import firrtl.Annotations._
 import firrtl.ir._
 import firrtl.Mappers._
+import firrtl.PrimOps._
 
 object DevHelpers {
   // assumption: registers can only appear in blocks since whens expanded
@@ -122,6 +123,10 @@ class EmitCpp(writer: Writer) extends Transform {
       val fvalName = processExpr(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
+    case p: DoPrim => p.op match {
+      case And => p.args map processExpr mkString(" & ")
+      case Eq => p.args map processExpr mkString(" == ")
+    }
     case _ => ""
   }
 
@@ -139,7 +144,14 @@ class EmitCpp(writer: Writer) extends Transform {
       if (registerNames contains lhs) Seq("if (!update_registers)", tabs+statement)
       else Seq(statement)
     }
-    case _ => Seq()
+    case p: Print => {
+      println(p.en)
+      val printfArgs = Seq(s""""${p.string.serialize}"""") ++
+                       (p.args map processExpr)
+      Seq(s"if (${processExpr(p.en)})",
+          tabs + s"printf(${printfArgs mkString(", ")});")
+    }
+    case _ => throw new Exception(s"Don't yet support $s")
   }
 
   def makeResetIf(r: DefRegister): String = {
