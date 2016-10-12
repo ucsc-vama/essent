@@ -95,7 +95,7 @@ class EmitCpp(writer: Writer) extends Transform {
       else throw new Exception(s"UInt too wide!")
     }
     case SIntType(IntWidth(w)) => {
-      if (w <= 64) "sint64_t"
+      if (w <= 64) "int64_t"
       else throw new Exception(s"SInt too wide!")
     }
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
@@ -184,11 +184,12 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
-  def makeResetIf(r: DefRegister): String = {
+  def makeResetIf(r: DefRegister): Seq[String] = {
     val regName = r.name
     val resetName = processExpr(r.reset)
     val resetVal = processExpr(r.init)
-    s"if ($resetName) $regName = $resetVal;"
+    if (resetName == "0x0") Seq()
+    else Seq(s"if ($resetName) $regName = $resetVal;")
   }
 
   def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
@@ -258,7 +259,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(1, "void eval(bool update_registers) {")
     writeLines(2, processStmt(m.body, registerNames))
-    writeLines(2, registers map makeResetIf)
+    writeLines(2, registers flatMap makeResetIf)
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
