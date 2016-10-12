@@ -128,7 +128,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case And => p.args map processExpr mkString(" & ")
       case Eq => p.args map processExpr mkString(" == ")
       case Gt => p.args map processExpr mkString(" > ")
-      case Tail => p.args map processExpr mkString("")
+      case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
     case _ => ""
   }
