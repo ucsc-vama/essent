@@ -125,9 +125,36 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     case p: DoPrim => p.op match {
       case Add => p.args map processExpr mkString(" + ")
-      case And => p.args map processExpr mkString(" & ")
+      case Sub => p.args map processExpr mkString(" - ")
+      case Mul => p.args map processExpr mkString(" * ")
+      case Div => p.args map processExpr mkString(" / ")
+      case Rem => p.args map processExpr mkString(" % ")
+      case Lt  => p.args map processExpr mkString(" < ")
+      case Leq => p.args map processExpr mkString(" <= ")
+      case Gt  => p.args map processExpr mkString(" > ")
+      case Geq => p.args map processExpr mkString(" >= ")
       case Eq => p.args map processExpr mkString(" == ")
-      case Gt => p.args map processExpr mkString(" > ")
+      case Neq => p.args map processExpr mkString(" != ")
+      case Pad => throw new Exception("Pad unimplemented!")
+      case AsUInt => throw new Exception("AsUInt unimplemented!")
+      case AsSInt => throw new Exception("AsSInt unimplemented!")
+      case AsClock => throw new Exception("AsClock unimplemented!")
+      case Shl => s"${processExpr(p.args.head)} << ${p.consts.head.toInt}"
+      case Shr => s"${processExpr(p.args.head)} >> ${p.consts.head.toInt}"
+      case Dshl => p.args map processExpr mkString(" << ")
+      case Dshr => p.args map processExpr mkString(" >> ")
+      case Cvt => throw new Exception("Cvt unimplemented!")
+      case Neg => s"-${processExpr(p.args.head)}"
+      case Not => s"~${processExpr(p.args.head)}"
+      case And => p.args map processExpr mkString(" & ")
+      case Or => p.args map processExpr mkString(" | ")
+      case Xor => p.args map processExpr mkString(" ^ ")
+      case Andr => throw new Exception("Andr unimplemented!")
+      case Orr => throw new Exception("Orr unimplemented!")
+      case Xorr => throw new Exception("Xorr unimplemented!")
+      case Cat => throw new Exception("Cat unimplemented!")
+      case Bits => throw new Exception("Bits unimplemented!")
+      case Head => throw new Exception("Head unimplemented!")
       case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
     case _ => ""
