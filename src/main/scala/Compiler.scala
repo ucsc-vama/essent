@@ -141,15 +141,15 @@ class EmitCpp(writer: Writer) extends Transform {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
       val statement = s"$lhs = $rhs;"
-      if (registerNames contains lhs) Seq("if (!update_registers)", tabs+statement)
+      if (registerNames contains lhs) Seq("if (update_registers)", tabs+statement)
       else Seq(statement)
     }
     case p: Print => {
       println(p.en)
       val printfArgs = Seq(s""""${p.string.serialize}"""") ++
                        (p.args map processExpr)
-      Seq(s"if (${processExpr(p.en)})",
-          tabs + s"printf(${printfArgs mkString(", ")});")
+      Seq("if (update_registers)", tabs + s"if (${processExpr(p.en)})",
+          tabs*2 + s"printf(${printfArgs mkString(", ")});")
     }
     case _ => throw new Exception(s"Don't yet support $s")
   }
