@@ -124,8 +124,11 @@ class EmitCpp(writer: Writer) extends Transform {
       s"$condName ? $tvalName : $fvalName"
     }
     case p: DoPrim => p.op match {
+      case Add => p.args map processExpr mkString(" + ")
       case And => p.args map processExpr mkString(" & ")
       case Eq => p.args map processExpr mkString(" == ")
+      case Gt => p.args map processExpr mkString(" > ")
+      case Tail => p.args map processExpr mkString("")
     }
     case _ => ""
   }
@@ -145,12 +148,12 @@ class EmitCpp(writer: Writer) extends Transform {
       else Seq(statement)
     }
     case p: Print => {
-      println(p.en)
       val printfArgs = Seq(s""""${p.string.serialize}"""") ++
                        (p.args map processExpr)
       Seq("if (update_registers)", tabs + s"if (${processExpr(p.en)})",
           tabs*2 + s"printf(${printfArgs mkString(", ")});")
     }
+    case r: DefRegister => Seq()
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
