@@ -164,7 +164,7 @@ class EmitCpp(writer: Writer) extends Transform {
     s"if ($resetName) $regName = $resetVal;"
   }
 
-  def harnessConnections(m: Module) = {
+  def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
     val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
@@ -178,7 +178,13 @@ class EmitCpp(writer: Writer) extends Transform {
         }
       }
     }}
-    inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse
+    val modName = m.name
+    val registerNames = registers map {r: DefRegister => r.name}
+    val internalSignals = Seq("reset") ++ registerNames
+    val mapConnects = (internalSignals zipWithIndex) map {
+      case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
+    }
+    inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse ++ mapConnects
   }
 
   def initialVals(registers: Seq[DefRegister], m: Module) = {
@@ -229,7 +235,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
-    writeLines(2, harnessConnections(m))
+    writeLines(2, harnessConnections(m, registers))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"$modName() {")
