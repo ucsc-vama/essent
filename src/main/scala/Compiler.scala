@@ -222,7 +222,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val registerNames = registers map {r: DefRegister => r.name}
     val wireNames = wires map {w: DefWire => w.name}
     val internalSignals = Seq("reset") ++ registerNames ++ wireNames
-    val mapConnects = (internalSignals zipWithIndex) map {
+    val mapConnects = (internalSignals.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
     inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse ++ mapConnects
