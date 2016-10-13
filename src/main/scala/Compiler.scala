@@ -168,7 +168,7 @@ class EmitCpp(writer: Writer) extends Transform {
         s"(${processExpr(p.args(0))} << $shamt) | ${processExpr(p.args(1))}"
       }
       case Bits => {
-        val hi_shamt = 64 - p.consts(0).toInt
+        val hi_shamt = 64 - p.consts(0).toInt - 1
         val lo_shamt = p.consts(1).toInt + hi_shamt
         s"(${processExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
       }
