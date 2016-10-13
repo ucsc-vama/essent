@@ -192,7 +192,7 @@ class EmitCpp(writer: Writer) extends Transform {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
       val statement = s"$lhs = $rhs;"
-      if (registerNames contains lhs) Seq("if (update_registers)", tabs+statement)
+      if (registerNames contains lhs) Seq(s"if (update_registers) $statement")
       else Seq(statement)
     }
     case p: Print => {
