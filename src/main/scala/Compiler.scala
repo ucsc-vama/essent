@@ -142,7 +142,10 @@ class EmitCpp(writer: Writer) extends Transform {
       case Geq => p.args map processExpr mkString(" >= ")
       case Eq => p.args map processExpr mkString(" == ")
       case Neq => p.args map processExpr mkString(" != ")
-      case Pad => throw new Exception("Pad unimplemented!")
+      case Pad => {
+        if (p.consts.head.toInt > 64) throw new Exception("Pad too big!")
+        processExpr(p.args.head)
+      }
       case AsUInt => throw new Exception("AsUInt unimplemented!")
       case AsSInt => throw new Exception("AsSInt unimplemented!")
       case AsClock => throw new Exception("AsClock unimplemented!")
@@ -164,8 +167,15 @@ class EmitCpp(writer: Writer) extends Transform {
         val shamt = bitWidth(p.args(1).tpe)
         s"(${processExpr(p.args(0))} << $shamt) | ${processExpr(p.args(1))}"
       }
-      case Bits => throw new Exception("Bits unimplemented!")
-      case Head => throw new Exception("Head unimplemented!")
+      case Bits => {
+        val hi_shamt = 64 - p.consts(0).toInt
+        val lo_shamt = p.consts(1).toInt + hi_shamt
+        s"(${processExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+      }
+      case Head => {
+        val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
+        s"${processExpr(p.args.head)} >> shamt"
+      }
       case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
     case _ => ""
