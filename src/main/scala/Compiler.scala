@@ -17,6 +17,12 @@ object DevHelpers {
     case _ => Seq()
   }
 
+  def findWires(s: Statement): Seq[DefWire] = s match {
+    case b: Block => b.stmts flatMap findWires
+    case d: DefWire => Seq(d)
+    case _ => Seq()
+  }
+
   val nodeMap = collection.mutable.HashMap[String, Expression]()
 
   def lastConnected(s: Statement): Statement = {
@@ -181,6 +187,7 @@ class EmitCpp(writer: Writer) extends Transform {
           tabs*2 + s"printf(${printfArgs mkString(", ")});")
     }
     case r: DefRegister => Seq()
+    case w: DefWire => Seq()
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
@@ -192,7 +199,7 @@ class EmitCpp(writer: Writer) extends Transform {
     else Seq(s"if ($resetName) $regName = $resetVal;")
   }
 
-  def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
+  def harnessConnections(m: Module, registers: Seq[DefRegister], wires: Seq[DefWire]) = {
     val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
     val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
@@ -208,23 +215,27 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val modName = m.name
     val registerNames = registers map {r: DefRegister => r.name}
-    val internalSignals = Seq("reset") ++ registerNames
+    val wireNames = wires map {w: DefWire => w.name}
+    val internalSignals = Seq("reset") ++ registerNames ++ wireNames
     val mapConnects = (internalSignals zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
     inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse ++ mapConnects
   }
 
-  def initialVals(registers: Seq[DefRegister], m: Module) = {
+  def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire], m: Module) = {
     def initVal(name: String, tpe:Type) = s"$name = rand() & ${genMask(tpe)};"
     val regInits = registers map {
       r: DefRegister => initVal(r.name, r.tpe)
+    }
+    val wireInits = wires map {
+      w: DefWire => initVal(w.name, w.tpe)
     }
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
       case _ => Seq(initVal(p.name, p.tpe))
     }}
-    regInits ++ portInits
+    regInits ++ wireInits ++ portInits
   }
 
   def writeLines(indentLevel: Int, lines: String) {
@@ -237,8 +248,14 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
+    val wires = DevHelpers.findWires(m.body)
     val registerNames = (registers map {r: DefRegister => r.name}).toSet
     val registerDecs = registers map {d: DefRegister => {
+      val typeStr = genCppType(d.tpe)
+      val regName = d.name
+      s"$typeStr $regName;"
+    }}
+    val wireDecs = wires map {d: DefWire => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
       s"$typeStr $regName;"
@@ -255,6 +272,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
+    writeLines(1, wireDecs)
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
     writeLines(1, "void eval(bool update_registers) {")
@@ -263,11 +281,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
-    writeLines(2, harnessConnections(m, registers))
+    writeLines(2, harnessConnections(m, registers, wires))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"$modName() {")
-    writeLines(2, initialVals(registers, m))
+    writeLines(2, initialVals(registers, wires, m))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(0, s"} $modName;")
