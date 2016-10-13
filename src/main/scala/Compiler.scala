@@ -7,6 +7,7 @@ import firrtl._
 import firrtl.Annotations._
 import firrtl.ir._
 import firrtl.Mappers._
+import firrtl.passes.bitWidth
 import firrtl.PrimOps._
 
 object DevHelpers {
@@ -158,7 +159,11 @@ class EmitCpp(writer: Writer) extends Transform {
       case Andr => throw new Exception("Andr unimplemented!")
       case Orr => throw new Exception("Orr unimplemented!")
       case Xorr => throw new Exception("Xorr unimplemented!")
-      case Cat => throw new Exception("Cat unimplemented!")
+      case Cat => {
+        if (bitWidth(p.tpe) > 64) throw new Exception("Cat too big!")
+        val shamt = bitWidth(p.args(1).tpe)
+        s"(${processExpr(p.args(0))} << $shamt) | ${processExpr(p.args(1))}"
+      }
       case Bits => throw new Exception("Bits unimplemented!")
       case Head => throw new Exception("Head unimplemented!")
       case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
