@@ -2,7 +2,7 @@ organization := "lbl.gov"
 
 version := "0.1"
 
-name := "saga"
+name := "essent"
 
 scalaVersion := "2.11.7"
 
