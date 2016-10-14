@@ -178,7 +178,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
-    case _ => ""
+    case _ => throw new Exception(s"Don't yet support $e")
   }
 
   def processStmt(s: Statement, registerNames: Set[String]): Seq[String] = s match {
@@ -318,6 +318,31 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 }
 
+
+
+// Copied from firrtl.EmitVerilogFromLowFirrtl
+class FinalCleanups extends Transform with SimpleRun {
+  val passSeq = Seq(
+    passes.RemoveValidIf,
+    passes.ConstProp,
+    passes.PadWidths,
+    passes.ConstProp,
+    passes.Legalize,
+    passes.VerilogWrap,
+    passes.VerilogMemDelays,
+    passes.ConstProp,
+    passes.SplitExpressions,
+    passes.CommonSubexpressionElimination,
+    passes.DeadCodeElimination)
+    // passes.VerilogRename,
+    // passes.VerilogPrep)
+  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+    run(circuit, passSeq)
+  }
+}
+
+
+
 class CCCompiler extends Compiler {
   def transforms(writer: Writer): Seq[Transform] = Seq(
     new firrtl.Chisel3ToHighFirrtl,
@@ -328,6 +353,7 @@ class CCCompiler extends Compiler {
     new firrtl.passes.ReplSeqMem(TransID(-2)),
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
+    new FinalCleanups,
     // new DevTransform,
     new EmitCpp(writer)
     // new firrtl.EmitFirrtl(writer)
