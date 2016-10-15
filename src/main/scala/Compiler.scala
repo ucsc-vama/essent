@@ -9,6 +9,7 @@ import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.passes.bitWidth
 import firrtl.PrimOps._
+import firrtl.Utils._
 
 object DevHelpers {
   // assumption: registers can only appear in blocks since whens expanded
@@ -21,6 +22,12 @@ object DevHelpers {
   def findWires(s: Statement): Seq[DefWire] = s match {
     case b: Block => b.stmts flatMap findWires
     case d: DefWire => Seq(d)
+    case _ => Seq()
+  }
+
+  def findMemory(s: Statement): Seq[DefMemory] = s match {
+    case b: Block => b.stmts flatMap findMemory
+    case d: DefMemory => Seq(d)
     case _ => Seq()
   }
 
@@ -130,6 +137,7 @@ class EmitCpp(writer: Writer) extends Transform {
       val fvalName = processExpr(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
+    case w: WSubField => s"${processExpr(w.exp)}.${w.name}"
     case p: DoPrim => p.op match {
       case Add => p.args map processExpr mkString(" + ")
       case Sub => p.args map processExpr mkString(" - ")
@@ -181,8 +189,8 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"Don't yet support $e")
   }
 
-  def processStmt(s: Statement, registerNames: Set[String]): Seq[String] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => processStmt(s, registerNames)}
+  def processStmt(s: Statement): Seq[String] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => processStmt(s)}
     case d: DefNode => {
       val lhs = genCppType(d.value.tpe) + " " + d.name
       val rhs = processExpr(d.value)
@@ -192,8 +200,11 @@ class EmitCpp(writer: Writer) extends Transform {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
       val statement = s"$lhs = $rhs;"
-      if (registerNames contains lhs) Seq(s"if (update_registers) $statement")
-      else Seq(statement)
+      firrtl.Utils.kind(c.loc) match {
+        case firrtl.MemKind => Seq()
+        case firrtl.RegKind => Seq(s"if (update_registers) $statement")
+        case _ => Seq(statement)
+      }
     }
     case p: Print => {
       val printfArgs = Seq(s""""${p.string.serialize}"""") ++
@@ -203,7 +214,47 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
+    case m: DefMemory => Seq()
     case _ => throw new Exception(s"Don't yet support $s")
+  }
+
+  def grabMemInfo(s: Statement): Seq[(String, String)] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
+    case c: Connect => {
+      firrtl.Utils.kind(c.loc) match {
+        case firrtl.MemKind => Seq((processExpr(c.loc), processExpr(c.expr)))
+        case _ => Seq()
+      }
+    }
+    case _ => Seq()
+  }
+
+  def processBody(body: Statement, memories: Seq[DefMemory]): Seq[String] = {
+    val memConnects = grabMemInfo(body).toMap
+    val memWriteCommands = memories flatMap {m: DefMemory => {
+      m.writers map { writePortName:String => {
+        val wrEnName = memConnects(s"${m.name}.$writePortName.en")
+        val wrAddrName = memConnects(s"${m.name}.$writePortName.addr")
+        val wrDataName = memConnects(s"${m.name}.$writePortName.data")
+        s"if ($wrEnName) ${m.name}[$wrAddrName] = $wrDataName;"
+      }}
+    }}
+    val readOutputs = memories flatMap {m: DefMemory => {
+      m.readers map { readPortName:String =>
+        val rdAddrName = memConnects(s"${m.name}.$readPortName.addr")
+        val rdDataName = s"${m.name}.$readPortName.data"
+        (rdDataName, s"${m.name}[$rdAddrName]")
+      }
+    }}
+    val readMappings = readOutputs.toMap
+    val regularPortion = processStmt(body)
+    val memReadsReplaced = regularPortion map { cmd: String => {
+      if (!(readMappings.keys filter {k:String => cmd.contains(k)}).isEmpty) {
+        readMappings.foldLeft(cmd){ case (s, (k,v)) => s.replaceAll(k,v)}
+      }
+      else cmd
+    }}
+    memReadsReplaced ++ memWriteCommands
   }
 
   def makeResetIf(r: DefRegister): Seq[String] = {
@@ -264,7 +315,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def processModule(m: Module) = {
     val registers = DevHelpers.findRegisters(m.body)
     val wires = DevHelpers.findWires(m.body)
-    val registerNames = (registers map {r: DefRegister => r.name}).toSet
+    val memories = DevHelpers.findMemory(m.body)
     val registerDecs = registers map {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
@@ -274,6 +325,9 @@ class EmitCpp(writer: Writer) extends Transform {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
       s"$typeStr $regName;"
+    }}
+    val memDecs = memories map {m: DefMemory => {
+      s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
     }}
 
     val modName = m.name
@@ -288,10 +342,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, wireDecs)
+    writeLines(1, memDecs)
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
     writeLines(1, "void eval(bool update_registers) {")
-    writeLines(2, processStmt(m.body, registerNames))
+    writeLines(2, processBody(m.body, memories))
     writeLines(2, registers flatMap makeResetIf)
     writeLines(1, "}")
     writeLines(0, "")
