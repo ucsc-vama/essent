@@ -19,7 +19,7 @@ object Driver {
   
     val harnessFilename = new File(outputPath, s"$topName-harness.cc")
     val harnessWriter = new FileWriter(harnessFilename)
-    DevHelpers.generateHarness(topName, harnessWriter)
+    HarnessGenerator.generate(topName, harnessWriter)
     harnessWriter.close()
 
     val dutWriter = new FileWriter(new File(outputPath, s"$topName.h"))
