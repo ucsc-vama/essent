@@ -220,7 +220,8 @@ class EmitCpp(writer: Writer) extends Transform {
     inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse ++ mapConnects
   }
 
-  def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire], m: Module) = {
+  def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire],
+                  memories: Seq[DefMemory], m: Module) = {
     def initVal(name: String, tpe:Type) = s"$name = rand() & ${genMask(tpe)};"
     val regInits = registers map {
       r: DefRegister => initVal(r.name, r.tpe)
@@ -228,11 +229,14 @@ class EmitCpp(writer: Writer) extends Transform {
     val wireInits = wires map {
       w: DefWire => initVal(w.name, w.tpe)
     }
+    val memInits = memories map { m: DefMemory => {
+      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = rand() & ${genMask(m.dataType)};"
+    }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
       case _ => Seq(initVal(p.name, p.tpe))
     }}
-    regInits ++ wireInits ++ portInits
+    regInits ++ wireInits ++ memInits ++ portInits
   }
 
   def writeLines(indentLevel: Int, lines: String) {
@@ -286,7 +290,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"$modName() {")
-    writeLines(2, initialVals(registers, wires, m))
+    writeLines(2, initialVals(registers, wires, memories, m))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(0, s"} $modName;")
