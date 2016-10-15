@@ -11,73 +11,6 @@ import firrtl.passes.bitWidth
 import firrtl.PrimOps._
 import firrtl.Utils._
 
-object DevHelpers {
-  // assumption: registers can only appear in blocks since whens expanded
-  def findRegisters(s: Statement): Seq[DefRegister] = s match {
-    case b: Block => b.stmts flatMap findRegisters
-    case d: DefRegister => Seq(d)
-    case _ => Seq()
-  }
-
-  def findWires(s: Statement): Seq[DefWire] = s match {
-    case b: Block => b.stmts flatMap findWires
-    case d: DefWire => Seq(d)
-    case _ => Seq()
-  }
-
-  def findMemory(s: Statement): Seq[DefMemory] = s match {
-    case b: Block => b.stmts flatMap findMemory
-    case d: DefMemory => Seq(d)
-    case _ => Seq()
-  }
-
-  val nodeMap = collection.mutable.HashMap[String, Expression]()
-
-  def lastConnected(s: Statement): Statement = {
-    s match {
-      case Connect(_, loc, expr) => loc match {
-        case w: WRef => nodeMap(w.name) = expr
-        case _ =>
-      }
-      case DefNode(_, name, value) => nodeMap(name) = value
-      case _ =>
-    }
-    s map lastConnected
-    s
-  }
-
-  def traceRefs(name: String): Expression = nodeMap(name) match {
-    case w: WRef => traceRefs(w.name)
-    case s => s
-  }
-
-  def identifyWE(e: Expression) = e match {
-    case m: Mux => m.cond match {
-      case w: WRef => w.name
-      case s =>
-    }
-    case e =>
-  }
-}
-
-
-class DevTransform extends Transform {
-  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
-    circuit.modules.head match {
-      case m: Module => {
-        val registers = DevHelpers.findRegisters(m.body)
-        val regNames = registers map (_.name)
-        DevHelpers.lastConnected(m.body)
-        val lastExp = regNames map DevHelpers.traceRefs
-        val writeEnables = lastExp map DevHelpers.identifyWE
-        println(regNames zip writeEnables)
-      }
-      case m: ExtModule =>
-    }
-    TransformResult(circuit)
-  }
-}
-
 
 class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
@@ -100,6 +33,25 @@ class EmitCpp(writer: Writer) extends Transform {
       val maskValue = BigInt((1 << width.toInt) - 1)
       s"0x${maskValue.toString(16)}"
     }
+  }
+
+  // assumption: registers can only appear in blocks since whens expanded
+  def findRegisters(s: Statement): Seq[DefRegister] = s match {
+    case b: Block => b.stmts flatMap findRegisters
+    case d: DefRegister => Seq(d)
+    case _ => Seq()
+  }
+
+  def findWires(s: Statement): Seq[DefWire] = s match {
+    case b: Block => b.stmts flatMap findWires
+    case d: DefWire => Seq(d)
+    case _ => Seq()
+  }
+
+  def findMemory(s: Statement): Seq[DefMemory] = s match {
+    case b: Block => b.stmts flatMap findMemory
+    case d: DefMemory => Seq(d)
+    case _ => Seq()
   }
 
   def processPort(p: Port): Seq[String] = p.tpe match {
@@ -292,9 +244,9 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def processModule(m: Module) = {
-    val registers = DevHelpers.findRegisters(m.body)
-    val wires = DevHelpers.findWires(m.body)
-    val memories = DevHelpers.findMemory(m.body)
+    val registers = findRegisters(m.body)
+    val wires = findWires(m.body)
+    val memories = findMemory(m.body)
     val registerDecs = registers map {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
