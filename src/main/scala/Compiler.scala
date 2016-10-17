@@ -109,13 +109,19 @@ class EmitCpp(writer: Writer) extends Transform {
       case Bits => {
         val hi_shamt = 64 - p.consts(0).toInt - 1
         val lo_shamt = p.consts(1).toInt + hi_shamt
-        s"(${processExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+        s"(${processExpr(p.args.head)} << $hi_shamt) >>> $lo_shamt"
       }
       case Head => {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
-        s"${processExpr(p.args.head)} >> shamt"
+        s"${processExpr(p.args.head)} >>> shamt"
       }
-      case Tail => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
+      case Tail => p.tpe match {
+        case UIntType(_) => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
+        case SIntType(IntWidth(w)) => {
+          val shamt = 64 - w
+          s"(${processExpr(p.args.head)} << $shamt) >>> $shamt;"
+        }
+      }
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
@@ -222,7 +228,13 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire],
                   memories: Seq[DefMemory], m: Module) = {
-    def initVal(name: String, tpe:Type) = s"$name = rand() & ${genMask(tpe)};"
+    def initVal(name: String, tpe:Type) = tpe match {
+      case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
+      case SIntType(IntWidth(w)) => {
+        val shamt = 64 - w
+        s"$name = (rand() << $shamt) >>> $shamt;"
+      }
+    }
     val regInits = registers map {
       r: DefRegister => initVal(r.name, r.tpe)
     }
