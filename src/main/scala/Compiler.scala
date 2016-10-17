@@ -345,8 +345,6 @@ class CCCompiler extends Compiler {
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
     new FinalCleanups,
-    // new DevTransform,
     new EmitCpp(writer)
-    // new firrtl.EmitFirrtl(writer)
   )
 }
