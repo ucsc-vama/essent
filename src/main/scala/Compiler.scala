@@ -210,17 +210,29 @@ class EmitCpp(writer: Writer) extends Transform {
         if (name.count(_ == '_') > 1) name.slice(0, name.lastIndexOf('_'))
         else name
       }
+      def reorderHelper(soFar: List[List[String]], rest: List[String]): List[List[String]] = {
+        if (rest.isEmpty) soFar
+        else if (soFar.isEmpty) reorderHelper(List(List(rest.head)), rest.tail)
+        else {
+          val nextSoFar =
+            if (pruneLastField(soFar.last.head) == pruneLastField(rest.head))
+              soFar.init :+ (soFar.last ++ List(rest.head))
+            else soFar :+ List(rest.head)
+          reorderHelper(nextSoFar, rest.tail)
+        }
+      }
       if (signalNames.isEmpty) signalNames
       else {
-        val first = List(signalNames.head)
-        val rest = signalNames.tail
-        val contiguousPrefixes = rest.foldLeft(List[List[String]](first)) {
-          (x,y) =>
-            if (pruneLastField(x.last.last) == pruneLastField(y))
-              x.init :+ (x.last ++ List(y))
-            else
-              x :+ List(y)
-        }
+        // val first = List(signalNames.head)
+        // val rest = signalNames.tail
+        // val contiguousPrefixes = rest.foldLeft(List[List[String]](first)) {
+        //   (x,y) =>
+        //     if (pruneLastField(x.last.last) == pruneLastField(y))
+        //       x.init :+ (x.last ++ List(y))
+        //     else
+        //       x :+ List(y)
+        // }
+        val contiguousPrefixes = reorderHelper(List(), signalNames.toList)
         (contiguousPrefixes flatMap { _.reverse }).reverse
       }
     }
