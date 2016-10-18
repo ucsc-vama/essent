@@ -139,7 +139,7 @@ class EmitCpp(writer: Writer) extends Transform {
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
-        case _ => Seq(s"$lhs = $rhs;")
+        case firrtl.WireKind => Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
       }
     }
     case p: Print => {
@@ -201,7 +201,7 @@ class EmitCpp(writer: Writer) extends Transform {
     else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
 
-  def harnessConnections(m: Module, registers: Seq[DefRegister], wires: Seq[DefWire]) = {
+  def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
     // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
     // Reverses order of signals, but if signals share prefix (because came from
     // same bundle or vec), reverses them (so bundle/vec signals are not reversed).
@@ -242,8 +242,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val modName = m.name
     val registerNames = registers map {r: DefRegister => r.name}
-    val wireNames = wires map {w: DefWire => w.name}
-    val internalNames = Seq("reset") ++ registerNames ++ wireNames
+    val internalNames = Seq("reset") ++ registerNames// ++ wireNames
     val mapConnects = (internalNames.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
@@ -252,8 +251,7 @@ class EmitCpp(writer: Writer) extends Transform {
     (reorderPorts(signalNames) map connectSignal("")) ++ mapConnects
   }
 
-  def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire],
-                  memories: Seq[DefMemory], m: Module) = {
+  def initialVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = tpe match {
       case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
       case SIntType(IntWidth(w)) => {
@@ -264,9 +262,6 @@ class EmitCpp(writer: Writer) extends Transform {
     val regInits = registers map {
       r: DefRegister => initVal(r.name + "$next", r.tpe)
     }
-    val wireInits = wires map {
-      w: DefWire => initVal(w.name, w.tpe)
-    }
     val memInits = memories map { m: DefMemory => {
       s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = rand() & ${genMask(m.dataType)};"
     }}
@@ -274,7 +269,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case ClockType => Seq()
       case _ => Seq(initVal(p.name, p.tpe))
     }}
-    regInits ++ wireInits ++ memInits ++ portInits
+    regInits ++ memInits ++ portInits
   }
 
   def writeLines(indentLevel: Int, lines: String) {
@@ -287,17 +282,11 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def processModule(m: Module) = {
     val registers = findRegisters(m.body)
-    val wires = findWires(m.body)
     val memories = findMemory(m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
       Seq(s"$typeStr $regName;", s"$typeStr $regName$$next;")
-    }}
-    val wireDecs = wires map {d: DefWire => {
-      val typeStr = genCppType(d.tpe)
-      val regName = d.name
-      s"$typeStr $regName;"
     }}
     val memDecs = memories map {m: DefMemory => {
       s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
@@ -314,7 +303,6 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
-    writeLines(1, wireDecs)
     writeLines(1, memDecs)
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
@@ -324,11 +312,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
-    writeLines(2, harnessConnections(m, registers, wires))
+    writeLines(2, harnessConnections(m, registers))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"$modName() {")
-    writeLines(2, initialVals(registers, wires, memories, m))
+    writeLines(2, initialVals(m, registers, memories))
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(0, s"} $modName;")
