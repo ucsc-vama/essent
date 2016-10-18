@@ -136,11 +136,10 @@ class EmitCpp(writer: Writer) extends Transform {
     case c: Connect => {
       val lhs = processExpr(c.loc)
       val rhs = processExpr(c.expr)
-      val statement = s"$lhs = $rhs;"
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq(s"if (update_registers) $statement")
-        case _ => Seq(statement)
+        case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
+        case _ => Seq(s"$lhs = $rhs;")
       }
     }
     case p: Print => {
@@ -194,12 +193,12 @@ class EmitCpp(writer: Writer) extends Transform {
     memReadsReplaced ++ memWriteCommands
   }
 
-  def makeResetIf(r: DefRegister): Seq[String] = {
+  def makeRegisterUpdate(r: DefRegister): String = {
     val regName = r.name
     val resetName = processExpr(r.reset)
     val resetVal = processExpr(r.init)
-    if (resetName == "0x0") Seq()
-    else Seq(s"if ($resetName) $regName = $resetVal;")
+    if (resetName == "0x0") s"if (update_registers) $regName = $regName$$next;"
+    else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
 
   def harnessConnections(m: Module, registers: Seq[DefRegister], wires: Seq[DefWire]) = {
@@ -236,7 +235,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }
     val regInits = registers map {
-      r: DefRegister => initVal(r.name, r.tpe)
+      r: DefRegister => initVal(r.name + "$next", r.tpe)
     }
     val wireInits = wires map {
       w: DefWire => initVal(w.name, w.tpe)
@@ -263,10 +262,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val registers = findRegisters(m.body)
     val wires = findWires(m.body)
     val memories = findMemory(m.body)
-    val registerDecs = registers map {d: DefRegister => {
+    val registerDecs = registers flatMap {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
-      s"$typeStr $regName;"
+      Seq(s"$typeStr $regName;", s"$typeStr $regName$$next;")
     }}
     val wireDecs = wires map {d: DefWire => {
       val typeStr = genCppType(d.tpe)
@@ -293,8 +292,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
     writeLines(1, "void eval(bool update_registers) {")
+    writeLines(2, registers map makeRegisterUpdate)
     writeLines(2, processBody(m.body, memories))
-    writeLines(2, registers flatMap makeResetIf)
     writeLines(1, "}")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
