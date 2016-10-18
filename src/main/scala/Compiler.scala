@@ -210,16 +210,19 @@ class EmitCpp(writer: Writer) extends Transform {
         if (name.count(_ == '_') > 1) name.slice(0, name.lastIndexOf('_'))
         else name
       }
-      val signalMappings = HashMap[String, (Int, Seq[String])]()
-      signalNames foreach {signal: String => {
-        val baseName = pruneLastField(signal)
-        if (signalMappings contains baseName) {
-          val (firstIndex, signalsSoFar) = signalMappings(baseName)
-          signalMappings(baseName) = (firstIndex, signalsSoFar ++ Seq(signal))
-        } else signalMappings(baseName) = (signalNames.indexOf(signal), Seq(signal))
-      }}
-      val contiguousPrefixes = signalMappings.values.toList.sortWith(_._1 < _._1)
-      (contiguousPrefixes flatMap { _._2.reverse }).reverse
+      if (signalNames.isEmpty) signalNames
+      else {
+        val first = List(signalNames.head)
+        val rest = signalNames.tail
+        val contiguousPrefixes = rest.foldLeft(List[List[String]](first)) {
+          (x,y) =>
+            if (pruneLastField(x.last.last) == pruneLastField(y))
+              x.init :+ (x.last ++ List(y))
+            else
+              x :+ List(y)
+        }
+        (contiguousPrefixes flatMap { _.reverse }).reverse
+      }
     }
     def connectSignal(signalDirection: String)(signalName: String) = {
       s"comm->add_${signalDirection}signal(&${signalName});"
