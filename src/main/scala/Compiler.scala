@@ -140,6 +140,7 @@ class EmitCpp(writer: Writer) extends Transform {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
         case firrtl.WireKind => Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+        case _ => Seq(s"$lhs = $rhs;")
       }
     }
     case p: Print => {
