@@ -202,27 +202,51 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def harnessConnections(m: Module, registers: Seq[DefRegister], wires: Seq[DefWire]) = {
-    val signalDecs = scala.collection.mutable.ArrayBuffer.empty[String]
-    val inputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
-    val outputDecs = scala.collection.mutable.ArrayBuffer.empty[String]
+    // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
+    // Reverses order of signals, but if signals share prefix (because came from
+    // same bundle or vec), reverses them (so bundle/vec signals are not reversed).
+    def reorderPorts(signalNames: Seq[String]) = {
+      def pruneLastField(name: String) = {
+        if (name.count(_ == '_') > 1) name.slice(0, name.lastIndexOf('_'))
+        else name
+      }
+      val signalMappings = HashMap[String, (Int, Seq[String])]()
+      signalNames foreach {signal: String => {
+        val baseName = pruneLastField(signal)
+        if (signalMappings contains baseName) {
+          val (firstIndex, signalsSoFar) = signalMappings(baseName)
+          signalMappings(baseName) = (firstIndex, signalsSoFar ++ Seq(signal))
+        } else signalMappings(baseName) = (signalNames.indexOf(signal), Seq(signal))
+      }}
+      val contiguousPrefixes = signalMappings.values.toList.sortWith(_._1 < _._1)
+      (contiguousPrefixes flatMap { _._2.reverse }).reverse
+    }
+    def connectSignal(signalDirection: String)(signalName: String) = {
+      s"comm->add_${signalDirection}signal(&${signalName});"
+    }
+    val signalNames = scala.collection.mutable.ArrayBuffer.empty[String]
+    val inputNames = scala.collection.mutable.ArrayBuffer.empty[String]
+    val outputNames = scala.collection.mutable.ArrayBuffer.empty[String]
     m.ports foreach {p => p.tpe match {
       case ClockType =>
       case _ => {
-        if (p.name == "reset") signalDecs += s"comm->add_signal(&${p.name});"
+        if (p.name == "reset") signalNames += p.name
         else p.direction match {
-          case Input => inputDecs += s"comm->add_in_signal(&${p.name});"
-          case Output => outputDecs += s"comm->add_out_signal(&${p.name});"
+          case Input => inputNames += p.name
+          case Output => outputNames += p.name
         }
       }
     }}
     val modName = m.name
     val registerNames = registers map {r: DefRegister => r.name}
     val wireNames = wires map {w: DefWire => w.name}
-    val internalSignals = Seq("reset") ++ registerNames ++ wireNames
-    val mapConnects = (internalSignals.zipWithIndex) map {
+    val internalNames = Seq("reset") ++ registerNames ++ wireNames
+    val mapConnects = (internalNames.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
-    inputDecs.reverse ++ outputDecs.reverse ++ signalDecs.reverse ++ mapConnects
+    (reorderPorts(inputNames) map connectSignal("in_")) ++
+    (reorderPorts(outputNames) map connectSignal("out_")) ++
+    (reorderPorts(signalNames) map connectSignal("")) ++ mapConnects
   }
 
   def initialVals(registers: Seq[DefRegister], wires: Seq[DefWire],
