@@ -204,12 +204,13 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
     // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
-    // Reverses order of signals, but if signals share prefix (because came from
-    // same bundle or vec), reverses them (so bundle/vec signals are not reversed).
+    // Reverses order of signals, but if signals are from same vec (share prefix
+    // and have numeric suffix), reverses them (so vec signals are not reversed).
     def reorderPorts(signalNames: Seq[String]) = {
-      def pruneLastField(name: String) = {
-        if (name.count(_ == '_') > 1) name.slice(0, name.lastIndexOf('_'))
-        else name
+      def signalsFromSameVec(sigA: String, sigB: String) = {
+        (sigA.count(_ == '_') > 1) && (sigB.count(_ == '_') > 1) &&
+          (sigA.slice(0, sigA.lastIndexOf('_')) == sigB.slice(0, sigB.lastIndexOf('_'))) &&
+          (sigA.drop(sigA.lastIndexOf('_')+1) forall Character.isDigit)
       }
       if (signalNames.isEmpty) signalNames
       else {
@@ -217,10 +218,8 @@ class EmitCpp(writer: Writer) extends Transform {
         val rest = signalNames.tail
         val contiguousPrefixes = rest.foldLeft(List[List[String]](first)) {
           (x,y) =>
-            if (pruneLastField(x.last.last) == pruneLastField(y))
-              x.init :+ (x.last ++ List(y))
-            else
-              x :+ List(y)
+            if (signalsFromSameVec(x.last.last, y)) x.init :+ (x.last ++ List(y))
+            else x :+ List(y)
         }
         (contiguousPrefixes flatMap { _.reverse }).reverse
       }
