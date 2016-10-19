@@ -206,7 +206,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    buildGraph(memReadsReplaced)
+    println(buildGraph(memReadsReplaced))
     memReadsReplaced ++ memWriteCommands
   }
 
