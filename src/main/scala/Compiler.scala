@@ -166,6 +166,21 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def buildGraph(commands: Seq[String]) = {
+    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$]*""".r
+    val g = new Graph
+    commands foreach {cmd: String => {
+      if (!cmd.contains("=")) throw new Exception(s"No assignment in $cmd")
+      else {
+        val split = cmd.split("=")
+        val result = split(0).trim.split(" ").last
+        val dependsOn = legalVarNames.findAllIn(split(1)).toSeq
+        g.addNodeWithDeps(result, dependsOn)
+      }
+    }}
+    g
+  }
+
   def processBody(body: Statement, memories: Seq[DefMemory]): Seq[String] = {
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
@@ -191,6 +206,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
+    buildGraph(memReadsReplaced)
     memReadsReplaced ++ memWriteCommands
   }
 

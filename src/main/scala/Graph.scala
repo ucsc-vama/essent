@@ -22,8 +22,12 @@ class Graph {
   }
 
   // adds directed edge
-  def addEdge(source:String, dest:String) {
+  def addEdge(source: String, dest: String) {
     outNeigh(getID(source)) += getID(dest)
     inNeigh(getID(dest)) += getID(source)
+  }
+
+  def addNodeWithDeps(result: String, deps: Seq[String]) = {
+    deps foreach {dep : String => addEdge(dep, result)}
   }
 }
