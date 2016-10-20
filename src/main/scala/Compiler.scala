@@ -309,14 +309,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
 
     val modName = m.name
-    val headerGuardName = modName.toUpperCase + "_H_"
 
-    writeLines(0, s"#ifndef $headerGuardName")
-    writeLines(0, s"#define $headerGuardName")
-    writeLines(0, "")
-    writeLines(0, "#include <cstdint>")
-    writeLines(0, "#include <cstdlib>")
-    writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, memDecs)
@@ -334,17 +327,23 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, s"$modName() {")
     writeLines(2, initialVals(m, registers, memories))
     writeLines(1, "}")
-    writeLines(0, "")
     writeLines(0, s"} $modName;")
     writeLines(0, "")
-    writeLines(0, s"#endif  // $headerGuardName")
   }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+    val headerGuardName = circuit.main.toUpperCase + "_H_"
+    writeLines(0, s"#ifndef $headerGuardName")
+    writeLines(0, s"#define $headerGuardName")
+    writeLines(0, "")
+    writeLines(0, "#include <cstdint>")
+    writeLines(0, "#include <cstdlib>")
+    writeLines(0, "")
     circuit.modules foreach {
       case m: Module => processModule(m)
       case m: ExtModule =>
     }
+    writeLines(0, s"#endif  // $headerGuardName")
     println(circuit.serialize)
     TransformResult(circuit)
   }
