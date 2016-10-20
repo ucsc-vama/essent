@@ -39,4 +39,22 @@ class Graph {
       longName + ": " + inNeigh(id).map{n:Int => idToName(n)}.toSeq.mkString(" ")
     } mkString("\n")
   }
+
+  def topologicalSort() = {
+    val finalOrdering = ArrayBuffer[Int]()
+    val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
+    def visit(vertexID: Int) {
+      if (temporaryMarks(vertexID)) throw new Exception("There is a cycle!")
+      else if (!finalMarks(vertexID)) {
+        temporaryMarks(vertexID) = true
+        inNeigh(vertexID) foreach { neighborID => visit(neighborID) }
+        finalMarks(vertexID) = true
+        temporaryMarks(vertexID) = false
+        finalOrdering += vertexID
+      }
+    }
+    nameToID.values foreach {startingID => visit(startingID)}
+    finalOrdering.reverse
+  }
 }
