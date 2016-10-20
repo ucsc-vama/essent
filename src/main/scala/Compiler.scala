@@ -175,7 +175,7 @@ class EmitCpp(writer: Writer) extends Transform {
         val split = cmd.split("=")
         val result = split(0).trim.split(" ").last
         val dependsOn = legalVarNames.findAllIn(split(1)).toSeq
-        g.addNodeWithDeps(result, dependsOn)
+        g.addNodeWithDeps(result, dependsOn, cmd)
       }
     }}
     g
@@ -206,8 +206,8 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    println(buildGraph(memReadsReplaced))
-    memReadsReplaced ++ memWriteCommands
+    val dependencyGraph = buildGraph(memReadsReplaced)
+    dependencyGraph.reorderCommands ++ memWriteCommands
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {

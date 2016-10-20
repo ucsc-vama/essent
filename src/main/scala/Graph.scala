@@ -11,6 +11,8 @@ class Graph {
   val inNeigh = ArrayBuffer[ArrayBuffer[Int]]()
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh = ArrayBuffer[ArrayBuffer[Int]]()
+  // Vertex name -> full C++ string it corresponds to
+  val nameToCmd = HashMap[String,String]()
 
   def getID(vertexName: String) = {
     if (nameToID contains vertexName) nameToID(vertexName)
@@ -30,7 +32,8 @@ class Graph {
     inNeigh(getID(dest)) += getID(source)
   }
 
-  def addNodeWithDeps(result: String, deps: Seq[String]) = {
+  def addNodeWithDeps(result: String, deps: Seq[String], cmd: String) = {
+    nameToCmd(result) = cmd
     deps foreach {dep : String => addEdge(dep, result)}
   }
 
@@ -48,7 +51,7 @@ class Graph {
       if (temporaryMarks(vertexID)) throw new Exception("There is a cycle!")
       else if (!finalMarks(vertexID)) {
         temporaryMarks(vertexID) = true
-        inNeigh(vertexID) foreach { neighborID => visit(neighborID) }
+        outNeigh(vertexID) foreach { neighborID => visit(neighborID) }
         finalMarks(vertexID) = true
         temporaryMarks(vertexID) = false
         finalOrdering += vertexID
@@ -56,5 +59,10 @@ class Graph {
     }
     nameToID.values foreach {startingID => visit(startingID)}
     finalOrdering.reverse
+  }
+
+  def reorderCommands() = {
+    val orderedResults = topologicalSort map idToName
+    orderedResults filter {nameToCmd.contains} map nameToCmd
   }
 }
