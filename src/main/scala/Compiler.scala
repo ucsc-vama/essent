@@ -206,8 +206,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    val dependencyGraph = buildGraph(memReadsReplaced)
-    dependencyGraph.reorderCommands ++ memWriteCommands
+    memReadsReplaced ++ memWriteCommands
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
@@ -309,16 +308,13 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
 
     val modName = m.name
-
+    writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, memDecs)
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
-    writeLines(1, "void eval(bool update_registers) {")
-    writeLines(2, registers map makeRegisterUpdate)
-    writeLines(2, processBody(m.body, memories))
-    writeLines(1, "}")
+    writeLines(1, "void eval(bool update_registers);")
     writeLines(0, "")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
     writeLines(2, harnessConnections(m, registers))
@@ -328,21 +324,31 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, initialVals(m, registers, memories))
     writeLines(1, "}")
     writeLines(0, s"} $modName;")
-    writeLines(0, "")
+    val regUpdates = registers map makeRegisterUpdate
+    val body = processBody(m.body, memories)
+    (regUpdates, body)
   }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
-    val headerGuardName = circuit.main.toUpperCase + "_H_"
+    val topName = circuit.main
+    val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
-    writeLines(0, "")
-    circuit.modules foreach {
+    val moduleResults = circuit.modules map {dm: DefModule => dm match {
       case m: Module => processModule(m)
-      case m: ExtModule =>
-    }
+      case m: ExtModule => (Seq[String](), Seq[String]())
+    }}
+    val allRegUpdates = moduleResults map {_._1} reduceLeft {_ ++ _}
+    val allBodies = moduleResults map {_._2} reduceLeft {_ ++ _}
+    val reorderedBodies = buildGraph(allBodies).reorderCommands
+    writeLines(0, "")
+    writeLines(0, s"void $topName::eval(bool update_registers) {")
+    writeLines(1, allRegUpdates ++ reorderedBodies)
+    writeLines(0, "}")
+    writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
     println(circuit.serialize)
     TransformResult(circuit)
