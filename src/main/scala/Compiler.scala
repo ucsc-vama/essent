@@ -109,17 +109,17 @@ class EmitCpp(writer: Writer) extends Transform {
       case Bits => {
         val hi_shamt = 64 - p.consts(0).toInt - 1
         val lo_shamt = p.consts(1).toInt + hi_shamt
-        s"(${processExpr(p.args.head)} << $hi_shamt) >>> $lo_shamt"
+        s"(${processExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
       }
       case Head => {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
-        s"${processExpr(p.args.head)} >>> shamt"
+        s"${processExpr(p.args.head)} >> shamt"
       }
       case Tail => p.tpe match {
         case UIntType(_) => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
         case SIntType(IntWidth(w)) => {
           val shamt = 64 - w
-          s"(${processExpr(p.args.head)} << $shamt) >>> $shamt;"
+          s"(${processExpr(p.args.head)} << $shamt) >> $shamt;"
         }
       }
     }
@@ -271,7 +271,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
       case SIntType(IntWidth(w)) => {
         val shamt = 64 - w
-        s"$name = (rand() << $shamt) >>> $shamt;"
+        s"$name = (rand() << $shamt) >> $shamt;"
       }
     }
     val regInits = registers map {
