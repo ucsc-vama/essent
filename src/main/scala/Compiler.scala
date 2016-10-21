@@ -54,6 +54,18 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def addPrefixToWRefStmt(prefix: String)(s: Statement): Statement = {
+    s map addPrefixToWRefStmt(prefix) map addPrefixToWRefExpr(prefix)
+  }
+
+  def addPrefixToWRefExpr(prefix: String)(e: Expression): Expression = {
+    val replaced = e match {
+      case w: WRef => WRef(prefix + w.name, w.tpe, w.kind, w.gender)
+      case _ => e
+    }
+    replaced map addPrefixToWRefExpr(prefix)
+  }
+
   def processPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
@@ -181,7 +193,11 @@ class EmitCpp(writer: Writer) extends Transform {
     g
   }
 
-  def processBody(body: Statement, memories: Seq[DefMemory]) = {
+  def processBody(origBody: Statement, prefix: String) = {
+    val body = addPrefixToWRefStmt(prefix)(origBody)
+    val registers = findRegisters(body)
+    val memories = findMemory(body)
+    val regUpdates = registers map makeRegisterUpdate
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
       m.writers map { writePortName:String => {
@@ -206,7 +222,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    (memReadsReplaced, memWriteCommands)
+    (regUpdates, memReadsReplaced, memWriteCommands)
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
@@ -323,13 +339,9 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"} $modName;")
   }
 
-  def buildEval(modName: String, prefix: String, circuit: Circuit) = {
-    val m = findModule(modName, circuit)
-    val registers = findRegisters(m.body)
-    val memories = findMemory(m.body)
-    val regUpdates = registers map makeRegisterUpdate
-    val (body, memUpdates) = processBody(m.body, memories)
-    (regUpdates, body, memUpdates)
+  def buildEval(circuit: Circuit) = {
+    val m = findModule(circuit.main, circuit)
+    processBody(m.body, "HELLO.")
   }
 
   def findModule(name: String, circuit: Circuit) =
@@ -351,7 +363,7 @@ class EmitCpp(writer: Writer) extends Transform {
     //   case m: Module => processModule(m)
     //   case m: ExtModule => (Seq(), Seq(), Seq())
     // }
-    val moduleResults = buildEval(topName, "", circuit)
+    val moduleResults = buildEval(circuit)
     val (allRegUpdates, allBodies, allMemUpdates) = moduleResults //.unzip3
     val reorderedBodies = buildGraph(allBodies).reorderCommands
     // val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
