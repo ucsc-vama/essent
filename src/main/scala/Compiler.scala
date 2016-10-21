@@ -323,13 +323,17 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"} $modName;")
   }
 
-  def processModule(m: Module) = {
+  def buildEval(modName: String, prefix: String, circuit: Circuit) = {
+    val m = findModule(modName, circuit)
     val registers = findRegisters(m.body)
     val memories = findMemory(m.body)
     val regUpdates = registers map makeRegisterUpdate
     val (body, memUpdates) = processBody(m.body, memories)
     (regUpdates, body, memUpdates)
   }
+
+  def findModule(name: String, circuit: Circuit) =
+    circuit.modules.find(_.name == name).get match {case m: Module => m}
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     val topName = circuit.main
@@ -343,18 +347,19 @@ class EmitCpp(writer: Writer) extends Transform {
       case m: Module => declareModule(m)
       case m: ExtModule =>
     }
-    val moduleResults = circuit.modules map {
-      case m: Module => processModule(m)
-      case m: ExtModule => (Seq(), Seq(), Seq())
-    }
-    val (allRegUpdates, allBodies, allMemUpdates) = moduleResults.unzip3
-    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
-    val topModule = circuit.modules.find(_.name == topName).get match {
-      case m: Module => m
-    }
+    // val moduleResults = circuit.modules map {
+    //   case m: Module => processModule(m)
+    //   case m: ExtModule => (Seq(), Seq(), Seq())
+    // }
+    val moduleResults = buildEval(topName, "", circuit)
+    val (allRegUpdates, allBodies, allMemUpdates) = moduleResults //.unzip3
+    val reorderedBodies = buildGraph(allBodies).reorderCommands
+    // val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
+    val topModule = findModule(topName, circuit)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
-    writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
+    // writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
+    writeLines(1, allRegUpdates ++ reorderedBodies ++ allMemUpdates)
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
