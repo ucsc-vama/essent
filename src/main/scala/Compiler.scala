@@ -181,7 +181,7 @@ class EmitCpp(writer: Writer) extends Transform {
     g
   }
 
-  def processBody(body: Statement, memories: Seq[DefMemory]): Seq[String] = {
+  def processBody(body: Statement, memories: Seq[DefMemory]) = {
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
       m.writers map { writePortName:String => {
@@ -206,7 +206,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    memReadsReplaced ++ memWriteCommands
+    (memReadsReplaced, memWriteCommands)
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
@@ -325,8 +325,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     writeLines(0, s"} $modName;")
     val regUpdates = registers map makeRegisterUpdate
-    val body = processBody(m.body, memories)
-    (regUpdates, body)
+    val (body, memUpdates) = processBody(m.body, memories)
+    (regUpdates, body, memUpdates)
   }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
@@ -337,16 +337,15 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
-    val moduleResults = circuit.modules map {dm: DefModule => dm match {
+    val moduleResults = circuit.modules map {
       case m: Module => processModule(m)
-      case m: ExtModule => (Seq[String](), Seq[String]())
-    }}
-    val allRegUpdates = moduleResults map {_._1} reduceLeft {_ ++ _}
-    val allBodies = moduleResults map {_._2} reduceLeft {_ ++ _}
-    val reorderedBodies = buildGraph(allBodies).reorderCommands
+      case m: ExtModule => (Seq(), Seq(), Seq())
+    }
+    val (allRegUpdates, allBodies, allMemUpdates) = moduleResults.unzip3
+    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
-    writeLines(1, allRegUpdates ++ reorderedBodies)
+    writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
