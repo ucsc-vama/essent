@@ -295,7 +295,7 @@ class EmitCpp(writer: Writer) extends Transform {
     lines foreach { s => writer write tabs*indentLevel + s + "\n" }
   }
 
-  def processModule(m: Module) = {
+  def declareModule(m: Module) = {
     val registers = findRegisters(m.body)
     val memories = findMemory(m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
@@ -321,6 +321,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "void eval(bool update_registers);")
     writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     writeLines(0, s"} $modName;")
+  }
+
+  def processModule(m: Module) = {
+    val registers = findRegisters(m.body)
+    val memories = findMemory(m.body)
     val regUpdates = registers map makeRegisterUpdate
     val (body, memUpdates) = processBody(m.body, memories)
     (regUpdates, body, memUpdates)
@@ -334,6 +339,10 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
+    circuit.modules foreach {
+      case m: Module => declareModule(m)
+      case m: ExtModule =>
+    }
     val moduleResults = circuit.modules map {
       case m: Module => processModule(m)
       case m: ExtModule => (Seq(), Seq(), Seq())
