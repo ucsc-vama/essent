@@ -217,7 +217,7 @@ class EmitCpp(writer: Writer) extends Transform {
     else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
 
-  def harnessConnections(m: Module, registers: Seq[DefRegister]) = {
+  def harnessConnections(m: Module) = {
     // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
     // Reverses order of signals, but if signals are from same vec (share prefix
     // and have numeric suffix), reverses them (so vec signals are not reversed).
@@ -256,8 +256,8 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }}
     val modName = m.name
-    val registerNames = registers map {r: DefRegister => r.name}
-    val internalNames = Seq("reset") ++ registerNames// ++ wireNames
+    // val registerNames = registers map {r: DefRegister => r.name}
+    val internalNames = Seq("reset") //++ registerNames
     val mapConnects = (internalNames.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
@@ -314,15 +314,12 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, memDecs)
     writeLines(1, m.ports flatMap processPort)
     writeLines(0, "")
-    writeLines(1, "void eval(bool update_registers);")
-    writeLines(0, "")
-    writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm) {")
-    writeLines(2, harnessConnections(m, registers))
-    writeLines(1, "}")
-    writeLines(0, "")
     writeLines(1, s"$modName() {")
     writeLines(2, initialVals(m, registers, memories))
     writeLines(1, "}")
+    writeLines(0, "")
+    writeLines(1, "void eval(bool update_registers);")
+    writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     writeLines(0, s"} $modName;")
     val regUpdates = registers map makeRegisterUpdate
     val (body, memUpdates) = processBody(m.body, memories)
@@ -343,9 +340,16 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val (allRegUpdates, allBodies, allMemUpdates) = moduleResults.unzip3
     val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
+    val topModule = circuit.modules.find(_.name == topName).get match {
+      case m: Module => m
+    }
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
+    writeLines(0, "}")
+    writeLines(0, "")
+    writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
+    writeLines(1, harnessConnections(topModule))
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
