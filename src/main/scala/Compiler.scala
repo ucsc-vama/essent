@@ -233,7 +233,9 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       else cmd
     }}
-    (regUpdates, memReadsReplaced, memWriteCommands)
+    val noClockOrResetConnections = memReadsReplaced filterNot {
+      s: String => s.contains(".clock =") || s.contains(".reset =")}
+    (regUpdates, noClockOrResetConnections, memWriteCommands)
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
