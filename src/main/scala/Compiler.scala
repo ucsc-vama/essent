@@ -54,16 +54,20 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
-  def addPrefixToWRefStmt(prefix: String)(s: Statement): Statement = {
-    s map addPrefixToWRefStmt(prefix) map addPrefixToWRefExpr(prefix)
+  def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
+    val replaced = s match {
+      case n: DefNode => DefNode(n.info, prefix + n.name, n.value)
+      case _ => s
+    }
+    replaced map addPrefixToNameStmt(prefix) map addPrefixToNameExpr(prefix)
   }
 
-  def addPrefixToWRefExpr(prefix: String)(e: Expression): Expression = {
+  def addPrefixToNameExpr(prefix: String)(e: Expression): Expression = {
     val replaced = e match {
       case w: WRef => WRef(prefix + w.name, w.tpe, w.kind, w.gender)
       case _ => e
     }
-    replaced map addPrefixToWRefExpr(prefix)
+    replaced map addPrefixToNameExpr(prefix)
   }
 
   def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
@@ -201,7 +205,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def processBody(origBody: Statement, prefix: String) = {
-    val body = addPrefixToWRefStmt(prefix)(origBody)
+    val body = addPrefixToNameStmt(prefix)(origBody)
     val registers = findRegisters(body)
     val memories = findMemory(body)
     val regUpdates = registers map makeRegisterUpdate
