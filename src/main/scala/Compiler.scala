@@ -186,7 +186,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def buildGraph(commands: Seq[String]) = {
-    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$]*""".r
+    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$\.]*""".r
     val g = new Graph
     commands foreach {cmd: String => {
       if (!cmd.contains("=")) throw new Exception(s"No assignment in $cmd")
@@ -371,8 +371,8 @@ class EmitCpp(writer: Writer) extends Transform {
       case m: ExtModule =>
     }
     val (allRegUpdates, allBodies, allMemUpdates) = buildEval(circuit).unzip3
-    val reorderedBodies = allBodies.flatten
-    // val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
+    // val reorderedBodies = allBodies.flatten
+    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
     val topModule = findModule(topName, circuit)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
