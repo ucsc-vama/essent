@@ -335,13 +335,18 @@ class EmitCpp(writer: Writer) extends Transform {
     val memDecs = memories map {m: DefMemory => {
       s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
     }}
-
+    val modulesAndPrefixes = findModuleInstances("")(m.body)
+    val moduleDecs = modulesAndPrefixes map { case (module, fullName) => {
+      val instanceName = fullName.split("\\.").last
+      s"$module $instanceName;"
+    }}
     val modName = m.name
     writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, memDecs)
     writeLines(1, m.ports flatMap processPort)
+    writeLines(1, moduleDecs)
     writeLines(0, "")
     writeLines(1, s"$modName() {")
     writeLines(2, initialVals(m, registers, memories))
@@ -355,7 +360,6 @@ class EmitCpp(writer: Writer) extends Transform {
   def buildEval(circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit)
     val allInstances = Seq((topModule.name, "")) ++ findModuleInstances("")(topModule.body)
-    println(allInstances)
     allInstances map {
       case (modName, prefix) => processBody(findModule(modName, circuit).body, prefix)
     }
