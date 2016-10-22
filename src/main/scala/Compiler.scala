@@ -66,6 +66,12 @@ class EmitCpp(writer: Writer) extends Transform {
     replaced map addPrefixToWRefExpr(prefix)
   }
 
+  def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
+    case b: Block => b.stmts flatMap findModuleInstances(prefix)
+    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) // TODO recursive for nested
+    case _ => Seq()
+  }
+
   def processPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
@@ -164,6 +170,7 @@ class EmitCpp(writer: Writer) extends Transform {
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
+    case i: WDefInstance => Seq()
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
@@ -340,8 +347,12 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def buildEval(circuit: Circuit) = {
-    val m = findModule(circuit.main, circuit)
-    processBody(m.body, "HELLO.")
+    val topModule = findModule(circuit.main, circuit)
+    val allInstances = Seq((topModule.name, "")) ++ findModuleInstances("")(topModule.body)
+    println(allInstances)
+    allInstances map {
+      case (modName, prefix) => processBody(findModule(modName, circuit).body, prefix)
+    }
   }
 
   def findModule(name: String, circuit: Circuit) =
@@ -359,19 +370,13 @@ class EmitCpp(writer: Writer) extends Transform {
       case m: Module => declareModule(m)
       case m: ExtModule =>
     }
-    // val moduleResults = circuit.modules map {
-    //   case m: Module => processModule(m)
-    //   case m: ExtModule => (Seq(), Seq(), Seq())
-    // }
-    val moduleResults = buildEval(circuit)
-    val (allRegUpdates, allBodies, allMemUpdates) = moduleResults //.unzip3
-    val reorderedBodies = buildGraph(allBodies).reorderCommands
+    val (allRegUpdates, allBodies, allMemUpdates) = buildEval(circuit).unzip3
+    val reorderedBodies = allBodies.flatten
     // val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
     val topModule = findModule(topName, circuit)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
-    // writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
-    writeLines(1, allRegUpdates ++ reorderedBodies ++ allMemUpdates)
+    writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
