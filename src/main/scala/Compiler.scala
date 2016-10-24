@@ -35,6 +35,9 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+
+
+  // Find methods
   // assumption: registers can only appear in blocks since whens expanded
   def findRegisters(s: Statement): Seq[DefRegister] = s match {
     case b: Block => b.stmts flatMap findRegisters
@@ -60,6 +63,26 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
+    case b: Block => b.stmts flatMap findModuleInstances(prefix)
+    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}."))
+    case _ => Seq()
+  }
+
+  def findAllModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] =
+    s match {
+      case b: Block => b.stmts flatMap findAllModuleInstances(prefix, circuit)
+      case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) ++
+        findAllModuleInstances(s"$prefix${i.name}.", circuit)(findModule(i.module, circuit).body)
+      case _ => Seq()
+    }
+
+  def findModule(name: String, circuit: Circuit) =
+    circuit.modules.find(_.name == name).get match {case m: Module => m}
+
+
+
+  // Replacement methods
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
     val replaced = s match {
       case n: DefNode => DefNode(n.info, prefix + n.name, n.value)
@@ -105,20 +128,37 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => e map replaceNamesExpr(renames)
   }
 
-  def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
-    case b: Block => b.stmts flatMap findModuleInstances(prefix)
-    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}."))
+
+  // Helper methods for building eval bodies
+  def grabMemInfo(s: Statement): Seq[(String, String)] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
+    case c: Connect => {
+      firrtl.Utils.kind(c.loc) match {
+        case firrtl.MemKind => Seq((processExpr(c.loc), processExpr(c.expr)))
+        case _ => Seq()
+      }
+    }
     case _ => Seq()
   }
 
-  def findAllModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] =
-    s match {
-      case b: Block => b.stmts flatMap findAllModuleInstances(prefix, circuit)
-      case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) ++
-        findAllModuleInstances(s"$prefix${i.name}.", circuit)(findModule(i.module, circuit).body)
-      case _ => Seq()
-    }
+  def buildGraph(commands: Seq[String]) = {
+    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$\.]*""".r
+    val g = new Graph
+    commands foreach {cmd: String => {
+      if (!cmd.contains("=")) throw new Exception(s"No assignment in $cmd")
+      else {
+        val split = cmd.split("=")
+        val result = split(0).trim.split(" ").last
+        val dependsOn = legalVarNames.findAllIn(split(1)).toSeq
+        g.addNodeWithDeps(result, dependsOn, cmd)
+      }
+    }}
+    g
+  }
 
+
+
+  // Emission methods
   def processPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
@@ -221,32 +261,6 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
-  def grabMemInfo(s: Statement): Seq[(String, String)] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
-    case c: Connect => {
-      firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq((processExpr(c.loc), processExpr(c.expr)))
-        case _ => Seq()
-      }
-    }
-    case _ => Seq()
-  }
-
-  def buildGraph(commands: Seq[String]) = {
-    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$\.]*""".r
-    val g = new Graph
-    commands foreach {cmd: String => {
-      if (!cmd.contains("=")) throw new Exception(s"No assignment in $cmd")
-      else {
-        val split = cmd.split("=")
-        val result = split(0).trim.split(" ").last
-        val dependsOn = legalVarNames.findAllIn(split(1)).toSeq
-        g.addNodeWithDeps(result, dependsOn, cmd)
-      }
-    }}
-    g
-  }
-
   def processBody(origBody: Statement, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(origBody)
     val registers = findRegisters(body)
@@ -289,7 +303,7 @@ class EmitCpp(writer: Writer) extends Transform {
     else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
 
-  def initialVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
+  def initializeVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = tpe match {
       case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
       case SIntType(IntWidth(w)) => {
@@ -343,7 +357,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, moduleDecs)
     writeLines(0, "")
     writeLines(1, s"$modName() {")
-    writeLines(2, initialVals(m, registers, memories))
+    writeLines(2, initializeVals(m, registers, memories))
     writeLines(1, "}")
     if (modName == topName) {
       writeLines(0, "")
@@ -365,8 +379,6 @@ class EmitCpp(writer: Writer) extends Transform {
     allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten
   }
 
-  def findModule(name: String, circuit: Circuit) =
-    circuit.modules.find(_.name == name).get match {case m: Module => m}
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     val topName = circuit.main
