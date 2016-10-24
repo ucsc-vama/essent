@@ -324,7 +324,7 @@ class EmitCpp(writer: Writer) extends Transform {
     lines foreach { s => writer write tabs*indentLevel + s + "\n" }
   }
 
-  def declareModule(m: Module) = {
+  def declareModule(m: Module, topName: String) = {
     val registers = findRegisters(m.body)
     val memories = findMemory(m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
@@ -351,18 +351,23 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, s"$modName() {")
     writeLines(2, initialVals(m, registers, memories))
     writeLines(1, "}")
-    writeLines(0, "")
-    writeLines(1, "void eval(bool update_registers);")
-    writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+    if (modName == topName) {
+      writeLines(0, "")
+      writeLines(1, "void eval(bool update_registers);")
+      writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+    }
     writeLines(0, s"} $modName;")
   }
 
   def buildEval(circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit)
     val allInstances = Seq((topModule.name, "")) ++ findModuleInstances("")(topModule.body)
-    allInstances map {
+    val module_results = allInstances map {
       case (modName, prefix) => processBody(findModule(modName, circuit).body, prefix)
     }
+    val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
+    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
+    allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten
   }
 
   def findModule(name: String, circuit: Circuit) =
@@ -377,16 +382,13 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
     circuit.modules foreach {
-      case m: Module => declareModule(m)
+      case m: Module => declareModule(m, topName)
       case m: ExtModule =>
     }
-    val (allRegUpdates, allBodies, allMemUpdates) = buildEval(circuit).unzip3
-    // val reorderedBodies = allBodies.flatten
-    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
     val topModule = findModule(topName, circuit)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
-    writeLines(1, allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten)
+    writeLines(1, buildEval(circuit))
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
