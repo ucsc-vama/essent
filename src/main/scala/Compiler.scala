@@ -70,6 +70,28 @@ class EmitCpp(writer: Writer) extends Transform {
     replaced map addPrefixToNameExpr(prefix)
   }
 
+  def findRootKind(e: Expression): Kind = e match {
+    case w: WRef => w.kind
+    case w: WSubField => findRootKind(w.exp)
+  }
+
+  def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
+    s map replaceNamesStmt(renames) map replaceNamesExpr(renames)
+  }
+
+  def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = e match {
+    case w: WRef => {
+      if (renames.contains(w.name)) WRef(renames(w.name), w.tpe, w.kind, w.gender)
+      else w
+    }
+    case w: WSubField => {
+      val fullName = processExpr(w)
+      if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
+      else w
+    }
+    case _ => e map replaceNamesExpr(renames)
+  }
+
   def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findModuleInstances(prefix)
     case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) // TODO recursive for nested
@@ -226,14 +248,9 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }}
     val readMappings = readOutputs.toMap
-    val regularPortion = processStmt(body)
-    val memReadsReplaced = regularPortion map { cmd: String => {
-      if (!(readMappings.keys filter {k:String => cmd.contains(k)}).isEmpty) {
-        readMappings.foldLeft(cmd){ case (s, (k,v)) => s.replaceAll(k,v)}
-      }
-      else cmd
-    }}
-    val noClockOrResetConnections = memReadsReplaced filterNot {
+    val memReadsReplaced = replaceNamesStmt(readMappings)(body)
+    val asCommands = processStmt(memReadsReplaced)
+    val noClockOrResetConnections = asCommands filterNot {
       s: String => s.contains(".clock =") || s.contains(".reset =")}
     (regUpdates, noClockOrResetConnections, memWriteCommands)
   }
