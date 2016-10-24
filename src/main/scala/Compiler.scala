@@ -107,9 +107,17 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findModuleInstances(prefix)
-    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) // TODO recursive for nested
+    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}."))
     case _ => Seq()
   }
+
+  def findAllModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] =
+    s match {
+      case b: Block => b.stmts flatMap findAllModuleInstances(prefix, circuit)
+      case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) ++
+        findAllModuleInstances(s"$prefix${i.name}.", circuit)(findModule(i.module, circuit).body)
+      case _ => Seq()
+    }
 
   def processPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
@@ -396,7 +404,8 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def buildEval(circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit)
-    val allInstances = Seq((topModule.name, "")) ++ findModuleInstances("")(topModule.body)
+    val allInstances = Seq((topModule.name, "")) ++
+      findAllModuleInstances("", circuit)(topModule.body)
     val module_results = allInstances map {
       case (modName, prefix) => processBody(findModule(modName, circuit).body, prefix)
     }
