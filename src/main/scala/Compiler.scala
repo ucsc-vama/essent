@@ -54,6 +54,12 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def findNodes(s: Statement): Seq[DefNode] = s match {
+    case b: Block => b.stmts flatMap findNodes
+    case d: DefNode => Seq(d)
+    case _ => Seq()
+  }
+
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
     val replaced = s match {
       case n: DefNode => DefNode(n.info, prefix + n.name, n.value)
@@ -76,7 +82,14 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
-    s map replaceNamesStmt(renames) map replaceNamesExpr(renames)
+    val nodeReplaced = s match {
+      case n: DefNode => {
+        if (renames.contains(n.name)) DefNode(n.info, renames(n.name), n.value)
+        else n
+      }
+      case _ => s
+    }
+    nodeReplaced map replaceNamesStmt(renames) map replaceNamesExpr(renames)
   }
 
   def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = e match {
@@ -231,6 +244,11 @@ class EmitCpp(writer: Writer) extends Transform {
     val registers = findRegisters(body)
     val memories = findMemory(body)
     val regUpdates = registers map makeRegisterUpdate
+    val nodeNames = findNodes(body) map { _.name }
+    val wireNames = findNodes(body) map { _.name }
+    val nodeWireRenames = nodeNames ++ wireNames map { s: String =>
+      (s, if (s.contains(".")) s.replace('.','$') else s)
+    }
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
       m.writers map { writePortName:String => {
@@ -248,8 +266,8 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }}
     val readMappings = readOutputs.toMap
-    val memReadsReplaced = replaceNamesStmt(readMappings)(body)
-    val asCommands = processStmt(memReadsReplaced)
+    val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames.toMap)(body)
+    val asCommands = processStmt(namesReplaced)
     val noClockOrResetConnections = asCommands filterNot {
       s: String => s.contains(".clock =") || s.contains(".reset =")}
     (regUpdates, noClockOrResetConnections, memWriteCommands)
