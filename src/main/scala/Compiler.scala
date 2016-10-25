@@ -317,10 +317,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val readMappings = readOutputs.toMap
     val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames.toMap)(body)
     // println(findDependencesStmt(namesReplaced))
-    val asCommands = processStmt(namesReplaced)
-    val noClockOrResetConnections = asCommands filterNot {
-      s: String => s.contains(".clock =") || s.contains(".reset =")}
-    (regUpdates, noClockOrResetConnections, memWriteCommands)
+    (regUpdates, processStmt(namesReplaced), memWriteCommands)
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
@@ -453,7 +450,8 @@ class FinalCleanups extends Transform with SimpleRun {
     passes.CommonSubexpressionElimination,
     passes.DeadCodeElimination,
     passes.RemoveEmpty,
-    WireConstProp)
+    WireConstProp,
+    NoResetsOrClockConnects)
     // passes.VerilogRename,
     // passes.VerilogPrep)
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
