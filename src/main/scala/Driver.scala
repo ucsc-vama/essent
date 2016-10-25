@@ -4,6 +4,8 @@ import java.io.{File, FileWriter}
 import scala.io.Source
 
 import firrtl._
+import firrtl.ir._
+
 
 object Driver {
   def main(args: Array[String]) = {
@@ -11,25 +13,25 @@ object Driver {
     if (argsList.isEmpty)
       throw new Exception("Please give input .fir file")
     val inputFirFile = argsList.head
-    generate(inputFirFile)
-  }
-
-  def generate(inputFirFile: String) {
-    val outputPathResp = new File(inputFirFile).getParent()
-    val outputPath = if (outputPathResp == null) "" else outputPathResp
+    val inputFileDir = new File(inputFirFile).getParent()
+    val outputDir = if (inputFileDir == null) "" else inputFileDir
     val parsedInput = firrtl.Parser.parse(Source.fromFile(inputFirFile).getLines,
                                           firrtl.Parser.IgnoreInfo)
-    val topName = parsedInput.main
+    generate(parsedInput, outputDir)
+  }
+
+  def generate(circuit: Circuit, outputDir: String) {
+    val topName = circuit.main
   
-    val harnessFilename = new File(outputPath, s"$topName-harness.cc")
+    val harnessFilename = new File(outputDir, s"$topName-harness.cc")
     val harnessWriter = new FileWriter(harnessFilename)
     HarnessGenerator.topFile(topName, harnessWriter)
     harnessWriter.close()
 
-    val dutWriter = new FileWriter(new File(outputPath, s"$topName.h"))
+    val dutWriter = new FileWriter(new File(outputDir, s"$topName.h"))
     val annotations = new firrtl.Annotations.AnnotationMap(Seq.empty)
     val compiler = new CCCompiler
-    compiler.compile(parsedInput, annotations, dutWriter)
+    compiler.compile(circuit, annotations, dutWriter)
     dutWriter.close()
   }
 }
