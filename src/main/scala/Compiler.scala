@@ -156,6 +156,33 @@ class EmitCpp(writer: Writer) extends Transform {
     g
   }
 
+  def findDependencesStmt(s: Statement): Seq[(String, Seq[String])] = s match {
+    case b: Block => b.stmts flatMap findDependencesStmt
+    case d: DefNode => Seq((d.name, findDependencesExpr(d.value)))
+    case c: Connect => {
+      val lhs = processExpr(c.loc)
+      val rhs = findDependencesExpr(c.expr)
+      firrtl.Utils.kind(c.loc) match {
+        case firrtl.MemKind => Seq()
+        case firrtl.RegKind => Seq((lhs + "$next", rhs))
+        case _ => Seq((lhs, rhs))
+      }
+    }
+    case r: DefRegister => Seq()
+    case w: DefWire => Seq()
+    case m: DefMemory => Seq()
+    case i: WDefInstance => Seq()
+    case _ => throw new Exception("unexpected statement type!")
+  }
+
+  def findDependencesExpr(e: Expression): Seq[String] = e match {
+    case w: WRef => Seq(w.name)
+    case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
+    case w: WSubField => Seq(processExpr(w))
+    case p: DoPrim => p.args flatMap findDependencesExpr
+    case u: UIntLiteral => Seq()
+    case _ => throw new Exception("unexpected expression type!")
+  }
 
 
   // Emission methods
@@ -289,6 +316,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val readMappings = readOutputs.toMap
     val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames.toMap)(body)
+    // println(findDependencesStmt(namesReplaced))
     val asCommands = processStmt(namesReplaced)
     val noClockOrResetConnections = asCommands filterNot {
       s: String => s.contains(".clock =") || s.contains(".reset =")}
