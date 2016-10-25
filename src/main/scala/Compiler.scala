@@ -121,7 +121,7 @@ class EmitCpp(writer: Writer) extends Transform {
       else w
     }
     case w: WSubField => {
-      val fullName = processExpr(w)
+      val fullName = emitExpr(w)
       if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
       else w
     }
@@ -134,38 +134,25 @@ class EmitCpp(writer: Writer) extends Transform {
     case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
     case c: Connect => {
       firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq((processExpr(c.loc), processExpr(c.expr)))
+        case firrtl.MemKind => Seq((emitExpr(c.loc), emitExpr(c.expr)))
         case _ => Seq()
       }
     }
     case _ => Seq()
   }
 
-  def buildGraph(commands: Seq[String]) = {
-    val legalVarNames = """[a-zA-Z][a-zA-Z0-9\_\$\.]*""".r
-    val g = new Graph
-    commands foreach {cmd: String => {
-      if (!cmd.contains("=")) throw new Exception(s"No assignment in $cmd")
-      else {
-        val split = cmd.split("=")
-        val result = split(0).trim.split(" ").last
-        val dependsOn = legalVarNames.findAllIn(split(1)).toSeq
-        g.addNodeWithDeps(result, dependsOn, cmd)
-      }
-    }}
-    g
-  }
+  case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
-  def findDependencesStmt(s: Statement): Seq[(String, Seq[String])] = s match {
+  def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
     case b: Block => b.stmts flatMap findDependencesStmt
-    case d: DefNode => Seq((d.name, findDependencesExpr(d.value)))
+    case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => {
-      val lhs = processExpr(c.loc)
+      val lhs = emitExpr(c.loc)
       val rhs = findDependencesExpr(c.expr)
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq((lhs + "$next", rhs))
-        case _ => Seq((lhs, rhs))
+        case firrtl.RegKind => Seq(HyperedgeDep(lhs + "$next", rhs, s))
+        case _ => Seq(HyperedgeDep(lhs, rhs, s))
       }
     }
     case r: DefRegister => Seq()
@@ -178,96 +165,104 @@ class EmitCpp(writer: Writer) extends Transform {
   def findDependencesExpr(e: Expression): Seq[String] = e match {
     case w: WRef => Seq(w.name)
     case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
-    case w: WSubField => Seq(processExpr(w))
+    case w: WSubField => Seq(emitExpr(w))
     case p: DoPrim => p.args flatMap findDependencesExpr
     case u: UIntLiteral => Seq()
     case _ => throw new Exception("unexpected expression type!")
   }
 
+  def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
+    val g = new Graph
+    hyperEdges foreach { he:HyperedgeDep =>
+      g.addNodeWithDeps(he.name, he.deps, emitStmt(he.stmt).head)
+    }
+    g
+  }
+
 
   // Emission methods
-  def processPort(p: Port): Seq[String] = p.tpe match {
+  def emitPort(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
   }
 
-  def processExpr(e: Expression): String = e match {
+  def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => "0x" + u.value.toString(16)
     case m: Mux => {
-      val condName = processExpr(m.cond)
-      val tvalName = processExpr(m.tval)
-      val fvalName = processExpr(m.fval)
+      val condName = emitExpr(m.cond)
+      val tvalName = emitExpr(m.tval)
+      val fvalName = emitExpr(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
-    case w: WSubField => s"${processExpr(w.exp)}.${w.name}"
+    case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
     case p: DoPrim => p.op match {
-      case Add => p.args map processExpr mkString(" + ")
-      case Sub => p.args map processExpr mkString(" - ")
-      case Mul => p.args map processExpr mkString(" * ")
-      case Div => p.args map processExpr mkString(" / ")
-      case Rem => p.args map processExpr mkString(" % ")
-      case Lt  => p.args map processExpr mkString(" < ")
-      case Leq => p.args map processExpr mkString(" <= ")
-      case Gt  => p.args map processExpr mkString(" > ")
-      case Geq => p.args map processExpr mkString(" >= ")
-      case Eq => p.args map processExpr mkString(" == ")
-      case Neq => p.args map processExpr mkString(" != ")
+      case Add => p.args map emitExpr mkString(" + ")
+      case Sub => p.args map emitExpr mkString(" - ")
+      case Mul => p.args map emitExpr mkString(" * ")
+      case Div => p.args map emitExpr mkString(" / ")
+      case Rem => p.args map emitExpr mkString(" % ")
+      case Lt  => p.args map emitExpr mkString(" < ")
+      case Leq => p.args map emitExpr mkString(" <= ")
+      case Gt  => p.args map emitExpr mkString(" > ")
+      case Geq => p.args map emitExpr mkString(" >= ")
+      case Eq => p.args map emitExpr mkString(" == ")
+      case Neq => p.args map emitExpr mkString(" != ")
       case Pad => {
         if (p.consts.head.toInt > 64) throw new Exception("Pad too big!")
-        processExpr(p.args.head)
+        emitExpr(p.args.head)
       }
       case AsUInt => throw new Exception("AsUInt unimplemented!")
       case AsSInt => throw new Exception("AsSInt unimplemented!")
       case AsClock => throw new Exception("AsClock unimplemented!")
-      case Shl => s"${processExpr(p.args.head)} << ${p.consts.head.toInt}"
-      case Shr => s"${processExpr(p.args.head)} >> ${p.consts.head.toInt}"
-      case Dshl => p.args map processExpr mkString(" << ")
-      case Dshr => p.args map processExpr mkString(" >> ")
+      case Shl => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
+      case Shr => s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
+      case Dshl => p.args map emitExpr mkString(" << ")
+      case Dshr => p.args map emitExpr mkString(" >> ")
       case Cvt => throw new Exception("Cvt unimplemented!")
-      case Neg => s"-${processExpr(p.args.head)}"
-      case Not => s"~${processExpr(p.args.head)}"
-      case And => p.args map processExpr mkString(" & ")
-      case Or => p.args map processExpr mkString(" | ")
-      case Xor => p.args map processExpr mkString(" ^ ")
+      case Neg => s"-${emitExpr(p.args.head)}"
+      case Not => s"~${emitExpr(p.args.head)}"
+      case And => p.args map emitExpr mkString(" & ")
+      case Or => p.args map emitExpr mkString(" | ")
+      case Xor => p.args map emitExpr mkString(" ^ ")
       case Andr => throw new Exception("Andr unimplemented!")
       case Orr => throw new Exception("Orr unimplemented!")
       case Xorr => throw new Exception("Xorr unimplemented!")
       case Cat => {
         if (bitWidth(p.tpe) > 64) throw new Exception("Cat too big!")
         val shamt = bitWidth(p.args(1).tpe)
-        s"(${processExpr(p.args(0))} << $shamt) | ${processExpr(p.args(1))}"
+        s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
       case Bits => {
         val hi_shamt = 64 - p.consts(0).toInt - 1
         val lo_shamt = p.consts(1).toInt + hi_shamt
-        s"(${processExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+        s"(${emitExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
       }
       case Head => {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
-        s"${processExpr(p.args.head)} >> shamt"
+        s"${emitExpr(p.args.head)} >> shamt"
       }
       case Tail => p.tpe match {
-        case UIntType(_) => s"${processExpr(p.args.head)} & ${genMask(p.tpe)}"
+        case UIntType(_) => s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
         case SIntType(IntWidth(w)) => {
           val shamt = 64 - w
-          s"(${processExpr(p.args.head)} << $shamt) >> $shamt;"
+          s"(${emitExpr(p.args.head)} << $shamt) >> $shamt;"
         }
       }
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
 
-  def processStmt(s: Statement): Seq[String] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => processStmt(s)}
+  def emitStmt(s: Statement): Seq[String] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => emitStmt(s)}
     case d: DefNode => {
       val lhs = genCppType(d.value.tpe) + " " + d.name
-      val rhs = processExpr(d.value)
+      val rhs = emitExpr(d.value)
       Seq(s"$lhs = $rhs;")
     }
     case c: Connect => {
-      val lhs = processExpr(c.loc)
-      val rhs = processExpr(c.expr)
+      val lhs = emitExpr(c.loc)
+      val rhs = emitExpr(c.expr)
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
@@ -277,8 +272,8 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     case p: Print => {
       val printfArgs = Seq(s""""${p.string.serialize}"""") ++
-                       (p.args map processExpr)
-      Seq("if (update_registers)", tabs + s"if (${processExpr(p.en)})",
+                       (p.args map emitExpr)
+      Seq("if (update_registers)", tabs + s"if (${emitExpr(p.en)})",
           tabs*2 + s"printf(${printfArgs mkString(", ")});")
     }
     case r: DefRegister => Seq()
@@ -288,7 +283,7 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
-  def processBody(origBody: Statement, prefix: String) = {
+  def emitBody(origBody: Statement, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(origBody)
     val registers = findRegisters(body)
     val memories = findMemory(body)
@@ -316,14 +311,13 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val readMappings = readOutputs.toMap
     val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames.toMap)(body)
-    // println(findDependencesStmt(namesReplaced))
-    (regUpdates, processStmt(namesReplaced), memWriteCommands)
+    (regUpdates, namesReplaced, memWriteCommands)
   }
 
   def makeRegisterUpdate(r: DefRegister): String = {
     val regName = r.name
-    val resetName = processExpr(r.reset)
-    val resetVal = processExpr(r.init)
+    val resetName = emitExpr(r.reset)
+    val resetVal = emitExpr(r.init)
     if (resetName == "0x0") s"if (update_registers) $regName = $regName$$next;"
     else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
@@ -378,7 +372,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, memDecs)
-    writeLines(1, m.ports flatMap processPort)
+    writeLines(1, m.ports flatMap emitPort)
     writeLines(1, moduleDecs)
     writeLines(0, "")
     writeLines(1, s"$modName() {")
@@ -397,10 +391,11 @@ class EmitCpp(writer: Writer) extends Transform {
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
     val module_results = allInstances map {
-      case (modName, prefix) => processBody(findModule(modName, circuit).body, prefix)
+      case (modName, prefix) => emitBody(findModule(modName, circuit).body, prefix)
     }
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
-    val reorderedBodies = buildGraph(allBodies.flatten).reorderCommands
+    val allDeps = allBodies flatMap findDependencesStmt
+    val reorderedBodies = buildGraph(allDeps).reorderCommands
     allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten
   }
 
