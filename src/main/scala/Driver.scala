@@ -2,6 +2,7 @@ package essent
 
 import java.io.{File, FileWriter}
 import scala.io.Source
+import scala.sys.process._
 
 import firrtl._
 import firrtl.ir._
@@ -33,5 +34,10 @@ object Driver {
     val compiler = new CCCompiler
     compiler.compile(circuit, annotations, dutWriter)
     dutWriter.close()
+  }
+
+  def compileCPP(dutName: String, buildDir: String): ProcessBuilder = {
+    Seq("g++", "-O3", "-Icsrc/", s"-I$buildDir",
+      s"$buildDir/$dutName-harness.cc", "-o", s"$buildDir/$dutName")
   }
 }
