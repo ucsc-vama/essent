@@ -141,7 +141,24 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
+  def grabMemAddr(str: String): String = {
+    if (str.contains('[')) str.slice(str.indexOf('[')+1, str.lastIndexOf(']'))
+    else str
+  }
+
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
+
+  def findDependencesExpr(e: Expression): Seq[String] = {
+    val result = e match {
+      case w: WRef => Seq(w.name)
+      case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
+      case w: WSubField => Seq(emitExpr(w))
+      case p: DoPrim => p.args flatMap findDependencesExpr
+      case u: UIntLiteral => Seq()
+      case _ => throw new Exception("unexpected expression type!")
+    }
+    result map grabMemAddr
+  }
 
   def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
     case b: Block => b.stmts flatMap findDependencesStmt
@@ -160,15 +177,6 @@ class EmitCpp(writer: Writer) extends Transform {
     case m: DefMemory => Seq()
     case i: WDefInstance => Seq()
     case _ => throw new Exception("unexpected statement type!")
-  }
-
-  def findDependencesExpr(e: Expression): Seq[String] = e match {
-    case w: WRef => Seq(w.name)
-    case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
-    case w: WSubField => Seq(emitExpr(w))
-    case p: DoPrim => p.args flatMap findDependencesExpr
-    case u: UIntLiteral => Seq()
-    case _ => throw new Exception("unexpected expression type!")
   }
 
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
