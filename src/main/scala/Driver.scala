@@ -11,6 +11,10 @@ object Driver {
     if (argsList.isEmpty)
       throw new Exception("Please give input .fir file")
     val inputFirFile = argsList.head
+    generate(inputFirFile)
+  }
+
+  def generate(inputFirFile: String) {
     val outputPathResp = new File(inputFirFile).getParent()
     val outputPath = if (outputPathResp == null) "" else outputPathResp
     val parsedInput = firrtl.Parser.parse(Source.fromFile(inputFirFile).getLines,
