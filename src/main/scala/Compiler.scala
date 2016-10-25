@@ -172,6 +172,7 @@ class EmitCpp(writer: Writer) extends Transform {
         case _ => Seq(HyperedgeDep(lhs, rhs, s))
       }
     }
+    case p: Print => Seq(HyperedgeDep("printf", p.args flatMap findDependencesExpr, s))
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
@@ -281,8 +282,7 @@ class EmitCpp(writer: Writer) extends Transform {
     case p: Print => {
       val printfArgs = Seq(s""""${p.string.serialize}"""") ++
                        (p.args map emitExpr)
-      Seq("if (update_registers)", tabs + s"if (${emitExpr(p.en)})",
-          tabs*2 + s"printf(${printfArgs mkString(", ")});")
+      Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case r: DefRegister => Seq()
     case w: DefWire => Seq()

@@ -34,6 +34,7 @@ class Graph {
 
   def addNodeWithDeps(result: String, deps: Seq[String], cmd: String) = {
     nameToCmd(result) = cmd
+    val potentiallyNewDestID = getID(result)
     deps foreach {dep : String => addEdge(dep, result)}
   }
 
