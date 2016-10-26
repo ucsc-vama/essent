@@ -10,4 +10,4 @@ scalacOptions ++= Seq("-deprecation", "-unchecked")
 
 lazy val firrtl = (project in file("firrtl"))
 
-lazy val root = (project in file(".")).dependsOn(firrtl)
+lazy val essent = (project in file(".")).dependsOn(firrtl)
