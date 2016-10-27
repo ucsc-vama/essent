@@ -336,11 +336,14 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def initializeVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
-    def initVal(name: String, tpe:Type) = tpe match {
-      case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
-      case SIntType(IntWidth(w)) => {
-        val shamt = 64 - w
-        s"$name = (rand() << $shamt) >> $shamt;"
+    def initVal(name: String, tpe:Type) = {
+      if (bitWidth(tpe) > 32) s"$name = rand();"
+      else tpe match {
+        case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
+        case SIntType(_) => {
+          val shamt = 32 - bitWidth(tpe)
+          s"$name = (rand() << $shamt) >> $shamt;"
+        }
       }
     }
     val regInits = registers map {
