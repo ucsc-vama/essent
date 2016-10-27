@@ -155,7 +155,8 @@ class EmitCpp(writer: Writer) extends Transform {
       case w: WSubField => Seq(emitExpr(w))
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
-      case _ => throw new Exception("unexpected expression type!")
+      case s: SIntLiteral => Seq()
+      case _ => throw new Exception("unexpected expression type! ")
     }
     result map grabMemAddr
   }
@@ -198,6 +199,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => "0x" + u.value.toString(16)
+    case u: SIntLiteral => u.value.toString(10)
     case m: Mux => {
       val condName = emitExpr(m.cond)
       val tvalName = emitExpr(m.tval)
@@ -222,7 +224,16 @@ class EmitCpp(writer: Writer) extends Transform {
         emitExpr(p.args.head)
       }
       case AsUInt => throw new Exception("AsUInt unimplemented!")
-      case AsSInt => throw new Exception("AsSInt unimplemented!")
+      case AsSInt => {
+        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
+        p.args.head.tpe match {
+          case UIntType(IntWidth(w)) => {
+            val shamt = 64 - w
+            s"static_cast<int64_t>((${emitExpr(p.args.head)} << $shamt) >> $shamt)"
+          }
+          case SIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+        }
+      }
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
       case Shr => s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
@@ -251,13 +262,7 @@ class EmitCpp(writer: Writer) extends Transform {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
         s"${emitExpr(p.args.head)} >> shamt"
       }
-      case Tail => p.tpe match {
-        case UIntType(_) => s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
-        case SIntType(IntWidth(w)) => {
-          val shamt = 64 - w
-          s"(${emitExpr(p.args.head)} << $shamt) >> $shamt;"
-        }
-      }
+      case Tail => s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }

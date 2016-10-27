@@ -28,7 +28,7 @@ object HarnessGenerator {
       }
     }
     def connectSignal(signalDirection: String)(signalName: String) = {
-      s"comm->add_${signalDirection}signal(&${signalName});"
+      s"comm->add_${signalDirection}signal(${signalName});"
     }
     val signalNames = scala.collection.mutable.ArrayBuffer.empty[String]
     val inputNames = scala.collection.mutable.ArrayBuffer.empty[String]
@@ -36,10 +36,16 @@ object HarnessGenerator {
     m.ports foreach {p => p.tpe match {
       case ClockType =>
       case _ => {
-        if (p.name == "reset") signalNames += p.name
-        else p.direction match {
-          case Input => inputNames += p.name
-          case Output => outputNames += p.name
+        if (p.name == "reset") signalNames += "&" + p.name
+        else {
+          val sigName = p.tpe match {
+            case UIntType(_) => "&" + p.name
+            case SIntType(_) => s"reinterpret_cast<uint64_t*>(&${p.name})"
+          }
+          p.direction match {
+            case Input => inputNames += sigName
+            case Output => outputNames += sigName
+          }
         }
       }
     }}
