@@ -173,7 +173,9 @@ class EmitCpp(writer: Writer) extends Transform {
         case _ => Seq(HyperedgeDep(lhs, rhs, s))
       }
     }
-    case p: Print => Seq(HyperedgeDep("printf", Seq(emitExpr(p.en)) ++ (p.args flatMap findDependencesExpr), s))
+    case p: Print =>
+      Seq(HyperedgeDep("printf", Seq(emitExpr(p.en)) ++ (p.args flatMap findDependencesExpr), s))
+    case st: Stop => Seq(HyperedgeDep("stop", Seq(emitExpr(st.en)), st))
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
@@ -289,6 +291,7 @@ class EmitCpp(writer: Writer) extends Transform {
                        (p.args map emitExpr)
       Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
+    case st: Stop => Seq(s"if (${emitExpr(st.en)}) exit(${st.ret});")
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
