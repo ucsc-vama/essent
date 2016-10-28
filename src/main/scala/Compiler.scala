@@ -185,7 +185,9 @@ class EmitCpp(writer: Writer) extends Transform {
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
     case i: WDefInstance => Seq()
-    case _ => throw new Exception("unexpected statement type!")
+    case i: IsInvalid => Seq()
+    case EmptyStmt => Seq()
+    case _ => throw new Exception(s"unexpected statement type! $s")
   }
 
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
