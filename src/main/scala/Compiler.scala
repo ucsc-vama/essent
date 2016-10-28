@@ -211,7 +211,9 @@ class EmitCpp(writer: Writer) extends Transform {
     case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExpr mkString(" + ")
+      case Addw => p.args map emitExpr mkString(" + ")
       case Sub => p.args map emitExpr mkString(" - ")
+      case Subw => p.args map emitExpr mkString(" - ")
       case Mul => p.args map emitExpr mkString(" * ")
       case Div => p.args map emitExpr mkString(" / ")
       case Rem => p.args map emitExpr mkString(" % ")
@@ -244,8 +246,10 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
+      case Shlw => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
       case Shr => s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
       case Dshl => p.args map emitExpr mkString(" << ")
+      case Dshlw => p.args map emitExpr mkString(" << ")
       case Dshr => p.args map emitExpr mkString(" >> ")
       case Cvt => {
         if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
