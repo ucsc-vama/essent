@@ -241,7 +241,16 @@ class EmitCpp(writer: Writer) extends Transform {
       case Shr => s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
       case Dshl => p.args map emitExpr mkString(" << ")
       case Dshr => p.args map emitExpr mkString(" >> ")
-      case Cvt => throw new Exception("Cvt unimplemented!")
+      case Cvt => {
+        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
+        p.args.head.tpe match {
+          case UIntType(IntWidth(w)) => {
+            val shamt = 64 - w
+            s"static_cast<int64_t>((${emitExpr(p.args.head)} << $shamt) >> $shamt)"
+          }
+          case SIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+        }
+      }
       case Neg => s"-${emitExpr(p.args.head)}"
       case Not => s"~${emitExpr(p.args.head)}"
       case And => p.args map emitExpr mkString(" & ")
