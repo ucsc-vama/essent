@@ -336,17 +336,17 @@ class EmitCpp(writer: Writer) extends Transform {
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
       m.writers map { writePortName:String => {
-        val wrEnName = memConnects(s"${m.name}.$writePortName.en")
-        val wrAddrName = memConnects(s"${m.name}.$writePortName.addr")
-        val wrDataName = memConnects(s"${m.name}.$writePortName.data")
+        val wrEnName = memConnects(s"$prefix${m.name}.$writePortName.en")
+        val wrAddrName = memConnects(s"$prefix${m.name}.$writePortName.addr")
+        val wrDataName = memConnects(s"$prefix${m.name}.$writePortName.data")
         s"if ($wrEnName) ${m.name}[$wrAddrName] = $wrDataName;"
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
       m.readers map { readPortName:String =>
-        val rdAddrName = memConnects(s"${m.name}.$readPortName.addr")
-        val rdDataName = s"${m.name}.$readPortName.data"
-        (rdDataName, s"${m.name}[$rdAddrName]")
+        val rdAddrName = memConnects(s"$prefix${m.name}.$readPortName.addr")
+        val rdDataName = s"$prefix${m.name}.$readPortName.data"
+        (rdDataName, s"$prefix${m.name}[$rdAddrName]")
       }
     }}
     val readMappings = readOutputs.toMap
