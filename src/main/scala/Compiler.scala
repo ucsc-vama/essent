@@ -225,7 +225,13 @@ class EmitCpp(writer: Writer) extends Transform {
         if (p.consts.head.toInt > 64) throw new Exception("Pad too big!")
         emitExpr(p.args.head)
       }
-      case AsUInt => throw new Exception("AsUInt unimplemented!")
+      case AsUInt => {
+        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
+        p.args.head.tpe match {
+          case UIntType(_) => emitExpr(p.args.head)
+          case SIntType(_) => s"static_cast<uint64_t>(${emitExpr(p.args.head)})"
+        }
+      }
       case AsSInt => {
         if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
         p.args.head.tpe match {
