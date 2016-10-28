@@ -72,13 +72,18 @@ class EmitCpp(writer: Writer) extends Transform {
   def findAllModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] =
     s match {
       case b: Block => b.stmts flatMap findAllModuleInstances(prefix, circuit)
-      case i: WDefInstance => Seq((i.module, s"$prefix${i.name}.")) ++
-        findAllModuleInstances(s"$prefix${i.name}.", circuit)(findModule(i.module, circuit).body)
+      case i: WDefInstance => {
+        val nestedModules = findModule(i.module, circuit) match {
+          case m: Module => findAllModuleInstances(s"$prefix${i.name}.", circuit)(m.body)
+          case em: ExtModule => Seq()
+        }
+        Seq((i.module, s"$prefix${i.name}.")) ++ nestedModules
+      }
       case _ => Seq()
     }
 
   def findModule(name: String, circuit: Circuit) =
-    circuit.modules.find(_.name == name).get match {case m: Module => m}
+    circuit.modules.find(_.name == name).get
 
 
 
@@ -389,7 +394,7 @@ class EmitCpp(writer: Writer) extends Transform {
     lines foreach { s => writer write tabs*indentLevel + s + "\n" }
   }
 
-  def declareModule(m: Module, topName: String) = {
+  def declareModule(m: Module, topName: String) {
     val registers = findRegisters(m.body)
     val memories = findMemory(m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
@@ -424,12 +429,24 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"} $modName;")
   }
 
+  def declareExtModule(m: ExtModule) {
+    val modName = m.name
+    writeLines(0, "")
+    writeLines(0, s"typedef struct $modName {")
+    writeLines(1, m.ports flatMap emitPort)
+    writeLines(0, s"} $modName;")
+  }
+
+
   def buildEval(circuit: Circuit) = {
-    val topModule = findModule(circuit.main, circuit)
+    val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
     val module_results = allInstances map {
-      case (modName, prefix) => emitBody(findModule(modName, circuit).body, prefix)
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => emitBody(m.body, prefix)
+        case em: ExtModule => (Seq(), EmptyStmt, Seq())
+      }
     }
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
@@ -448,9 +465,9 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "#include <cstdlib>")
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
-      case m: ExtModule =>
+      case m: ExtModule => declareExtModule(m)
     }
-    val topModule = findModule(topName, circuit)
+    val topModule = findModule(topName, circuit) match {case m: Module => m}
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, buildEval(circuit))
