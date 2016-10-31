@@ -151,6 +151,10 @@ class EmitCpp(writer: Writer) extends Transform {
     else str
   }
 
+  def memHasRightParams(m: DefMemory) = {
+    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
+  }
+
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
   def findDependencesExpr(e: Expression): Seq[String] = {
@@ -329,6 +333,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val body = addPrefixToNameStmt(prefix)(origBody)
     val registers = findRegisters(body)
     val memories = findMemory(body)
+    if (!(memories forall memHasRightParams))
+      throw new Exception("improper mem!")
     val regUpdates = registers map makeRegisterUpdate
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findNodes(body) map { _.name }
