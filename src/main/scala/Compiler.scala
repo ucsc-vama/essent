@@ -63,9 +63,9 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => Seq()
   }
 
-  def findModuleInstances(prefix: String)(s: Statement): Seq[(String,String)] = s match {
-    case b: Block => b.stmts flatMap findModuleInstances(prefix)
-    case i: WDefInstance => Seq((i.module, s"$prefix${i.name}."))
+  def findModuleInstances(s: Statement): Seq[(String,String)] = s match {
+    case b: Block => b.stmts flatMap findModuleInstances
+    case i: WDefInstance => Seq((i.module, i.name))
     case _ => Seq()
   }
 
@@ -407,7 +407,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val memDecs = memories map {m: DefMemory => {
       s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
     }}
-    val modulesAndPrefixes = findModuleInstances("")(m.body)
+    val modulesAndPrefixes = findModuleInstances(m.body)
     val moduleDecs = modulesAndPrefixes map { case (module, fullName) => {
       val instanceName = fullName.split("\\.").last
       s"$module $instanceName;"
