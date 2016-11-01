@@ -502,7 +502,7 @@ class FinalCleanups extends Transform with SimpleRun {
     passes.ConstProp,
     passes.Legalize,
     passes.VerilogWrap,
-    passes.VerilogMemDelays,
+    passes.memlib.VerilogMemDelays,
     passes.ConstProp,
     passes.SplitExpressions,
     passes.CommonSubexpressionElimination,
