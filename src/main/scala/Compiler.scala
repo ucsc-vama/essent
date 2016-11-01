@@ -165,7 +165,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
       case s: SIntLiteral => Seq()
-      case _ => throw new Exception("unexpected expression type! ")
+      case _ => throw new Exception("unexpected expression type! " + e)
     }
     result map grabMemAddr
   }
@@ -337,8 +337,8 @@ class EmitCpp(writer: Writer) extends Transform {
       throw new Exception("improper mem!")
     val regUpdates = registers map makeRegisterUpdate
     val nodeNames = findNodes(body) map { _.name }
-    val wireNames = findNodes(body) map { _.name }
-    val nodeWireRenames = nodeNames ++ wireNames map { s: String =>
+    val wireNames = findWires(body) map { _.name }
+    val nodeWireRenames = (nodeNames ++ wireNames) map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }
     val memConnects = grabMemInfo(body).toMap
@@ -525,8 +525,8 @@ class CCCompiler extends Compiler {
     new firrtl.IRToWorkingIR,
     new firrtl.ResolveAndCheck,
     new firrtl.HighFirrtlToMiddleFirrtl,
-    new firrtl.passes.InferReadWrite(TransID(-1)),
-    new firrtl.passes.ReplSeqMem(TransID(-2)),
+    new firrtl.passes.memlib.InferReadWrite(TransID(-1)),
+    new firrtl.passes.memlib.ReplSeqMem(TransID(-2)),
     new firrtl.MiddleFirrtlToLowFirrtl,
     new firrtl.passes.InlineInstances(TransID(0)),
     new FinalCleanups,
