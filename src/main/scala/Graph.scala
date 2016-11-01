@@ -49,8 +49,10 @@ class Graph {
     val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
     val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
     def visit(vertexID: Int) {
-      if (temporaryMarks(vertexID)) throw new Exception("There is a cycle!")
-      else if (!finalMarks(vertexID)) {
+      if (temporaryMarks(vertexID)){
+        printCycle(temporaryMarks)
+        throw new Exception("There is a cycle!")
+      } else if (!finalMarks(vertexID)) {
         temporaryMarks(vertexID) = true
         outNeigh(vertexID) foreach { neighborID => visit(neighborID) }
         finalMarks(vertexID) = true
@@ -60,6 +62,15 @@ class Graph {
     }
     nameToID.values foreach {startingID => visit(startingID)}
     finalOrdering.reverse
+  }
+
+  def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
+    (0 until nameToID.size) foreach {id: Int =>
+      if (temporaryMarks(id)) {
+        println(nameToCmd(idToName(id)))
+        println(id + " "  + outNeigh(id))
+      }
+    }
   }
 
   def reorderCommands() = {
