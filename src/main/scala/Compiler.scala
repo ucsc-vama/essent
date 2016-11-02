@@ -18,7 +18,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => {
       if (w <= 64) "uint64_t"
-      else throw new Exception(s"UInt too wide!")
+      else "mpz_class"
     }
     case SIntType(IntWidth(w)) => {
       if (w <= 64) "int64_t"
@@ -471,6 +471,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
+    writeLines(0, "#include <gmpxx.h>")
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)

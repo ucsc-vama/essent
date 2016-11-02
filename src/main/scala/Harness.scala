@@ -39,7 +39,10 @@ object HarnessGenerator {
         if (p.name == "reset") signalNames += "&" + p.name
         else {
           val sigName = p.tpe match {
-            case UIntType(_) => "&" + p.name
+            case UIntType(IntWidth(w)) => {
+              if (w <= 64) "&" + p.name
+              else s"&${p.name}, $w"
+            }
             case SIntType(_) => s"reinterpret_cast<uint64_t*>(&${p.name})"
           }
           p.direction match {
