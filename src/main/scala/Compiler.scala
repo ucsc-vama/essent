@@ -281,7 +281,6 @@ class EmitCpp(writer: Writer) extends Transform {
       case Orr => throw new Exception("Orr unimplemented!")
       case Xorr => throw new Exception("Xorr unimplemented!")
       case Cat => {
-        if (bitWidth(p.tpe) > 64) throw new Exception("Cat too big!")
         val shamt = bitWidth(p.args(1).tpe)
         s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
