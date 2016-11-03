@@ -235,7 +235,6 @@ class EmitCpp(writer: Writer) extends Transform {
       case Eq => p.args map emitExpr mkString(" == ")
       case Neq => p.args map emitExpr mkString(" != ")
       case Pad => {
-        if (p.consts.head.toInt > 64) throw new Exception("Pad too big!")
         emitExpr(p.args.head)
       }
       case AsUInt => {
@@ -293,7 +292,10 @@ class EmitCpp(writer: Writer) extends Transform {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
         s"${emitExpr(p.args.head)} >> shamt"
       }
-      case Tail => s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
+      case Tail => {
+        if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
+        else s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
+      }
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
