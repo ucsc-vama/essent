@@ -22,16 +22,17 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     case SIntType(IntWidth(w)) => {
       if (w <= 64) "int64_t"
-      else throw new Exception(s"SInt too wide!")
+      else "mpz_class"
     }
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
   def genMask(tpe: Type): String = tpe match {
     case gt: GroundType => {
-      val width = gt.width match { case IntWidth(w) => w }
-      val maskValue = BigInt((1 << width.toInt) - 1)
-      s"0x${maskValue.toString(16)}"
+      val width = bitWidth(tpe).toInt
+      val maskValue = (BigInt(1) << width) - 1
+      if (width > 64) s"""mpz_class("${maskValue.toString(16)}", 16)"""
+      else s"0x${maskValue.toString(16)}"
     }
   }
 
@@ -235,23 +236,22 @@ class EmitCpp(writer: Writer) extends Transform {
       case Eq => p.args map emitExpr mkString(" == ")
       case Neq => p.args map emitExpr mkString(" != ")
       case Pad => {
-        emitExpr(p.args.head)
+        if ((bitWidth(p.tpe) > 64) && (bitWidth(p.args.head.tpe) <= 64))
+          s"fromUInt(${emitExpr(p.args.head)})"
+        else emitExpr(p.args.head)
       }
       case AsUInt => {
-        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
-        p.args.head.tpe match {
+        if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
+        else p.args.head.tpe match {
           case UIntType(_) => emitExpr(p.args.head)
           case SIntType(_) => s"static_cast<uint64_t>(${emitExpr(p.args.head)})"
         }
       }
       case AsSInt => {
-        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
-        p.args.head.tpe match {
-          case UIntType(IntWidth(w)) => {
-            val shamt = 64 - w
-            s"static_cast<int64_t>((${emitExpr(p.args.head)} << $shamt) >> $shamt)"
-          }
-          case SIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+        if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
+        else p.args.head.tpe match {
+          case UIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+          case SIntType(_) => emitExpr(p.args.head)
         }
       }
       case AsClock => throw new Exception("AsClock unimplemented!")
@@ -262,13 +262,12 @@ class EmitCpp(writer: Writer) extends Transform {
       case Dshlw => p.args map emitExpr mkString(" << ")
       case Dshr => p.args map emitExpr mkString(" >> ")
       case Cvt => {
-        if (bitWidth(p.tpe) > 63) throw new Exception("AsSInt too big!")
-        p.args.head.tpe match {
-          case UIntType(IntWidth(w)) => {
-            val shamt = 64 - w
-            s"static_cast<int64_t>((${emitExpr(p.args.head)} << $shamt) >> $shamt)"
-          }
-          case SIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+        if (bitWidth(p.tpe) > 63) {
+          if (bitWidth(p.args.head.tpe) == 64) s"fromUInt(${emitExpr(p.args.head)})"
+          else emitExpr(p.args.head)
+        } else p.args.head.tpe match {
+          case UIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+          case SIntType(_) => emitExpr(p.args.head)
         }
       }
       case Neg => s"-${emitExpr(p.args.head)}"
@@ -284,17 +283,20 @@ class EmitCpp(writer: Writer) extends Transform {
         s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
       case Bits => {
-        val hi_shamt = 64 - p.consts(0).toInt - 1
-        val lo_shamt = p.consts(1).toInt + hi_shamt
-        s"(${emitExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+        if (bitWidth(p.tpe) > 64) {
+          s"(${emitExpr(p.args.head)} >> ${p.consts(1)}) & ${genMask(p.tpe)}"
+        } else {
+          val hi_shamt = 64 - p.consts(0).toInt - 1
+          val lo_shamt = p.consts(1).toInt + hi_shamt
+          s"(${emitExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+        }
       }
       case Head => {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
         s"${emitExpr(p.args.head)} >> shamt"
       }
       case Tail => {
-        if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
-        else s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
+        s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
       }
     }
     case _ => throw new Exception(s"Don't yet support $e")
