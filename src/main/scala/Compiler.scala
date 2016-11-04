@@ -528,6 +528,8 @@ class FinalCleanups extends Transform with SimpleRun {
     passes.DeadCodeElimination,
     passes.RemoveEmpty,
     WireConstProp,
+    ZeroFromBits,
+    WireConstProp,
     NoResetsOrClockConnects)
     // passes.VerilogRename,
     // passes.VerilogPrep)
