@@ -34,8 +34,10 @@ object WireConstProp extends Pass {
 
   def constPropModule(m: Module): Module = {
     val constWires = findLiteralWires(m.body).toMap
-    val replacedStmts = replaceLiteralWiresStmt(constWires)(m.body)
-    Module(m.info, m.name, m.ports, squashEmpty(replacedStmts))
+    if (constWires.size > 0) {
+      val replacedStmts = replaceLiteralWiresStmt(constWires)(m.body)
+      constPropModule(Module(m.info, m.name, m.ports, squashEmpty(replacedStmts)))
+    } else m
   }
 
   def run(c: Circuit): Circuit = {
