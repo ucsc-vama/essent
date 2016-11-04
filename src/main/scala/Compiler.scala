@@ -290,12 +290,16 @@ class EmitCpp(writer: Writer) extends Transform {
         s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
       case Bits => {
+        val name = emitExpr(p.args.head)
         if (bitWidth(p.args.head.tpe) > 64) {
-          s"(${emitExpr(p.args.head)} >> ${p.consts(1)}) & ${genMask(p.tpe)}"
+          val internalShift = if (p.consts(1) == 0) name
+            else s"($name >> ${p.consts(1)})"
+          if (bitWidth(p.tpe) > 64) s"$internalShift & ${genMask(p.tpe)}"
+          else s"mpz_class($internalShift).get_ui() & ${genMask(p.tpe)}"
         } else {
           val hi_shamt = 64 - p.consts(0).toInt - 1
           val lo_shamt = p.consts(1).toInt + hi_shamt
-          s"(${emitExpr(p.args.head)} << $hi_shamt) >> $lo_shamt"
+          s"($name << $hi_shamt) >> $lo_shamt"
         }
       }
       case Head => {
