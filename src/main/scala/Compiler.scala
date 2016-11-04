@@ -154,8 +154,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def memHasRightParams(m: DefMemory) = {
-    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty) &&
-    (bitWidth(m.dataType) <= 64)
+    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
   }
 
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
@@ -349,8 +348,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val body = addPrefixToNameStmt(prefix)(origBody)
     val registers = findRegisters(body)
     val memories = findMemory(body)
-    if (!(memories forall memHasRightParams))
-      throw new Exception("improper mem!")
+    memories foreach {m =>
+      if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
     val regUpdates = registers map makeRegisterUpdate
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { _.name }
