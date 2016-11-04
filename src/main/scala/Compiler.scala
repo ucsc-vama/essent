@@ -1,6 +1,7 @@
 package essent
 
 import collection.mutable.HashMap
+import util.Random
 import java.io.Writer
 
 import firrtl._
@@ -387,11 +388,14 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def initializeVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = {
-      if (bitWidth(tpe) > 32) s"$name = rand();"
+      val width = bitWidth(tpe).toInt
+      if (width > 64)
+        s"""$name = mpz_class("${BigInt(width,Random).toString(16)}",16);"""
+      else if (width > 32) s"$name = rand();"
       else tpe match {
         case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
         case SIntType(_) => {
-          val shamt = 32 - bitWidth(tpe)
+          val shamt = 32 - width
           s"$name = (rand() << $shamt) >> $shamt;"
         }
       }
