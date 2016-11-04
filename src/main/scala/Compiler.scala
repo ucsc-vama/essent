@@ -287,6 +287,13 @@ class EmitCpp(writer: Writer) extends Transform {
       case Xorr => throw new Exception("Xorr unimplemented!")
       case Cat => {
         val shamt = bitWidth(p.args(1).tpe)
+        if (bitWidth(p.tpe) > 64) {
+          val upper = if (bitWidth(p.args(0).tpe) > 64) emitExpr(p.args(0))
+                      else s"fromUInt(${emitExpr(p.args(0))})"
+          val lower = if (bitWidth(p.args(1).tpe) > 64) emitExpr(p.args(1))
+                      else s"fromUInt(${emitExpr(p.args(1))})"
+          s"($upper << $shamt) | $lower"
+        } else
         s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
       case Bits => {
