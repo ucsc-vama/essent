@@ -350,7 +350,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val memories = findMemory(body)
     memories foreach {m =>
       if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
-    val regUpdates = registers map makeRegisterUpdate
+    val regUpdates = registers map makeRegisterUpdate(prefix)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { _.name }
     val nodeWireRenames = (nodeNames ++ wireNames) map { s: String =>
@@ -377,8 +377,8 @@ class EmitCpp(writer: Writer) extends Transform {
     (regUpdates, namesReplaced, memWriteCommands)
   }
 
-  def makeRegisterUpdate(r: DefRegister): String = {
-    val regName = r.name
+  def makeRegisterUpdate(prefix: String)(r: DefRegister): String = {
+    val regName = prefix + r.name
     val resetName = emitExpr(r.reset)
     val resetVal = emitExpr(r.init)
     if (resetName == "0x0") s"if (update_registers) $regName = $regName$$next;"
