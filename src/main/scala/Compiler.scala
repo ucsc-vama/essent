@@ -290,7 +290,7 @@ class EmitCpp(writer: Writer) extends Transform {
         s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
       }
       case Bits => {
-        if (bitWidth(p.tpe) > 64) {
+        if (bitWidth(p.args.head.tpe) > 64) {
           s"(${emitExpr(p.args.head)} >> ${p.consts(1)}) & ${genMask(p.tpe)}"
         } else {
           val hi_shamt = 64 - p.consts(0).toInt - 1
