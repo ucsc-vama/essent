@@ -153,7 +153,8 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def memHasRightParams(m: DefMemory) = {
-    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
+    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty) &&
+    (bitWidth(m.dataType) <= 64)
   }
 
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
@@ -212,8 +213,14 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
-    case u: UIntLiteral => "0x" + u.value.toString(16)
-    case u: SIntLiteral => u.value.toString(10)
+    case u: UIntLiteral => {
+      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)},10)"
+      else "0x" + u.value.toString(16)
+    }
+    case u: SIntLiteral => {
+      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)},10)"
+      else u.value.toString(10)
+    }
     case m: Mux => {
       val condName = emitExpr(m.cond)
       val tvalName = emitExpr(m.tval)
