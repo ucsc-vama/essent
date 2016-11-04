@@ -296,7 +296,12 @@ class EmitCpp(writer: Writer) extends Transform {
         s"${emitExpr(p.args.head)} >> shamt"
       }
       case Tail => {
-        s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
+        val name = emitExpr(p.args.head)
+        val mask = genMask(p.tpe)
+        p.args.head.tpe match {
+          case UIntType(_) => s"$name & $mask"
+          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $name"
+        }
       }
     }
     case _ => throw new Exception(s"Don't yet support $e")
