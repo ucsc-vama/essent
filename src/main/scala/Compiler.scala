@@ -364,9 +364,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val regUpdates = registers map makeRegisterUpdate(prefix)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { prefix + _.name }
-    val nodeWireRenames = (nodeNames ++ wireNames) map { s: String =>
+    val nodeWireRenames = ((nodeNames ++ wireNames) map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
-    }
+    }).toMap
     val memConnects = grabMemInfo(body).toMap
     val memWriteCommands = memories flatMap {m: DefMemory => {
       m.writers map { writePortName:String => {
@@ -380,11 +380,13 @@ class EmitCpp(writer: Writer) extends Transform {
       m.readers map { readPortName:String =>
         val rdAddrName = memConnects(s"$prefix${m.name}.$readPortName.addr")
         val rdDataName = s"$prefix${m.name}.$readPortName.data"
-        (rdDataName, s"$prefix${m.name}[$rdAddrName]")
+        val rdAddrRep = nodeWireRenames.getOrElse(rdAddrName, rdAddrName)
+        val rdDataRep = nodeWireRenames.getOrElse(rdDataName, rdDataName)
+        (rdDataRep, s"$prefix${m.name}[$rdAddrRep]")
       }
     }}
     val readMappings = readOutputs.toMap
-    val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames.toMap)(body)
+    val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames)(body)
     (regUpdates, namesReplaced, memWriteCommands)
   }
 
