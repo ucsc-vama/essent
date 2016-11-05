@@ -318,7 +318,7 @@ class EmitCpp(writer: Writer) extends Transform {
         val mask = genMask(p.tpe)
         p.args.head.tpe match {
           case UIntType(_) => s"$name & $mask"
-          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $name"
+          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $name & $mask"
         }
       }
     }

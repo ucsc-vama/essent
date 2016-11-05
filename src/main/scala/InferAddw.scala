@@ -51,7 +51,7 @@ object InferAddw extends Pass {
       case DefNode(_, tName: String, primE: DoPrim) => primE.op match { 
         case Tail => {
           val eName = primE.args.head match { case w: WRef => w.name }
-          if ((addSigs.contains(eName)) && (primE.consts.head == 1))
+          if ((addSigs.contains(eName)) && (primE.consts.head == 1) && (bitWidth(primE.tpe) == 64))
             Seq((tName, eName))
           else Seq()
         }
