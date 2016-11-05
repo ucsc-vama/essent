@@ -264,7 +264,10 @@ class EmitCpp(writer: Writer) extends Transform {
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
       case Shlw => s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
-      case Shr => s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
+      case Shr => if ((bitWidth(p.tpe) <= 64) && (bitWidth(p.args(0).tpe) > 64))
+            s"mpz_class(${emitExpr(p.args.head)} >> ${p.consts.head.toInt}).get_ui()"
+          else
+            s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
       case Dshl => p.args map emitExpr mkString(" << ")
       case Dshlw => p.args map emitExpr mkString(" << ")
       case Dshr => p.args map emitExpr mkString(" >> ")
