@@ -233,7 +233,15 @@ class EmitCpp(writer: Writer) extends Transform {
       case Addw => p.args map emitExpr mkString(" + ")
       case Sub => p.args map emitExpr mkString(" - ")
       case Subw => p.args map emitExpr mkString(" - ")
-      case Mul => p.args map emitExpr mkString(" * ")
+      case Mul => {
+        val argNames = p.args map emitExpr
+        val possiblyCast =
+          // assuming args are already same width
+          if ((bitWidth(p.tpe) > 64) && (bitWidth(p.args.head.tpe) <= 64))
+            argNames map {name => s"fromUInt($name)"}
+          else argNames
+        possiblyCast mkString(" * ")
+      }
       case Div => p.args map emitExpr mkString(" / ")
       case Rem => p.args map emitExpr mkString(" % ")
       case Lt  => p.args map emitExpr mkString(" < ")
