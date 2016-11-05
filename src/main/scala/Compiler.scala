@@ -391,7 +391,11 @@ class EmitCpp(writer: Writer) extends Transform {
   def makeRegisterUpdate(prefix: String)(r: DefRegister): String = {
     val regName = prefix + r.name
     val resetName = emitExpr(r.reset)
-    val resetVal = emitExpr(r.init)
+    val resetVal = r.init match {
+      case l: Literal => emitExpr(r.init)
+      case _ => if (resetName != "0x0")
+        throw new Exception("register reset isn't a literal " + r.init)
+    }
     if (resetName == "0x0") s"if (update_registers) $regName = $regName$$next;"
     else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
   }
