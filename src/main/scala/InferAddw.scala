@@ -13,10 +13,11 @@ import firrtl.Utils._
 // Replaces a tail following an add with an addw if:
 // - result of add is used only in the one tail
 // - tail only clips top bit
+// - also does sub -> subw
 
 
 object InferAddw extends Pass {
-  def name = "Replace tail on add results with addw"
+  def name = "Replace tail on add results with addw (or sub with subw)"
 
   val WRefCounts = HashMap[String, Int]()
 
@@ -25,6 +26,7 @@ object InferAddw extends Pass {
     case b: Block => b.stmts flatMap findAddSigs
     case DefNode(_, name: String, primE: DoPrim) => primE.op match { 
       case Add => Seq((name, primE copy (tpe = oneNarrower(primE.tpe))))
+      case Sub => Seq((name, primE copy (tpe = oneNarrower(primE.tpe))))
       case _ => Seq()
     }
     case _ => Seq()
@@ -67,15 +69,27 @@ object InferAddw extends Pass {
     case _ => throw new Exception("can't narrow a non-ground type!")
   }
 
+  def convertExpToW(primE: DoPrim): DoPrim = {
+    val newOp = primE.op match {
+      case Add => Addw
+      case Sub => Subw
+    }
+    primE copy (op = newOp)
+  }
+
   def replaceInferAddwStmt(tailMap: Map[String,DoPrim], addsToRemove: Set[String])(s: Statement): Statement = {
     val replaced = s match {
       case DefNode(info, nodeName: String, primE: DoPrim) => primE.op match { 
         case Tail => {
           if (tailMap.contains(nodeName))
-            DefNode(info, nodeName, tailMap(nodeName) copy (op = Addw))
+            DefNode(info, nodeName, convertExpToW(tailMap(nodeName)))
           else s
         }
         case Add => {
+          if (addsToRemove.contains(nodeName)) EmptyStmt
+          else s
+        }
+        case Sub => {
           if (addsToRemove.contains(nodeName)) EmptyStmt
           else s
         }
@@ -88,6 +102,7 @@ object InferAddw extends Pass {
 
   def InferAddwModule(m: Module): Module = {
     val addMap = findAddSigs(m.body).toMap
+    WRefCounts.clear()
     m.body map countWRefsStmt(addMap.keySet)
     val singleUseAddSigs = addMap.filter { case (k, v) => WRefCounts(k) == 1 }
     val tailPairs = findDependentTails(singleUseAddSigs.keySet)(m.body)
