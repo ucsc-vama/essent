@@ -363,7 +363,7 @@ class EmitCpp(writer: Writer) extends Transform {
       if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
     val regUpdates = registers map makeRegisterUpdate(prefix)
     val nodeNames = findNodes(body) map { _.name }
-    val wireNames = findWires(body) map { _.name }
+    val wireNames = findWires(body) map { prefix + _.name }
     val nodeWireRenames = (nodeNames ++ wireNames) map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }
