@@ -538,6 +538,7 @@ class FinalCleanups extends Transform with SimpleRun {
     passes.CommonSubexpressionElimination,
     passes.DeadCodeElimination,
     passes.RemoveEmpty,
+    InferAddw,
     WireConstProp,
     ZeroFromBits,
     WireConstProp,
