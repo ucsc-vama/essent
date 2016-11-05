@@ -214,11 +214,11 @@ class EmitCpp(writer: Writer) extends Transform {
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => {
-      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)},10)"
+      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)})"
       else "0x" + u.value.toString(16)
     }
     case u: SIntLiteral => {
-      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)},10)"
+      if (bitWidth(u.tpe) > 64) s"mpz_class(${u.value.toString(10)})"
       else u.value.toString(10)
     }
     case m: Mux => {
