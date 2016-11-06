@@ -327,9 +327,10 @@ class EmitCpp(writer: Writer) extends Transform {
       case Tail => {
         val name = emitExpr(p.args.head)
         val mask = genMask(p.tpe)
+        val needToCast = if (bitWidth(p.args.head.tpe) > 64) "mpz_class" else ""
         p.args.head.tpe match {
           case UIntType(_) => s"$name & $mask"
-          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $name & $mask"
+          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $needToCast($name & $mask)"
         }
       }
     }
