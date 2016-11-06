@@ -1,13 +1,9 @@
 package essent
 
-import essent.Extract._
-import essent.Emitter._
-
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.passes._
-import firrtl.passes.bitWidth
 import firrtl.Utils._
 
 import scala.math.BigInt
@@ -19,28 +15,22 @@ object RandInitInvalids extends Pass {
 
   def genRandomLiteral(width: Int): BigInt = BigInt(width, Random)
 
-  def randInitStmt(alreadyDeclared: Set[String])(s: Statement): Statement = {
+  def randInitStmt(s: Statement): Statement = {
     val replaced = s match {
       case i: IsInvalid => {
-        val name = emitExpr(i.expr)
         val randLit = i.expr.tpe match {
           case UIntType(IntWidth(w)) => UIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
           case SIntType(IntWidth(w)) => SIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
         }
-        if (alreadyDeclared.contains(name)) Connect(i.info, i.expr, randLit)
-        else DefNode(i.info, name, randLit)
+        Connect(i.info, i.expr, randLit)
       }
       case _ => s
     }
-    replaced map randInitStmt(alreadyDeclared)
+    replaced map randInitStmt
   }
 
   def randInitModule(m: Module): Module = {
-    val registerNames = findRegisters(m.body) map { _.name }
-    val ioNames = m.ports map { _.name }
-    val alreadyDeclared = (registerNames ++ ioNames).toSet
-    val replacedStmts = randInitStmt(alreadyDeclared)(m.body)
-    Module(m.info, m.name, m.ports, squashEmpty(replacedStmts))
+    Module(m.info, m.name, m.ports, squashEmpty(randInitStmt(m.body)))
   }
 
   def run(c: Circuit): Circuit = {
