@@ -388,7 +388,7 @@ class EmitCpp(writer: Writer) extends Transform {
         val wrEnNameRep = nodeWireRenames.getOrElse(wrEnName, wrEnName)
         val wrAddrNameRep = nodeWireRenames.getOrElse(wrAddrName, wrAddrName)
         val wrDataNameRep = nodeWireRenames.getOrElse(wrDataName, wrDataName)
-        s"if ($wrEnNameRep) ${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
+        s"if ($wrEnNameRep) $prefix${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
