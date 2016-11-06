@@ -304,8 +304,13 @@ class EmitCpp(writer: Writer) extends Transform {
           val lower = if (bitWidth(p.args(1).tpe) > 64) emitExpr(p.args(1))
                       else s"fromUInt(${emitExpr(p.args(1))})"
           s"($upper << $shamt) | $lower"
-        } else
-        s"(${emitExpr(p.args(0))} << $shamt) | ${emitExpr(p.args(1))}"
+        } else {
+          val needL = p.args(0) match {
+            case u: UIntLiteral => "l"
+            case _ => ""
+          }
+          s"(${emitExpr(p.args(0))}$needL << $shamt) | ${emitExpr(p.args(1))}"
+        }
       }
       case Bits => {
         val name = emitExpr(p.args.head)
