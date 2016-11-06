@@ -385,7 +385,10 @@ class EmitCpp(writer: Writer) extends Transform {
         val wrEnName = memConnects(s"$prefix${m.name}.$writePortName.en")
         val wrAddrName = memConnects(s"$prefix${m.name}.$writePortName.addr")
         val wrDataName = memConnects(s"$prefix${m.name}.$writePortName.data")
-        s"if ($wrEnName) ${m.name}[$wrAddrName] = $wrDataName;"
+        val wrEnNameRep = nodeWireRenames.getOrElse(wrEnName, wrEnName)
+        val wrAddrNameRep = nodeWireRenames.getOrElse(wrAddrName, wrAddrName)
+        val wrDataNameRep = nodeWireRenames.getOrElse(wrDataName, wrDataName)
+        s"if ($wrEnNameRep) ${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
