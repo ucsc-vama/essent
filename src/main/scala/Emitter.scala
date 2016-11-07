@@ -230,7 +230,10 @@ object Emitter {
         }
       }
       case Neg => s"-${emitExpr(p.args.head)}"
-      case Not => s"~${emitExpr(p.args.head)}"
+      case Not => {
+        if (bitWidth(p.tpe) > 64) s"~${emitExpr(p.args.head)}"
+        else s"(~${emitExpr(p.args.head)}) & ${genMask(p.tpe)}"
+      }
       case And => p.args map emitExpr mkString(" & ")
       case Or => p.args map emitExpr mkString(" | ")
       case Xor => p.args map emitExpr mkString(" ^ ")
