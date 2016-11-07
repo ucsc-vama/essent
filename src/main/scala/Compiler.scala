@@ -47,14 +47,28 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }
     case p: Print =>
-      Seq(HyperedgeDep("printf", Seq(emitExpr(p.en)) ++ (p.args flatMap findDependencesExpr), s))
-    case st: Stop => Seq(HyperedgeDep("stop", Seq(emitExpr(st.en)), st))
+      Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++
+                                 (p.args flatMap findDependencesExpr), s))
+    case st: Stop => Seq(HyperedgeDep("stop", findDependencesExpr(st.en), st))
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
     case i: WDefInstance => Seq()
     case EmptyStmt => Seq()
     case _ => throw new Exception(s"unexpected statement type! $s")
+  }
+
+  def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
+    val (stopAndPrints, otherDeps) = deps.partition { dep => dep.stmt match {
+      case s: Stop => true
+      case p: Print => true
+      case _ => false
+    }}
+    val (prints, stops) = stopAndPrints.map {dep => dep.stmt}.partition { _ match {
+      case p: Print => true
+      case _ => false
+    }}
+    (otherDeps, prints ++ stops)
   }
 
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
@@ -131,8 +145,10 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
-    val reorderedBodies = buildGraph(allDeps).reorderCommands
-    allRegUpdates.flatten ++ reorderedBodies ++ allMemUpdates.flatten
+    val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
+    val reorderedBodies = buildGraph(otherDeps).reorderCommands
+    allRegUpdates.flatten ++ reorderedBodies ++
+    (printsAndStops flatMap emitStmt) ++ allMemUpdates.flatten
   }
 
 
