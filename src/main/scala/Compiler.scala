@@ -147,8 +147,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
-    allRegUpdates.flatten ++ reorderedBodies ++
-    (printsAndStops flatMap emitStmt) ++ allMemUpdates.flatten
+    val emittedPrintsAndStops = printsAndStops flatMap emitStmt
+    val guardedStmts = Seq("if (done_reset) {") ++ emittedPrintsAndStops ++ Seq("}")
+    allRegUpdates.flatten ++ reorderedBodies ++ guardedStmts ++ allMemUpdates.flatten
   }
 
 
