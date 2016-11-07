@@ -273,15 +273,7 @@ object Emitter {
         val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
         s"${emitExpr(p.args.head)} >> shamt"
       }
-      case Tail => {
-        val name = emitExpr(p.args.head)
-        val mask = genMask(p.tpe)
-        val needToCast = if (bitWidth(p.args.head.tpe) > 64) "mpz_class" else ""
-        p.args.head.tpe match {
-          case UIntType(_) => s"$name & $mask"
-          case SIntType(_) => s"$name < 0 ? -((-$name)&$mask) : $needToCast($name & $mask)"
-        }
-      }
+      case Tail => s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
