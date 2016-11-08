@@ -200,13 +200,16 @@ object Emitter {
         if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
         else p.args.head.tpe match {
           case UIntType(_) => emitExpr(p.args.head)
-          case SIntType(_) => s"static_cast<uint64_t>(${emitExpr(p.args.head)})"
+          case SIntType(_) => s"static_cast<uint64_t>(${emitExpr(p.args.head)}) & ${genMask(p.tpe)}"
         }
       }
       case AsSInt => {
         if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
         else p.args.head.tpe match {
-          case UIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
+          case UIntType(_) => {
+            val shamt = 64 - bitWidth(p.args.head.tpe)
+            s"((static_cast<int64_t>(${emitExpr(p.args.head)}))<<$shamt)>>$shamt"
+          }
           case SIntType(_) => emitExpr(p.args.head)
         }
       }
