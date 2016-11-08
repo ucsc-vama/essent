@@ -299,8 +299,12 @@ object Emitter {
       }
     }
     case p: Print => {
-      val printfArgs = Seq(s""""${p.string.serialize}"""") ++
-                       (p.args map emitExpr)
+      val argMaps = Seq(("%h", "%llx"), ("%d", "%llu"), ("%ld", "%llu"))
+      val formatString = argMaps.foldLeft(p.string.serialize){
+        case (str, (searchFor, replaceWith)) => str.replaceAll(searchFor, replaceWith)
+      }
+      println(formatString)
+      val printfArgs = Seq(s""""$formatString"""") ++ (p.args map emitExpr)
       Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => Seq(s"if (${emitExpr(st.en)}) exit(${st.ret});")
