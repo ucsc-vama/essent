@@ -132,6 +132,22 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"} $modName;")
   }
 
+  def buildResetTree(allInstances: Seq[(String, String)]): Seq[String] = {
+    val allInstanceNames = allInstances.tail map { _._2 }
+    val resetConnects = allInstanceNames map { modName: String => {
+      val trailingDotRemoved = if (modName.contains(".")) modName.init
+                               else modName
+      val parentName = if (trailingDotRemoved.contains("."))
+          trailingDotRemoved.substring(0, trailingDotRemoved.lastIndexOf(".")) + "."
+        else ""
+      Connect(NoInfo, WRef(s"${modName}reset", UIntType(IntWidth(1)), PortKind, FEMALE),
+              WRef(s"${parentName}reset", UIntType(IntWidth(1)), PortKind, MALE))
+    }}
+    val allDeps = resetConnects flatMap findDependencesStmt
+    val reorderedConnects = buildGraph(allDeps).reorderCommands
+    reorderedConnects
+  }
+
 
   def buildEval(circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
@@ -143,13 +159,15 @@ class EmitCpp(writer: Writer) extends Transform {
         case em: ExtModule => (Seq(), EmptyStmt, Seq())
       }
     }
+    val resetTree = buildResetTree(allInstances)
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
     val emittedPrintsAndStops = printsAndStops flatMap emitStmt
     val guardedStmts = Seq("if (done_reset) {") ++ emittedPrintsAndStops ++ Seq("}")
-    allRegUpdates.flatten ++ reorderedBodies ++ guardedStmts ++ allMemUpdates.flatten
+    resetTree ++ allRegUpdates.flatten ++ reorderedBodies ++ guardedStmts ++
+      allMemUpdates.flatten
   }
 
 
