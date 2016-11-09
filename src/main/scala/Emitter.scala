@@ -303,7 +303,6 @@ object Emitter {
       val formatString = argMaps.foldLeft(p.string.serialize){
         case (str, (searchFor, replaceWith)) => str.replaceAll(searchFor, replaceWith)
       }
-      println(formatString)
       val printfArgs = Seq(s""""$formatString"""") ++ (p.args map emitExpr)
       Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
