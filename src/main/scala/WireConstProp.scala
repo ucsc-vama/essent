@@ -19,7 +19,10 @@ object WireConstProp extends Pass {
 
   def replaceLiteralWiresStmt(consts: Map[String,Literal])(s: Statement): Statement = {
     val noConstConnects = s match {
-      case Connect(_, w: WRef, l: Literal) => EmptyStmt
+      case Connect(_, w: WRef, l: Literal) => {
+        if (consts.contains(w.name)) EmptyStmt
+        else s
+      }
       case DefNode(_, name: String, l: Literal) => EmptyStmt
       case _ => s
     }
@@ -36,8 +39,11 @@ object WireConstProp extends Pass {
 
   def constPropModule(m: Module): Module = {
     val constWires = findLiteralWires(m.body).toMap
-    if (constWires.size > 0) {
-      val replacedStmts = replaceLiteralWiresStmt(constWires)(m.body)
+    val portNames = (m.ports map { _.name }).toSet
+    val portsRemoved = constWires filter {case(name, lit) => !portNames.contains(name)}
+    val toReplace = portsRemoved.toMap
+    if (portsRemoved.size > 0) {
+      val replacedStmts = replaceLiteralWiresStmt(portsRemoved)(m.body)
       constPropModule(Module(m.info, m.name, m.ports, squashEmpty(replacedStmts)))
     } else m
   }
