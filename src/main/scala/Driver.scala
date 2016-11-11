@@ -13,15 +13,16 @@ object Driver {
     val argsList = args.toList
     if (argsList.isEmpty)
       throw new Exception("Please give input .fir file")
-    val inputFirFile = argsList.head
+    val verbose = argsList.head == "-v"
+    val inputFirFile = argsList.last
     val inputFileDir = new File(inputFirFile).getParent()
     val outputDir = if (inputFileDir == null) "" else inputFileDir
     val parsedInput = firrtl.Parser.parse(Source.fromFile(inputFirFile).getLines,
                                           firrtl.Parser.IgnoreInfo)
-    generate(parsedInput, outputDir)
+    generate(parsedInput, outputDir, verbose)
   }
 
-  def generate(circuit: Circuit, outputDir: String) {
+  def generate(circuit: Circuit, outputDir: String, verbose: Boolean = true) {
     val topName = circuit.main
   
     val harnessFilename = new File(outputDir, s"$topName-harness.cc")
@@ -31,7 +32,7 @@ object Driver {
 
     val dutWriter = new FileWriter(new File(outputDir, s"$topName.h"))
     val annotations = new firrtl.Annotations.AnnotationMap(Seq.empty)
-    val compiler = new CCCompiler
+    val compiler = new CCCompiler(verbose)
     compiler.compile(circuit, annotations, dutWriter)
     dutWriter.close()
   }

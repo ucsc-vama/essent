@@ -195,7 +195,6 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
-    println(circuit.serialize)
     TransformResult(circuit)
   }
 }
@@ -230,9 +229,17 @@ class FinalCleanups extends Transform with SimpleRun {
   }
 }
 
+class PrintCircuit extends Transform with SimpleRun {
+  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+    println(circuit.serialize)
+    TransformResult(circuit)
+  }
+}
 
 
-class CCCompiler extends Compiler {
+
+
+class CCCompiler(verbose: Boolean) extends Compiler {
   def transforms(writer: Writer): Seq[Transform] = Seq(
     new firrtl.Chisel3ToHighFirrtl,
     new firrtl.IRToWorkingIR,
@@ -244,5 +251,5 @@ class CCCompiler extends Compiler {
     new firrtl.passes.InlineInstances(TransID(0)),
     new FinalCleanups,
     new EmitCpp(writer)
-  )
+  ) ++ (if (verbose) Seq(new PrintCircuit) else Seq())
 }
