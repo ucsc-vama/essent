@@ -299,9 +299,19 @@ object Emitter {
       }
     }
     case p: Print => {
-      val argMaps = Seq(("%h", "%llx"), ("%d", "%llu"), ("%ld", "%llu"))
-      val formatString = argMaps.foldLeft(p.string.serialize){
-        case (str, (searchFor, replaceWith)) => str.replaceAll(searchFor, replaceWith)
+      val formatters = "(%h)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
+      val argWidths = p.args map {e: Expression => bitWidth(e.tpe)}
+      val replacements = formatters zip argWidths map { case(format, width) =>
+        if (format == "%h") {
+          val printWidth = math.ceil((width/4).toDouble).toInt
+          (format, s"%0${printWidth}llx")
+        } else {
+          val printWidth = math.ceil(math.log10((1l<<width.toInt).toDouble)).toInt
+          (format, s"%${printWidth}llu")
+        }
+      }
+      val formatString = replacements.foldLeft(p.string.serialize){
+        case (str, (searchFor, replaceWith)) => str.replaceFirst(searchFor, replaceWith)
       }
       val printfArgs = Seq(s""""$formatString"""") ++ (p.args map emitExpr)
       Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
