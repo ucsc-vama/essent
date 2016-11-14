@@ -77,4 +77,15 @@ class Graph {
     val orderedResults = topologicalSort map idToName
     orderedResults filter {nameToCmd.contains} map nameToCmd
   }
+
+  def printTopologyStats() {
+    println(s"Nodes: ${nameToCmd.size}")
+    println(s"Referenced Nodes: ${idToName.size}")
+    val allDegrees = outNeigh map { _.size }
+    val totalRefs = allDegrees reduceLeft { _+_ }
+    println(s"Total References: $totalRefs")
+    val maxDegree = allDegrees reduceLeft { math.max(_,_) }
+    val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
+    println(s"Max Degree: $maxDegree ($maxDegreeName)")
+  }
 }
