@@ -114,8 +114,8 @@ object Emitter {
       case _ => if (resetName != "0x0")
         throw new Exception("register reset isn't a literal " + r.init)
     }
-    if (resetName == "0x0") s"if (update_registers) $regName = $regName$$next;"
-    else s"if (update_registers) $regName = $resetName ? $resetVal : $regName$$next;"
+    if (resetName == "0x0") s"$regName = $regName$$next;"
+    else s"$regName = $resetName ? $resetVal : $regName$$next;"
   }
 
   def initializeVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
@@ -314,7 +314,7 @@ object Emitter {
         case (str, (searchFor, replaceWith)) => str.replaceFirst(searchFor, replaceWith)
       }
       val printfArgs = Seq(s""""$formatString"""") ++ (p.args map emitExpr)
-      Seq(s"if (update_registers && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
+      Seq(s"if (${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => Seq(s"if (${emitExpr(st.en)}) exit(${st.ret});")
     case r: DefRegister => Seq()
@@ -369,7 +369,7 @@ object Emitter {
       case p: Print => true
       case _ => false
     }}
-    Seq("if (done_reset) {") ++ Seq("if(verbose) {") ++
+    Seq("if (done_reset && update_registers) {") ++ Seq("if(verbose) {") ++
       (prints flatMap emitStmt) ++ Seq("}") ++ (stops flatMap emitStmt) ++ Seq("}")
   }
 }
