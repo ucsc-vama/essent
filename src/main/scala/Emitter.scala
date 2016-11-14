@@ -342,10 +342,12 @@ object Emitter {
         val wrEnName = memConnects(s"$prefix${m.name}.$writePortName.en")
         val wrAddrName = memConnects(s"$prefix${m.name}.$writePortName.addr")
         val wrDataName = memConnects(s"$prefix${m.name}.$writePortName.data")
+        val wrMaskName = memConnects(s"$prefix${m.name}.$writePortName.mask")
         val wrEnNameRep = nodeWireRenames.getOrElse(wrEnName, wrEnName)
         val wrAddrNameRep = nodeWireRenames.getOrElse(wrAddrName, wrAddrName)
         val wrDataNameRep = nodeWireRenames.getOrElse(wrDataName, wrDataName)
-        s"if ($wrEnNameRep) $prefix${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
+        val wrMaskNameRep = nodeWireRenames.getOrElse(wrMaskName, wrMaskName)
+        s"if ($wrEnNameRep && $wrMaskNameRep) $prefix${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
