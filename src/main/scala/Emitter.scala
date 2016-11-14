@@ -118,7 +118,7 @@ object Emitter {
     else s"$regName = $resetName ? $resetVal : $regName$$next;"
   }
 
-  def initializeVals(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
+  def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = {
       val width = bitWidth(tpe).toInt
       if (width > 64)
@@ -140,16 +140,18 @@ object Emitter {
     }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
-      case _ => Seq(initVal(p.name, p.tpe))
+      case _ => if ((p.name != "reset") && !topLevel) Seq()
+                else Seq(initVal(p.name, p.tpe))
     }}
     regInits ++ memInits ++ portInits
   }
 
 
   // Emission methods
-  def emitPort(p: Port): Seq[String] = p.tpe match {
+  def emitPort(topLevel: Boolean)(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
-    case _ => Seq(genCppType(p.tpe) + " " + p.name + ";")
+    case _ => if ((p.name != "reset") && !topLevel) Seq()
+              else Seq(genCppType(p.tpe) + " " + p.name + ";")
   }
 
   def emitExpr(e: Expression): String = e match {
@@ -295,6 +297,14 @@ object Emitter {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
         case firrtl.WireKind => Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+        case firrtl.PortKind => {
+          if (lhs.contains("$")) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+          else Seq(s"$lhs = $rhs;")
+        }
+        case firrtl.InstanceKind => {
+           if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
+           else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+        }
         case _ => Seq(s"$lhs = $rhs;")
       }
     }
@@ -324,8 +334,8 @@ object Emitter {
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
-  def emitBody(origBody: Statement, prefix: String) = {
-    val body = addPrefixToNameStmt(prefix)(origBody)
+  def emitBody(m: Module, circuit: Circuit, prefix: String) = {
+    val body = addPrefixToNameStmt(prefix)(m.body)
     val registers = findRegisters(body)
     val memories = findMemory(body)
     memories foreach {m =>
@@ -333,7 +343,14 @@ object Emitter {
     val regUpdates = registers map makeRegisterUpdate(prefix)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { prefix + _.name }
-    val nodeWireRenames = ((nodeNames ++ wireNames) map { s: String =>
+    // FUTURE: remove unneeded or identity renames
+    val externalPortNames = findPortNames(m) map { prefix + _ }
+    val internalPortNames = findModuleInstances(m.body) flatMap {
+      case (moduleType, moduleName) =>
+        findPortNames(findModule(moduleType, circuit)) map {prefix + s"$moduleName." + _}
+    }
+    val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
+    val renames = (allTempSigs map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }).toMap
     val memConnects = grabMemInfo(body).toMap
@@ -343,10 +360,10 @@ object Emitter {
         val wrAddrName = memConnects(s"$prefix${m.name}.$writePortName.addr")
         val wrDataName = memConnects(s"$prefix${m.name}.$writePortName.data")
         val wrMaskName = memConnects(s"$prefix${m.name}.$writePortName.mask")
-        val wrEnNameRep = nodeWireRenames.getOrElse(wrEnName, wrEnName)
-        val wrAddrNameRep = nodeWireRenames.getOrElse(wrAddrName, wrAddrName)
-        val wrDataNameRep = nodeWireRenames.getOrElse(wrDataName, wrDataName)
-        val wrMaskNameRep = nodeWireRenames.getOrElse(wrMaskName, wrMaskName)
+        val wrEnNameRep = renames.getOrElse(wrEnName, wrEnName)
+        val wrAddrNameRep = renames.getOrElse(wrAddrName, wrAddrName)
+        val wrDataNameRep = renames.getOrElse(wrDataName, wrDataName)
+        val wrMaskNameRep = renames.getOrElse(wrMaskName, wrMaskName)
         s"if ($wrEnNameRep && $wrMaskNameRep) $prefix${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
       }}
     }}
@@ -354,13 +371,13 @@ object Emitter {
       m.readers map { readPortName:String =>
         val rdAddrName = memConnects(s"$prefix${m.name}.$readPortName.addr")
         val rdDataName = s"$prefix${m.name}.$readPortName.data"
-        val rdAddrRep = nodeWireRenames.getOrElse(rdAddrName, rdAddrName)
-        val rdDataRep = nodeWireRenames.getOrElse(rdDataName, rdDataName)
+        val rdAddrRep = renames.getOrElse(rdAddrName, rdAddrName)
+        val rdDataRep = renames.getOrElse(rdDataName, rdDataName)
         (rdDataRep, s"$prefix${m.name}[$rdAddrRep]")
       }
     }}
     val readMappings = readOutputs.toMap
-    val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames)(body)
+    val namesReplaced = replaceNamesStmt(readMappings ++ renames)(body)
     (regUpdates, namesReplaced, memWriteCommands)
   }
 

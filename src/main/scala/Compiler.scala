@@ -106,11 +106,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, registerDecs)
     writeLines(1, memDecs)
-    writeLines(1, m.ports flatMap emitPort)
+    writeLines(1, m.ports flatMap emitPort(modName == topName))
     writeLines(1, moduleDecs)
     writeLines(0, "")
     writeLines(1, s"$modName() {")
-    writeLines(2, initializeVals(m, registers, memories))
+    writeLines(2, initializeVals(modName == topName)(m, registers, memories))
     writeLines(1, "}")
     if (modName == topName) {
       writeLines(0, "")
@@ -124,7 +124,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val modName = m.name
     writeLines(0, "")
     writeLines(0, s"typedef struct $modName {")
-    writeLines(1, m.ports flatMap emitPort)
+    writeLines(1, m.ports flatMap emitPort(true))
     writeLines(0, s"} $modName;")
   }
 
@@ -151,7 +151,7 @@ class EmitCpp(writer: Writer) extends Transform {
       findAllModuleInstances("", circuit)(topModule.body)
     val module_results = allInstances map {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => emitBody(m.body, prefix)
+        case m: Module => emitBody(m, circuit, prefix)
         case em: ExtModule => (Seq(), EmptyStmt, Seq())
       }
     }

@@ -35,6 +35,11 @@ object Extract {
     case _ => Seq()
   }
 
+  def findPortNames(dm: DefModule): Seq[String] = dm match {
+    case m: Module => m.ports.map{_.name}.filter{s => s != "clock" && s != "reset"}
+    case em: ExtModule => Seq()
+  }
+
   def findModuleInstances(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findModuleInstances
     case i: WDefInstance => Seq((i.module, i.name))
