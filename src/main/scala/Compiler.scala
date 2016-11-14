@@ -64,11 +64,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case p: Print => true
       case _ => false
     }}
-    val (prints, stops) = stopAndPrints.map {dep => dep.stmt}.partition { _ match {
-      case p: Print => true
-      case _ => false
-    }}
-    (otherDeps, prints ++ stops)
+    (otherDeps, stopAndPrints.map {dep => dep.stmt})
   }
 
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
@@ -164,10 +160,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
-    val emittedPrintsAndStops = printsAndStops flatMap emitStmt
-    val guardedStmts = Seq("if (done_reset) {") ++ emittedPrintsAndStops ++ Seq("}")
-    resetTree ++ allRegUpdates.flatten ++ reorderedBodies ++ guardedStmts ++
-      allMemUpdates.flatten
+    resetTree ++ allRegUpdates.flatten ++ reorderedBodies ++
+      emitPrintsAndStops(printsAndStops) ++ allMemUpdates.flatten
   }
 
 

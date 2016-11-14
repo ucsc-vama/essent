@@ -363,4 +363,13 @@ object Emitter {
     val namesReplaced = replaceNamesStmt(readMappings ++ nodeWireRenames)(body)
     (regUpdates, namesReplaced, memWriteCommands)
   }
+
+  def emitPrintsAndStops(stopAndPrints: Seq[Statement]): Seq[String] = {
+    val (prints, stops) = stopAndPrints partition { _ match {
+      case p: Print => true
+      case _ => false
+    }}
+    Seq("if (done_reset) {") ++ Seq("if(verbose) {") ++
+      (prints flatMap emitStmt) ++ Seq("}") ++ (stops flatMap emitStmt) ++ Seq("}")
+  }
 }
