@@ -1,6 +1,8 @@
 package essent
 
 import collection.mutable.{ArrayBuffer, HashMap}
+import scala.util.Random
+
 
 class Graph {
   // Vertex name (string of destination variable) -> numeric ID
@@ -87,5 +89,31 @@ class Graph {
     val maxDegree = allDegrees reduceLeft { math.max(_,_) }
     val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
     println(s"Max Degree: $maxDegree ($maxDegreeName)")
+    println(s"Approximate Diameter: ${approxDiameter()}")
+  }
+
+  def approxDiameter(numTrials: Int = 64) = {
+    val numNodes = nameToID.size
+    val maxPaths = (0 until numTrials) map { trialNumber =>
+      val source = Random.nextInt(numNodes)
+      val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+      startingDepths(source) = 0
+      val depths = stepBFS(0, startingDepths)
+      val maxDepth = depths reduceLeft { math.max(_,_) }
+      (maxDepth, s"${idToName(source)} -> ${idToName(depths.indexOf(maxDepth))}")
+    }
+    val longestPath = maxPaths.sortWith {_._1 < _._1 }.last
+    println(s"Longest Path Found: ${longestPath._2}")
+    longestPath._1
+  }
+
+  def stepBFS(currDepth: Int, allDepths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    allDepths.zipWithIndex foreach { case(depth, id) => {
+      if (depth == currDepth) outNeigh(id).foreach { outNeigh =>
+        if (allDepths(outNeigh) == -1) allDepths(outNeigh) = currDepth + 1
+      }
+    }}
+    if (allDepths.contains(currDepth+1)) stepBFS(currDepth + 1, allDepths)
+    else allDepths
   }
 }
