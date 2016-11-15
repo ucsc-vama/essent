@@ -296,14 +296,22 @@ object Emitter {
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
-        case firrtl.WireKind => Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+        case firrtl.WireKind => {
+          if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+          else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+        }
         case firrtl.PortKind => {
-          if (lhs.contains("$")) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
-          else Seq(s"$lhs = $rhs;")
+          if (lhs.contains("$")) {
+            if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+            else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+          } else Seq(s"$lhs = $rhs;")
         }
         case firrtl.InstanceKind => {
-           if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
-           else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+          if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
+          else {
+            if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+            else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+          }
         }
         case _ => Seq(s"$lhs = $rhs;")
       }

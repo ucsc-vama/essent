@@ -67,6 +67,23 @@ class EmitCpp(writer: Writer) extends Transform {
     (otherDeps, stopAndPrints.map {dep => dep.stmt})
   }
 
+  def predeclareBigSigs(hyperEdges: Seq[HyperedgeDep]) = {
+    val bigSigs = hyperEdges filter { he: HyperedgeDep => { he.stmt match {
+      case d: DefNode =>  bitWidth(d.value.tpe) > 64
+      case c: Connect => {
+        if (bitWidth(c.loc.tpe) > 64) {
+          firrtl.Utils.kind(c.loc) match {
+            case firrtl.WireKind => true
+            case firrtl.PortKind => he.name.contains("$")
+            case firrtl.InstanceKind => !he.name.contains(".")
+            case _ => false
+          }
+        } else false
+      }
+    }}}
+    bigSigs map { he => s"mpz_class ${he.name};" }
+  }
+
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
     val g = new Graph
     hyperEdges foreach { he:HyperedgeDep =>
@@ -145,7 +162,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
 
-  def buildEval(circuit: Circuit) = {
+  def emitEval(topName: String, circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -159,10 +176,20 @@ class EmitCpp(writer: Writer) extends Transform {
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
+    val bigDecs = predeclareBigSigs(otherDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
-    resetTree ++ Seq("if (update_registers) {") ++ allRegUpdates.flatten ++
-      Seq("}") ++ reorderedBodies ++ emitPrintsAndStops(printsAndStops) ++
-      allMemUpdates.flatten
+
+    writeLines(0, bigDecs)
+    writeLines(0, "")
+    writeLines(0, s"void $topName::eval(bool update_registers) {")
+    writeLines(1, resetTree)
+    writeLines(1, "if (update_registers) {")
+    writeLines(2, allRegUpdates.flatten)
+    writeLines(1, "}")
+    writeLines(1, reorderedBodies)
+    writeLines(1, emitPrintsAndStops(printsAndStops))
+    writeLines(1, allMemUpdates.flatten)
+    writeLines(0, "}")
   }
 
 
@@ -181,14 +208,12 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val topModule = findModule(topName, circuit) match {case m: Module => m}
     writeLines(0, "")
-    writeLines(0, s"void $topName::eval(bool update_registers) {")
-    writeLines(1, buildEval(circuit))
-    writeLines(0, "}")
     writeLines(0, "")
     writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
     writeLines(1, HarnessGenerator.harnessConnections(topModule))
     writeLines(0, "}")
     writeLines(0, "")
+    emitEval(topName, circuit)
     writeLines(0, s"#endif  // $headerGuardName")
     TransformResult(circuit)
   }
