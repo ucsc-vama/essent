@@ -9,9 +9,9 @@ class Graph {
   val nameToID = HashMap[String,Int]()
   // Numeric vertex ID -> name (string destination variable)
   val idToName = ArrayBuffer[String]()
-  // numeric vertex ID -> list of incoming vertex IDs (dependencies)
+  // numeric vertex ID -> list of incoming vertex IDs (consumers)
   val inNeigh = ArrayBuffer[ArrayBuffer[Int]]()
-  // numeric vertex ID -> list outgoing vertex IDs (consumers)
+  // numeric vertex ID -> list outgoing vertex IDs (dependencies)
   val outNeigh = ArrayBuffer[ArrayBuffer[Int]]()
   // Vertex name -> full C++ string it corresponds to
   val nameToCmd = HashMap[String,String]()
@@ -90,6 +90,8 @@ class Graph {
     val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
     println(s"Max Degree: $maxDegree ($maxDegreeName)")
     println(s"Approximate Diameter: ${approxDiameter()}")
+    val numberOfSinks: Int = (inNeigh map { _.size } filter { _ == 0}).size
+    println(s"Number of Sinks: $numberOfSinks")
   }
 
   def approxDiameter(numTrials: Int = 64) = {
