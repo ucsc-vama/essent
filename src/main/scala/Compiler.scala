@@ -85,7 +85,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
     val g = new Graph
     hyperEdges foreach { he:HyperedgeDep =>
-      g.addNodeWithDeps(he.name, he.deps, emitStmt(he.stmt).head)
+      g.addNodeWithDeps(he.name, he.deps, he.stmt)
     }
     g
   }
@@ -156,7 +156,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val allDeps = resetConnects flatMap findDependencesStmt
     val reorderedConnects = buildGraph(allDeps).reorderCommands
-    reorderedConnects
+    reorderedConnects flatMap emitStmt
   }
 
 
@@ -187,7 +187,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    writeLines(1, reorderedBodies)
+    writeLines(1, reorderedBodies flatMap emitStmt)
     writeLines(1, emitPrintsAndStops(printsAndStops))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")

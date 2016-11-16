@@ -1,6 +1,9 @@
 package essent
 
-import collection.mutable.{ArrayBuffer, HashMap}
+import firrtl._
+import firrtl.ir._
+
+import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.util.Random
 
 
@@ -13,8 +16,8 @@ class Graph {
   val inNeigh = ArrayBuffer[ArrayBuffer[Int]]()
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh = ArrayBuffer[ArrayBuffer[Int]]()
-  // Vertex name -> full C++ string it corresponds to
-  val nameToCmd = HashMap[String,String]()
+  // Vertex name -> corresponding FIRRTL statement
+  val nameToStmt = HashMap[String,Statement]()
 
   def getID(vertexName: String) = {
     if (nameToID contains vertexName) nameToID(vertexName)
@@ -34,8 +37,8 @@ class Graph {
     inNeigh(getID(dest)) += getID(source)
   }
 
-  def addNodeWithDeps(result: String, deps: Seq[String], cmd: String) = {
-    nameToCmd(result) = cmd
+  def addNodeWithDeps(result: String, deps: Seq[String], stmt: Statement) = {
+    nameToStmt(result) = stmt
     val potentiallyNewDestID = getID(result)
     deps foreach {dep : String => addEdge(dep, result)}
   }
@@ -69,7 +72,7 @@ class Graph {
   def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
     (0 until nameToID.size) foreach {id: Int =>
       if (temporaryMarks(id)) {
-        println(nameToCmd(idToName(id)))
+        println(nameToStmt(idToName(id)))
         println(id + " "  + outNeigh(id))
       }
     }
@@ -77,11 +80,11 @@ class Graph {
 
   def reorderCommands() = {
     val orderedResults = topologicalSort map idToName
-    orderedResults filter {nameToCmd.contains} map nameToCmd
+    orderedResults filter {nameToStmt.contains} map nameToStmt
   }
 
   def printTopologyStats() {
-    println(s"Nodes: ${nameToCmd.size}")
+    println(s"Nodes: ${nameToStmt.size}")
     println(s"Referenced Nodes: ${idToName.size}")
     val allDegrees = outNeigh map { _.size }
     val totalRefs = allDegrees reduceLeft { _+_ }
