@@ -100,7 +100,7 @@ class Graph {
       val source = Random.nextInt(numNodes)
       val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
       startingDepths(source) = 0
-      val depths = stepBFS(0, startingDepths)
+      val depths = stepBFS(Seq(source), startingDepths)
       val maxDepth = depths reduceLeft { math.max(_,_) }
       (maxDepth, s"${idToName(source)} -> ${idToName(depths.indexOf(maxDepth))}")
     }
@@ -109,13 +109,16 @@ class Graph {
     longestPath._1
   }
 
-  def stepBFS(currDepth: Int, allDepths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
-    allDepths.zipWithIndex foreach { case(depth, id) => {
-      if (depth == currDepth) outNeigh(id).foreach { outNeigh =>
-        if (allDepths(outNeigh) == -1) allDepths(outNeigh) = currDepth + 1
-      }
-    }}
-    if (allDepths.contains(currDepth+1)) stepBFS(currDepth + 1, allDepths)
-    else allDepths
+  def stepBFS(frontier: Seq[Int], depths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    if (frontier.isEmpty) depths
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        if (depths(neigh) == -1) {
+          depths(neigh) = depths(id) + 1
+          Seq(neigh)
+        } else Seq()
+      }}}
+      stepBFS(nextFrontier, depths)
+    }
   }
 }
