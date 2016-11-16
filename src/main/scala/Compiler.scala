@@ -176,6 +176,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val bigDecs = predeclareBigSigs(otherDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
+    // val totalSingleAssigns = reorderedBodies.filter{
+    //   s => s.contains("=") && (s.split("=").last.trim.count(_ == ' ') == 0)
+    // }.size
+    // println(s"Assigns: $totalSingleAssigns / ${reorderedBodies.size} (single/all)")
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
