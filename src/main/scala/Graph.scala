@@ -131,21 +131,21 @@ class Graph {
     inNeigh(nameToID(nodeName)).map{ outNeigh(_).size }.foldLeft(0)(_ + _)
   }
 
-  def crawlBack(id: Seq[Int], isReg: ArrayBuffer[Boolean], marked: BitSet): Seq[Int] = {
+  def crawlBack(id: Seq[Int], dontPass: ArrayBuffer[Boolean], marked: BitSet): Seq[Int] = {
     val q = new scala.collection.mutable.Queue[Int]
     val result = new scala.collection.mutable.ArrayBuffer[Int]
     q ++= id
     while (!q.isEmpty) {
       val currId = q.dequeue
-      if (!isReg(currId) && !marked(currId)) {
-        marked(currId) = true
-        if (outNeigh(currId) forall { consumer => marked(consumer) }) {
+      if (!dontPass(currId) && !marked(currId)) {
+        if (outNeigh(currId) forall ( consumer => marked(consumer) )) {
+          marked(currId) = true
           result += currId
           q ++= inNeigh(currId)
         }
       }
     }
-    result.toSeq
+    result.toSeq //filter { id => nameToStmt.contains(idToName(id)) }
   }
 
   def grabIDs(e: Expression): Seq[Int] = e match {
@@ -156,13 +156,15 @@ class Graph {
   }
 
   def findAllShadows(muxNames: Seq[String], regNames: Seq[String]) {
-    val isReg = ArrayBuffer.fill(nameToID.size)(false)
-    regNames foreach {name: String => if (nameToID.contains(name)) isReg(nameToID(name)) = true }
+    val dontPass = ArrayBuffer.fill(nameToID.size)(false)
+    (regNames ++ muxNames) foreach {
+      name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
+    }
     val shadowSizes = muxNames flatMap {name =>
       val muxExpr = grabMux(nameToStmt(name))
       val muxNameID = nameToID(name)
-      val tShadow = crawlBack(grabIDs(muxExpr.tval), isReg, BitSet(muxNameID))
-      val fShadow = crawlBack(grabIDs(muxExpr.fval), isReg, BitSet(muxNameID))
+      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, BitSet(muxNameID))
+      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, BitSet(muxNameID))
       Seq((tShadow.size, fShadow.size))
     }
     val (trueSizes, falseSizes) = shadowSizes.unzip
