@@ -13,6 +13,8 @@ import firrtl.Utils._
 import util.Random
 
 object Emitter {
+  case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
+
   // Declaration Methods
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => {

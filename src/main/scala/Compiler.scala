@@ -19,8 +19,6 @@ class EmitCpp(writer: Writer) extends Transform {
   val tabs = "  "
 
   // Graph Building
-  case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
-
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
@@ -178,7 +176,6 @@ class EmitCpp(writer: Writer) extends Transform {
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val bigDecs = predeclareBigSigs(otherDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
-
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
