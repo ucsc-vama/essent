@@ -5,6 +5,7 @@ import java.io.Writer
 
 import essent.Emitter._
 import essent.Extract._
+import essent.Optimizer._
 
 import firrtl._
 import firrtl.Annotations._
@@ -180,6 +181,8 @@ class EmitCpp(writer: Writer) extends Transform {
     //   s => s.contains("=") && (s.split("=").last.trim.count(_ == ' ') == 0)
     // }.size
     // println(s"Assigns: $totalSingleAssigns / ${reorderedBodies.size} (single/all)")
+    val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
+    findShadowOpp(otherDeps, regNames)
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")

@@ -61,4 +61,10 @@ object Extract {
 
   def findModule(name: String, circuit: Circuit) =
     circuit.modules.find(_.name == name).get
+
+  def grabMux(stmt: Statement) = stmt match {
+    case DefNode(_, _, m: Mux) => m
+    case Connect(_, _, m: Mux) => m
+    case _ => throw new Exception("not an defnode or connect")
+  }
 }

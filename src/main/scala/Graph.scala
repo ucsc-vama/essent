@@ -3,6 +3,8 @@ package essent
 import firrtl._
 import firrtl.ir._
 
+import essent.Extract._
+
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.util.Random
 
@@ -123,5 +125,48 @@ class Graph {
       }}}
       stepBFS(nextFrontier, depths)
     }
+  }
+
+  def inputReuse(nodeName: String) = {
+    inNeigh(nameToID(nodeName)).map{ outNeigh(_).size }.foldLeft(0)(_ + _)
+  }
+
+  def crawlBack(id: Seq[Int], isReg: ArrayBuffer[Boolean], marked: BitSet): Seq[Int] = {
+    val q = new scala.collection.mutable.Queue[Int]
+    val result = new scala.collection.mutable.ArrayBuffer[Int]
+    q ++= id
+    while (!q.isEmpty) {
+      val currId = q.dequeue
+      if (!isReg(currId) && !marked(currId)) {
+        marked(currId) = true
+        if (outNeigh(currId) forall { consumer => marked(consumer) }) {
+          result += currId
+          q ++= inNeigh(currId)
+        }
+      }
+    }
+    result.toSeq
+  }
+
+  def grabIDs(e: Expression): Seq[Int] = e match {
+    case l: Literal => Seq()
+    case w: WRef => if (w.name.contains("[")) Seq() else Seq(nameToID(w.name))
+    case p: DoPrim => p.args flatMap grabIDs
+    case _ => throw new Exception(s"expression is not a WRef $e")
+  }
+
+  def findAllShadows(muxNames: Seq[String], regNames: Seq[String]) {
+    val isReg = ArrayBuffer.fill(nameToID.size)(false)
+    regNames foreach {name: String => if (nameToID.contains(name)) isReg(nameToID(name)) = true }
+    val shadowSizes = muxNames flatMap {name =>
+      val muxExpr = grabMux(nameToStmt(name))
+      val muxNameID = nameToID(name)
+      val tShadow = crawlBack(grabIDs(muxExpr.tval), isReg, BitSet(muxNameID))
+      val fShadow = crawlBack(grabIDs(muxExpr.fval), isReg, BitSet(muxNameID))
+      Seq((tShadow.size, fShadow.size))
+    }
+    val (trueSizes, falseSizes) = shadowSizes.unzip
+    println(trueSizes.reduceLeft{_ max _})
+    println(s"${trueSizes.sum} ${falseSizes.sum}")
   }
 }
