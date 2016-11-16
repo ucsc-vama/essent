@@ -288,7 +288,8 @@ object Emitter {
   def emitStmt(s: Statement): Seq[String] = s match {
     case b: Block => b.stmts flatMap {s: Statement => emitStmt(s)}
     case d: DefNode => {
-      val lhs = genCppType(d.value.tpe) + " " + d.name
+      val lhs = if (bitWidth(d.value.tpe) > 64) d.name
+                else genCppType(d.value.tpe) + " " + d.name
       val rhs = emitExpr(d.value)
       Seq(s"$lhs = $rhs;")
     }
