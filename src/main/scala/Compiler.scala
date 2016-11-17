@@ -62,7 +62,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case p: Print => true
       case _ => false
     }}
-    (otherDeps, stopAndPrints.map {dep => dep.stmt})
+    (otherDeps, stopAndPrints)
   }
 
   def predeclareBigSigs(hyperEdges: Seq[HyperedgeDep]) = {
@@ -159,10 +159,11 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt
   }
 
-  def emitBodyWithShadows(hyperEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
-    val muxOutputNames = findMuxOutputNames(hyperEdges)
+  def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], pAndSEdges: Seq[HyperedgeDep],
+      regNames: Seq[String]) {
+    val muxOutputNames = findMuxOutputNames(bodyEdges)
     val shadowG = new Graph
-    hyperEdges foreach { he:HyperedgeDep =>
+    (bodyEdges ++ pAndSEdges) foreach { he:HyperedgeDep =>
       shadowG.addNodeWithDeps(he.name, he.deps, he.stmt)
     }
     val shadows = shadowG.findAllShadows(muxOutputNames, regNames)
@@ -174,10 +175,10 @@ class EmitCpp(writer: Writer) extends Transform {
       case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) map { (_, muxName) }
     }).toMap
     // map of name -> original deps
-    val depMap = (hyperEdges map { he => (he.name, he.deps) }).toMap
+    val depMap = (bodyEdges map { he => (he.name, he.deps) }).toMap
     // flatmap hyperedges, make mux depend on all of its shadows' dependences
     //   - also make all that depend on item in shadow depend on mux
-    val combinedHEdges = hyperEdges flatMap { he => {
+    val combinedHEdges = bodyEdges flatMap { he => {
       if (muxMap.contains(he.name)) Seq()
       else {
         val deps = if (trueMap.contains(he.name)) {
@@ -195,7 +196,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val reorderedStmts = topGraph.reorderCommands
     // map of name -> original hyperedge
-    val heMap = (hyperEdges map { he => (he.name, he) }).toMap
+    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // be careful when emitting, if mux look up shadows
     //   - build if block (with predeclared output type)
     //   - for each shadow, build graph and run topo sort
@@ -263,8 +264,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    emitBodyWithShadows(otherDeps, regNames)
-    writeLines(1, emitPrintsAndStops(printsAndStops))
+    emitBodyWithShadows(otherDeps, printsAndStops, regNames)
+    writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
   }
