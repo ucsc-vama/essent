@@ -213,34 +213,38 @@ class EmitCpp(writer: Writer) extends Transform {
       val emitted = emitStmt(stmt)
       if (emitted.head.contains("?")) {
         val muxName = emitted.head.split("=").head.trim.split(" ").last
-        val muxExpr = grabMux(stmt)
-        // declare output type - don't redeclare big sigs
-        val resultTpe = stmt match {
-          case d: DefNode => d.value.tpe
-          case c: Connect => c.loc.tpe
-          case _ => throw new Exception("Mux not in connect or defnode")
+        if ((trueMap(muxName).isEmpty) && (falseMap(muxName).isEmpty))
+          writeLines(1, emitted)
+        else {
+          val muxExpr = grabMux(stmt)
+          // declare output type - don't redeclare big sigs
+          val resultTpe = stmt match {
+            case d: DefNode => d.value.tpe
+            case c: Connect => c.loc.tpe
+            case _ => throw new Exception("Mux not in connect or defnode")
+          }
+          if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
+            writeLines(1, s"${genCppType(resultTpe)} $muxName;")
+          // if (mux cond)
+          writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")
+          // build true case and topo sort
+          val trueGraph = new Graph
+          val trueHE = trueMap(muxName) map { heMap(_) }
+          trueHE foreach {he => trueGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+          writeLines(2, trueGraph.reorderCommands flatMap emitStmt)
+          // assign mux var
+          writeLines(2, s"$muxName = ${emitExpr(muxExpr.tval)};")
+          // else
+          writeLines(1, "} else {")
+          // build false case and topo sort
+          val falseGraph = new Graph
+          val falseHE = falseMap(muxName) map { heMap(_) }
+          falseHE foreach {he => falseGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+          writeLines(2, falseGraph.reorderCommands flatMap emitStmt)
+          // assign mux var
+          writeLines(2, s"$muxName = ${emitExpr(muxExpr.fval)};")
+          writeLines(1, "}")
         }
-        if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
-          writeLines(1, s"${genCppType(resultTpe)} $muxName;")
-        // if (mux cond)
-        writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")
-        // build true case and topo sort
-        val trueGraph = new Graph
-        val trueHE = trueMap(muxName) map { heMap(_) }
-        trueHE foreach {he => trueGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
-        writeLines(2, trueGraph.reorderCommands flatMap emitStmt)
-        // assign mux var
-        writeLines(2, s"$muxName = ${emitExpr(muxExpr.tval)};")
-        // else
-        writeLines(1, "} else {")
-        // build false case and topo sort
-        val falseGraph = new Graph
-        val falseHE = falseMap(muxName) map { heMap(_) }
-        falseHE foreach {he => falseGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
-        writeLines(2, falseGraph.reorderCommands flatMap emitStmt)
-        // assign mux var
-        writeLines(2, s"$muxName = ${emitExpr(muxExpr.fval)};")
-        writeLines(1, "}")
       } else writeLines(1, emitted)
     }}
   }
