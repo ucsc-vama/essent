@@ -56,6 +56,15 @@ class EmitCpp(writer: Writer) extends Transform {
     case _ => throw new Exception(s"unexpected statement type! $s")
   }
 
+  def findDependencesMemWrite(emittedCmd: String): Seq[String] = {
+    val insideIf = "([(].*[)])".r.findAllIn(emittedCmd).toList.head.tail.init
+    val enAndMask = insideIf.split(" && ")
+    val memAndAddr = emittedCmd.split("=").head.trim.split(" ").last.init.split('[')
+    val dataName = emittedCmd.split("=").last.trim.init
+    val deps = enAndMask.toSeq ++ memAndAddr.toSeq ++ Seq(dataName)
+    deps filter { name: String => !name.startsWith("0x") }
+  }
+
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
     val (stopAndPrints, otherDeps) = deps.partition { dep => dep.stmt match {
       case s: Stop => true
@@ -160,13 +169,13 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], pAndSEdges: Seq[HyperedgeDep],
-      regNames: Seq[String]) {
+      doNotPass: Seq[String]) {
     val muxOutputNames = findMuxOutputNames(bodyEdges)
     val shadowG = new Graph
     (bodyEdges ++ pAndSEdges) foreach { he:HyperedgeDep =>
       shadowG.addNodeWithDeps(he.name, he.deps, he.stmt)
     }
-    val shadows = shadowG.findAllShadows(muxOutputNames, regNames)
+    val shadows = shadowG.findAllShadows(muxOutputNames, doNotPass)
     // map of muxName -> true shadows, map of muxName -> false shadows
     val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
     val falseMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
@@ -252,6 +261,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val bigDecs = predeclareBigSigs(otherDeps)
     val reorderedBodies = buildGraph(otherDeps).reorderCommands
+    val memDeps = ((allMemUpdates.flatten) flatMap findDependencesMemWrite).distinct
     // val totalSingleAssigns = reorderedBodies.filter{
     //   s => s.contains("=") && (s.split("=").last.trim.count(_ == ' ') == 0)
     // }.size
@@ -264,7 +274,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    emitBodyWithShadows(otherDeps, printsAndStops, regNames)
+    emitBodyWithShadows(otherDeps, printsAndStops, regNames ++ memDeps)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
