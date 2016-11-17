@@ -5,7 +5,6 @@ import java.io.Writer
 
 import essent.Emitter._
 import essent.Extract._
-import essent.Optimizer._
 
 import firrtl._
 import firrtl.Annotations._
@@ -160,6 +159,81 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt
   }
 
+  def emitBodyWithShadows(hyperEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
+    val muxOutputNames = findMuxOutputNames(hyperEdges)
+    val shadowG = new Graph
+    hyperEdges foreach { he:HyperedgeDep =>
+      shadowG.addNodeWithDeps(he.name, he.deps, he.stmt)
+    }
+    val shadows = shadowG.findAllShadows(muxOutputNames, regNames)
+    // map of muxName -> true shadows, map of muxName -> false shadows
+    val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+    val falseMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+    // map of signals in shadows -> muxName
+    val muxMap = (shadows flatMap {
+      case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) map { (_, muxName) }
+    }).toMap
+    // map of name -> original deps
+    val depMap = (hyperEdges map { he => (he.name, he.deps) }).toMap
+    // flatmap hyperedges, make mux depend on all of its shadows' dependences
+    //   - also make all that depend on item in shadow depend on mux
+    val combinedHEdges = hyperEdges flatMap { he => {
+      if (muxMap.contains(he.name)) Seq()
+      else {
+        val deps = if (trueMap.contains(he.name)) {
+          val muxExpr = grabMux(he.stmt)
+          he.deps ++ ((trueMap(he.name) ++ falseMap(he.name)) flatMap { name => depMap(name)})
+        } else he.deps
+        // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+        Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
+      }
+    }}
+    // build graph on new hyperedges and run topo sort
+    val topGraph = new Graph
+    combinedHEdges foreach { he:HyperedgeDep =>
+      topGraph.addNodeWithDeps(he.name, he.deps, he.stmt)
+    }
+    val reorderedStmts = topGraph.reorderCommands
+    // map of name -> original hyperedge
+    val heMap = (hyperEdges map { he => (he.name, he) }).toMap
+    // be careful when emitting, if mux look up shadows
+    //   - build if block (with predeclared output type)
+    //   - for each shadow, build graph and run topo sort
+    reorderedStmts map { stmt => {
+      val emitted = emitStmt(stmt)
+      if (emitted.head.contains("?")) {
+        val muxName = emitted.head.split("=").head.trim.split(" ").last
+        val muxExpr = grabMux(stmt)
+        // declare output type - don't redeclare big sigs
+        val resultTpe = stmt match {
+          case d: DefNode => d.value.tpe
+          case c: Connect => c.loc.tpe
+          case _ => throw new Exception("Mux not in connect or defnode")
+        }
+        if (bitWidth(resultTpe) < 64)
+          writeLines(1, s"${genCppType(resultTpe)} $muxName;")
+        // if (mux cond)
+        writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")
+        // build true case and topo sort
+        val trueGraph = new Graph
+        val trueHE = trueMap(muxName) map { heMap(_) }
+        trueHE foreach {he => trueGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+        writeLines(2, trueGraph.reorderCommands flatMap emitStmt)
+        // assign mux var
+        writeLines(2, s"$muxName = ${emitExpr(muxExpr.tval)};")
+        // else
+        writeLines(1, "} else {")
+        // build false case and topo sort
+        val falseGraph = new Graph
+        val falseHE = falseMap(muxName) map { heMap(_) }
+        falseHE foreach {he => falseGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+        writeLines(2, falseGraph.reorderCommands flatMap emitStmt)
+        // assign mux var
+        writeLines(2, s"$muxName = ${emitExpr(muxExpr.fval)};")
+        writeLines(1, "}")
+      } else writeLines(1, emitted)
+    }}
+  }
 
   def emitEval(topName: String, circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
@@ -182,7 +256,6 @@ class EmitCpp(writer: Writer) extends Transform {
     // }.size
     // println(s"Assigns: $totalSingleAssigns / ${reorderedBodies.size} (single/all)")
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
-    findShadowOpp(otherDeps, regNames)
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
@@ -190,7 +263,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    writeLines(1, reorderedBodies flatMap emitStmt)
+    emitBodyWithShadows(otherDeps, regNames)
     writeLines(1, emitPrintsAndStops(printsAndStops))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
@@ -259,7 +332,6 @@ class PrintCircuit extends Transform with SimpleRun {
     TransformResult(circuit)
   }
 }
-
 
 
 

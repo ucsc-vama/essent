@@ -1,5 +1,6 @@
 package essent
 
+import essent.Emitter._
 
 import firrtl._
 import firrtl.ir._
@@ -66,5 +67,13 @@ object Extract {
     case DefNode(_, _, m: Mux) => m
     case Connect(_, _, m: Mux) => m
     case _ => throw new Exception("not an defnode or connect")
+  }
+
+  def findMuxOutputNames(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
+    he: HyperedgeDep => he.stmt match {
+      case DefNode(_, _, Mux(_, _, _, _)) => Seq(he.name)
+      case Connect(_, _, Mux(_, _, _, _)) => Seq(he.name)
+      case _ => Seq()
+    }
   }
 }

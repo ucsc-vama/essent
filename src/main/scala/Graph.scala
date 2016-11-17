@@ -75,7 +75,7 @@ class Graph {
     (0 until nameToID.size) foreach {id: Int =>
       if (temporaryMarks(id)) {
         println(nameToStmt(idToName(id)))
-        println(id + " "  + outNeigh(id))
+        println(id + " "  + inNeigh(id))
       }
     }
   }
@@ -131,7 +131,7 @@ class Graph {
     inNeigh(nameToID(nodeName)).map{ outNeigh(_).size }.foldLeft(0)(_ + _)
   }
 
-  def crawlBack(id: Seq[Int], dontPass: ArrayBuffer[Boolean], marked: BitSet): Seq[Int] = {
+  def crawlBack(id: Seq[Int], dontPass: ArrayBuffer[Boolean], marked: BitSet) = {
     val q = new scala.collection.mutable.Queue[Int]
     val result = new scala.collection.mutable.ArrayBuffer[Int]
     q ++= id
@@ -145,7 +145,7 @@ class Graph {
         }
       }
     }
-    result.toSeq //filter { id => nameToStmt.contains(idToName(id)) }
+    (result.toSeq) filter { id => nameToStmt.contains(idToName(id)) } map idToName
   }
 
   def grabIDs(e: Expression): Seq[Int] = e match {
@@ -155,20 +155,18 @@ class Graph {
     case _ => throw new Exception(s"expression is not a WRef $e")
   }
 
-  def findAllShadows(muxNames: Seq[String], regNames: Seq[String]) {
+  def findAllShadows(muxNames: Seq[String], regNames: Seq[String]) = {
     val dontPass = ArrayBuffer.fill(nameToID.size)(false)
     (regNames ++ muxNames) foreach {
       name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
     }
-    val shadowSizes = muxNames flatMap {name =>
+    val shadows = muxNames flatMap {name =>
       val muxExpr = grabMux(nameToStmt(name))
       val muxNameID = nameToID(name)
       val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, BitSet(muxNameID))
       val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, BitSet(muxNameID))
-      Seq((tShadow.size, fShadow.size))
+      Seq((name, tShadow, fShadow))
     }
-    val (trueSizes, falseSizes) = shadowSizes.unzip
-    println(trueSizes.reduceLeft{_ max _})
-    println(s"${trueSizes.sum} ${falseSizes.sum}")
+    shadows
   }
 }
