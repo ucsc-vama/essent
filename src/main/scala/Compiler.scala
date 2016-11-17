@@ -210,7 +210,7 @@ class EmitCpp(writer: Writer) extends Transform {
           case c: Connect => c.loc.tpe
           case _ => throw new Exception("Mux not in connect or defnode")
         }
-        if (bitWidth(resultTpe) < 64)
+        if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
           writeLines(1, s"${genCppType(resultTpe)} $muxName;")
         // if (mux cond)
         writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")

@@ -131,10 +131,19 @@ class Graph {
     inNeigh(nameToID(nodeName)).map{ outNeigh(_).size }.foldLeft(0)(_ + _)
   }
 
-  def crawlBack(id: Seq[Int], dontPass: ArrayBuffer[Boolean], marked: BitSet) = {
+  def crawlBack(ids: Seq[Int], dontPass: ArrayBuffer[Boolean], muxNameID: Int) = {
     val q = new scala.collection.mutable.Queue[Int]
     val result = new scala.collection.mutable.ArrayBuffer[Int]
-    q ++= id
+    val marked = new BitSet()
+    ids foreach { id =>
+      if (!dontPass(id) && (outNeigh(id) forall {
+        consumer => marked(consumer) || consumer == muxNameID
+      })) {
+        result += id
+        marked(id) = true
+        q ++= inNeigh(id)
+      }
+    }
     while (!q.isEmpty) {
       val currId = q.dequeue
       if (!dontPass(currId) && !marked(currId)) {
@@ -163,8 +172,9 @@ class Graph {
     val shadows = muxNames flatMap {name =>
       val muxExpr = grabMux(nameToStmt(name))
       val muxNameID = nameToID(name)
-      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, BitSet(muxNameID))
-      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, BitSet(muxNameID))
+      // FUTURE: check to make sure not equal
+      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxNameID)
+      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, muxNameID)
       Seq((name, tShadow, fShadow))
     }
     shadows
