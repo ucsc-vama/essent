@@ -166,7 +166,7 @@ class Graph {
 
   def findAllShadows(muxNames: Seq[String], dontPassSigs: Seq[String]) = {
     val dontPass = ArrayBuffer.fill(nameToID.size)(false)
-    (dontPassSigs ++ muxNames) foreach {
+    dontPassSigs foreach {
       name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
     }
     val shadows = muxNames flatMap {name =>
