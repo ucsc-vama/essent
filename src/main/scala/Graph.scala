@@ -179,7 +179,7 @@ class Graph {
     }
     val tShadowSum = (shadows map {st => st._2.size}).sum
     val fShadowSum = (shadows map {st => st._3.size}).sum
-    println(s"Shadow sizes: $tShadowSum $fShadowSum")
+    // println(s"Shadow sizes: $tShadowSum $fShadowSum")
     shadows
   }
 }

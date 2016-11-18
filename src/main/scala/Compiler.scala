@@ -169,65 +169,56 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
-    val muxOutputNames = findMuxOutputNames(bodyEdges)
-    val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
-    // map of muxName -> true shadows, map of muxName -> false shadows
-    val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
-    val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
-    // set of signals in shadows
-    val shadowedSigs = (shadows flatMap {
-      case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
-    // map of name -> original hyperedge
-    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
-    // top level edges (filter out shadows) & make muxes depend on shadow inputs
-    val topLevelHE = bodyEdges flatMap { he => {
-      if (shadowedSigs.contains(he.name)) Seq()
-      else {
-        val deps = if (!trueShadows.contains(he.name)) he.deps
-        else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
-          name => heMap(name).deps
-        })
-        // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
-        Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
-      }
-    }}
-    // build graph on new hyperedges and run topo sort
-    val reorderedStmts = buildGraph(topLevelHE).reorderCommands
-    // be careful when emitting, if mux look up shadows
-    //   - build if block (with predeclared output type)
-    //   - for each shadow, build graph and run topo sort
-    reorderedStmts map { stmt => {
-      val emitted = emitStmt(stmt)
-      if (emitted.head.contains("?")) {
-        val muxName = emitted.head.split("=").head.trim.split(" ").last
-        if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
-          writeLines(indentLevel, emitted)
+    if (!bodyEdges.isEmpty) {
+      val muxOutputNames = findMuxOutputNames(bodyEdges)
+      val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
+      // map of muxName -> true shadows, map of muxName -> false shadows
+      val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+      val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+      // set of signals in shadows
+      val shadowedSigs = (shadows flatMap {
+        case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
+      // map of name -> original hyperedge
+      val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+      // top level edges (filter out shadows) & make muxes depend on shadow inputs
+      val topLevelHE = bodyEdges flatMap { he => {
+        if (shadowedSigs.contains(he.name)) Seq()
         else {
-          val muxExpr = grabMux(stmt)
-          // declare output type - don't redeclare big sigs
-          val resultTpe = findResultType(stmt)
-          if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
-            writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
-          // if (mux cond)
-          writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
-          // build true case and topo sort
-          val trueHE = trueShadows(muxName) map { heMap(_) }
-          val trueGraph = buildGraph(trueHE)
-          writeLines(indentLevel + 1, trueGraph.reorderCommands flatMap emitStmt)
-          // assign mux var
-          writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.tval)};")
-          // else
-          writeLines(indentLevel, "} else {")
-          // build false case and topo sort
-          val falseHE = falseShadows(muxName) map { heMap(_) }
-          val falseGraph = buildGraph(falseHE)
-          writeLines(indentLevel + 1, falseGraph.reorderCommands flatMap emitStmt)
-          // assign mux var
-          writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.fval)};")
-          writeLines(indentLevel, "}")
+          val deps = if (!trueShadows.contains(he.name)) he.deps
+          else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
+            name => heMap(name).deps
+          })
+          // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+          Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
         }
-      } else writeLines(indentLevel, emitted)
-    }}
+      }}
+      // build graph on new hyperedges and run topo sort
+      val reorderedStmts = buildGraph(topLevelHE).reorderCommands
+      reorderedStmts map { stmt => {
+        val emitted = emitStmt(stmt)
+        if (emitted.head.contains("?")) {
+          val muxName = emitted.head.split("=").head.trim.split(" ").last
+          if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
+            writeLines(indentLevel, emitted)
+          else {
+            val muxExpr = grabMux(stmt)
+            // declare output type - don't redeclare big sigs
+            val resultTpe = findResultType(stmt)
+            if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
+              writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
+            writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
+            val trueHE = trueShadows(muxName) map { heMap(_) }
+            writeBody(indentLevel + 1, trueHE, doNotShadow)
+            writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.tval)};")
+            writeLines(indentLevel, "} else {")
+            val falseHE = falseShadows(muxName) map { heMap(_) }
+            writeBody(indentLevel + 1, falseHE, doNotShadow)
+            writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.fval)};")
+            writeLines(indentLevel, "}")
+          }
+        } else writeLines(indentLevel, emitted)
+      }}
+    }
   }
 
   def emitEval(topName: String, circuit: Circuit) = {
