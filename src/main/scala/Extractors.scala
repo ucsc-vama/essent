@@ -76,4 +76,10 @@ object Extract {
       case _ => Seq()
     }
   }
+
+  def findResultType(stmt: Statement) = stmt match {
+    case d: DefNode => d.value.tpe
+    case c: Connect => c.loc.tpe
+    case _ => throw new Exception("not a connect or defnode")
+  }
 }

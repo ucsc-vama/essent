@@ -168,37 +168,30 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt
   }
 
-  def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], doNotPass: Seq[String]) {
+  def writeBody(bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
     val muxOutputNames = findMuxOutputNames(bodyEdges)
-    val shadowG = buildGraph(bodyEdges)
-    val shadows = shadowG.findAllShadows(muxOutputNames, doNotPass)
+    val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
     // map of muxName -> true shadows, map of muxName -> false shadows
     val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
     val falseMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
-    // map of signals in shadows -> muxName
-    val muxMap = (shadows flatMap {
-      case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) map { (_, muxName) }
-    }).toMap
-    // map of name -> original deps
-    val depMap = (bodyEdges map { he => (he.name, he.deps) }).toMap
-    // flatmap hyperedges, make mux depend on all of its shadows' dependences
-    //   - also make all that depend on item in shadow depend on mux
-    val combinedHEdges = bodyEdges flatMap { he => {
-      if (muxMap.contains(he.name)) Seq()
+    // set of signals in shadows
+    val shadowedSigs = (shadows flatMap {
+      case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
+    // map of name -> original hyperedge
+    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+    // top level edges (filter out shadows) & make muxes depend on shadow inputs
+    val topLevelHE = bodyEdges flatMap { he => {
+      if (shadowedSigs.contains(he.name)) Seq()
       else {
-        val deps = if (trueMap.contains(he.name)) {
-          val muxExpr = grabMux(he.stmt)
-          he.deps ++ ((trueMap(he.name) ++ falseMap(he.name)) flatMap { name => depMap(name)})
-        } else he.deps
+        val deps = if (!trueMap.contains(he.name)) he.deps
+        else he.deps ++
+          ((trueMap(he.name) ++ falseMap(he.name)) flatMap { name => heMap(name).deps })
         // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
         Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
       }
     }}
     // build graph on new hyperedges and run topo sort
-    val topGraph = buildGraph(combinedHEdges)
-    val reorderedStmts = topGraph.reorderCommands
-    // map of name -> original hyperedge
-    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+    val reorderedStmts = buildGraph(topLevelHE).reorderCommands
     // be careful when emitting, if mux look up shadows
     //   - build if block (with predeclared output type)
     //   - for each shadow, build graph and run topo sort
@@ -211,11 +204,7 @@ class EmitCpp(writer: Writer) extends Transform {
         else {
           val muxExpr = grabMux(stmt)
           // declare output type - don't redeclare big sigs
-          val resultTpe = stmt match {
-            case d: DefNode => d.value.tpe
-            case c: Connect => c.loc.tpe
-            case _ => throw new Exception("Mux not in connect or defnode")
-          }
+          val resultTpe = findResultType(stmt)
           if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
             writeLines(1, s"${genCppType(resultTpe)} $muxName;")
           // if (mux cond)
@@ -265,7 +254,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    emitBodyWithShadows(otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    writeBody(otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
