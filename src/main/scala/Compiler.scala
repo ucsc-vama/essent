@@ -171,10 +171,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], pAndSEdges: Seq[HyperedgeDep],
       doNotPass: Seq[String]) {
     val muxOutputNames = findMuxOutputNames(bodyEdges)
-    val shadowG = new Graph
-    (bodyEdges ++ pAndSEdges) foreach { he:HyperedgeDep =>
-      shadowG.addNodeWithDeps(he.name, he.deps, he.stmt)
-    }
+    val shadowG = buildGraph(bodyEdges ++ pAndSEdges)
     val shadows = shadowG.findAllShadows(muxOutputNames, doNotPass)
     // map of muxName -> true shadows, map of muxName -> false shadows
     val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
@@ -199,10 +196,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }}
     // build graph on new hyperedges and run topo sort
-    val topGraph = new Graph
-    combinedHEdges foreach { he:HyperedgeDep =>
-      topGraph.addNodeWithDeps(he.name, he.deps, he.stmt)
-    }
+    val topGraph = buildGraph(combinedHEdges)
     val reorderedStmts = topGraph.reorderCommands
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
@@ -228,18 +222,16 @@ class EmitCpp(writer: Writer) extends Transform {
           // if (mux cond)
           writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")
           // build true case and topo sort
-          val trueGraph = new Graph
           val trueHE = trueMap(muxName) map { heMap(_) }
-          trueHE foreach {he => trueGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+          val trueGraph = buildGraph(trueHE)
           writeLines(2, trueGraph.reorderCommands flatMap emitStmt)
           // assign mux var
           writeLines(2, s"$muxName = ${emitExpr(muxExpr.tval)};")
           // else
           writeLines(1, "} else {")
           // build false case and topo sort
-          val falseGraph = new Graph
           val falseHE = falseMap(muxName) map { heMap(_) }
-          falseHE foreach {he => falseGraph.addNodeWithDeps(he.name, he.deps, he.stmt)}
+          val falseGraph = buildGraph(falseHE)
           writeLines(2, falseGraph.reorderCommands flatMap emitStmt)
           // assign mux var
           writeLines(2, s"$muxName = ${emitExpr(muxExpr.fval)};")
