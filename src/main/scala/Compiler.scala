@@ -168,12 +168,12 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt
   }
 
-  def writeBody(bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
+  def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
     val muxOutputNames = findMuxOutputNames(bodyEdges)
     val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
     // map of muxName -> true shadows, map of muxName -> false shadows
-    val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
-    val falseMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+    val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+    val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
     // set of signals in shadows
     val shadowedSigs = (shadows flatMap {
       case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
@@ -183,9 +183,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val topLevelHE = bodyEdges flatMap { he => {
       if (shadowedSigs.contains(he.name)) Seq()
       else {
-        val deps = if (!trueMap.contains(he.name)) he.deps
-        else he.deps ++
-          ((trueMap(he.name) ++ falseMap(he.name)) flatMap { name => heMap(name).deps })
+        val deps = if (!trueShadows.contains(he.name)) he.deps
+        else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
+          name => heMap(name).deps
+        })
         // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
         Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
       }
@@ -199,33 +200,33 @@ class EmitCpp(writer: Writer) extends Transform {
       val emitted = emitStmt(stmt)
       if (emitted.head.contains("?")) {
         val muxName = emitted.head.split("=").head.trim.split(" ").last
-        if ((trueMap(muxName).isEmpty) && (falseMap(muxName).isEmpty))
-          writeLines(1, emitted)
+        if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
+          writeLines(indentLevel, emitted)
         else {
           val muxExpr = grabMux(stmt)
           // declare output type - don't redeclare big sigs
           val resultTpe = findResultType(stmt)
           if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
-            writeLines(1, s"${genCppType(resultTpe)} $muxName;")
+            writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
           // if (mux cond)
-          writeLines(1, s"if (${emitExpr(muxExpr.cond)}) {")
+          writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
           // build true case and topo sort
-          val trueHE = trueMap(muxName) map { heMap(_) }
+          val trueHE = trueShadows(muxName) map { heMap(_) }
           val trueGraph = buildGraph(trueHE)
-          writeLines(2, trueGraph.reorderCommands flatMap emitStmt)
+          writeLines(indentLevel + 1, trueGraph.reorderCommands flatMap emitStmt)
           // assign mux var
-          writeLines(2, s"$muxName = ${emitExpr(muxExpr.tval)};")
+          writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.tval)};")
           // else
-          writeLines(1, "} else {")
+          writeLines(indentLevel, "} else {")
           // build false case and topo sort
-          val falseHE = falseMap(muxName) map { heMap(_) }
+          val falseHE = falseShadows(muxName) map { heMap(_) }
           val falseGraph = buildGraph(falseHE)
-          writeLines(2, falseGraph.reorderCommands flatMap emitStmt)
+          writeLines(indentLevel + 1, falseGraph.reorderCommands flatMap emitStmt)
           // assign mux var
-          writeLines(2, s"$muxName = ${emitExpr(muxExpr.fval)};")
-          writeLines(1, "}")
+          writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.fval)};")
+          writeLines(indentLevel, "}")
         }
-      } else writeLines(1, emitted)
+      } else writeLines(indentLevel, emitted)
     }}
   }
 
@@ -254,7 +255,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    writeBody(otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
