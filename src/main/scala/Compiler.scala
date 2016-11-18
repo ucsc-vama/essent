@@ -168,10 +168,9 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt
   }
 
-  def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], pAndSEdges: Seq[HyperedgeDep],
-      doNotPass: Seq[String]) {
+  def emitBodyWithShadows(bodyEdges: Seq[HyperedgeDep], doNotPass: Seq[String]) {
     val muxOutputNames = findMuxOutputNames(bodyEdges)
-    val shadowG = buildGraph(bodyEdges ++ pAndSEdges)
+    val shadowG = buildGraph(bodyEdges)
     val shadows = shadowG.findAllShadows(muxOutputNames, doNotPass)
     // map of muxName -> true shadows, map of muxName -> false shadows
     val trueMap = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
@@ -256,13 +255,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
     val bigDecs = predeclareBigSigs(otherDeps)
-    val reorderedBodies = buildGraph(otherDeps).reorderCommands
-    val memDeps = ((allMemUpdates.flatten) flatMap findDependencesMemWrite).distinct
-    // val totalSingleAssigns = reorderedBodies.filter{
-    //   s => s.contains("=") && (s.split("=").last.trim.count(_ == ' ') == 0)
-    // }.size
-    // println(s"Assigns: $totalSingleAssigns / ${reorderedBodies.size} (single/all)")
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
+    val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
+    val pAndSDeps = printsAndStops flatMap { he => he.deps }
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
@@ -270,7 +265,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "if (update_registers) {")
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
-    emitBodyWithShadows(otherDeps, printsAndStops, regNames ++ memDeps)
+    emitBodyWithShadows(otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")

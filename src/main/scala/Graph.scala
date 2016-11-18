@@ -164,9 +164,9 @@ class Graph {
     case _ => throw new Exception(s"expression is not a WRef $e")
   }
 
-  def findAllShadows(muxNames: Seq[String], regNames: Seq[String]) = {
+  def findAllShadows(muxNames: Seq[String], dontPassSigs: Seq[String]) = {
     val dontPass = ArrayBuffer.fill(nameToID.size)(false)
-    (regNames ++ muxNames) foreach {
+    (dontPassSigs ++ muxNames) foreach {
       name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
     }
     val shadows = muxNames flatMap {name =>
