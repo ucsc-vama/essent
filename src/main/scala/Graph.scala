@@ -177,9 +177,6 @@ class Graph {
       val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, muxNameID)
       Seq((name, tShadow, fShadow))
     }
-    val tShadowSum = (shadows map {st => st._2.size}).sum
-    val fShadowSum = (shadows map {st => st._3.size}).sum
-    // println(s"Shadow sizes: $tShadowSum $fShadowSum")
     shadows
   }
 }

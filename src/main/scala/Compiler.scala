@@ -178,6 +178,7 @@ class EmitCpp(writer: Writer) extends Transform {
       // set of signals in shadows
       val shadowedSigs = (shadows flatMap {
         case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
+      if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
       // map of name -> original hyperedge
       val heMap = (bodyEdges map { he => (he.name, he) }).toMap
       // top level edges (filter out shadows) & make muxes depend on shadow inputs
