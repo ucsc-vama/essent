@@ -222,6 +222,18 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  def writeRegActivityTracking(regNames: Seq[String]) {
+    writeLines(2, s"const uint64_t num_regs = ${regNames.size};")
+    writeLines(2, s"uint64_t transitions = 0;")
+    writeLines(2, s"cycles_ticked++;")
+    regNames foreach { regName =>
+      writeLines(2, s"if ($regName != ${regName}$$next) transitions++;")
+    }
+    writeLines(2, "total_transitions += transitions;")
+    writeLines(2, s"""printf("Transitions %llu/%llu\\n", transitions, num_regs);""")
+    writeLines(2, s"""printf("Average Active: %g\\n", (double) total_transitions/cycles_ticked);""")
+  }
+
   def emitEval(topName: String, circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
@@ -242,9 +254,12 @@ class EmitCpp(writer: Writer) extends Transform {
     val pAndSDeps = printsAndStops flatMap { he => he.deps }
     writeLines(0, bigDecs)
     writeLines(0, "")
+    // writeLines(0, "uint64_t total_transitions = 0;")
+    // writeLines(0, "uint64_t cycles_ticked = 0;")
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, resetTree)
     writeLines(1, "if (update_registers) {")
+    // writeRegActivityTracking(regNames) // note doesn't consider resets
     writeLines(2, allRegUpdates.flatten)
     writeLines(1, "}")
     writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
