@@ -95,8 +95,14 @@ class Graph {
     val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
     println(s"Max Degree: $maxDegree ($maxDegreeName)")
     println(s"Approximate Diameter: ${approxDiameter()}")
-    val numberOfSinks: Int = (inNeigh map { _.size } filter { _ == 0}).size
-    println(s"Number of Sinks: $numberOfSinks")
+  }
+
+  def printSinks(extSignals: Seq[String]) {
+    val extSet = extSignals.toSet
+    val sinkSignals = nameToID filter
+      { case (name, id) => !name.endsWith("$next") && !extSet.contains(name)} filter {
+        case (name, id) => outNeigh(id).size == 0 }
+    println(sinkSignals.size)
   }
 
   def approxDiameter(numTrials: Int = 64) = {
@@ -125,10 +131,6 @@ class Graph {
       }}}
       stepBFS(nextFrontier, depths)
     }
-  }
-
-  def inputReuse(nodeName: String) = {
-    inNeigh(nameToID(nodeName)).map{ outNeigh(_).size }.foldLeft(0)(_ + _)
   }
 
   def crawlBack(ids: Seq[Int], dontPass: ArrayBuffer[Boolean], muxNameID: Int) = {
