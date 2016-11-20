@@ -229,7 +229,8 @@ class EmitCpp(writer: Writer) extends Transform {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
-    val zoneMap = buildGraph(bodyEdges).findZones(regNames)//Map[String,Seq[String]]()
+    val allZones = buildGraph(bodyEdges).findZones(regNames)//Map[String,Seq[String]]()
+    val zoneMap = allZones filter { case (k,v) => v.size > 10}
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
     // map of zone name -> zone edges (easy) - needed?
