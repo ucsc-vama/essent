@@ -285,10 +285,10 @@ object Emitter {
     case _ => throw new Exception(s"Don't yet support $e")
   }
 
-  def emitStmt(s: Statement): Seq[String] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => emitStmt(s)}
+  def emitStmt(doNotDec: Set[String])(s: Statement): Seq[String] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => emitStmt(doNotDec)(s)}
     case d: DefNode => {
-      val lhs = if (bitWidth(d.value.tpe) > 64) d.name
+      val lhs = if ((bitWidth(d.value.tpe) > 64) || doNotDec.contains(d.name)) d.name
                 else genCppType(d.value.tpe) + " " + d.name
       val rhs = emitExpr(d.value)
       Seq(s"$lhs = $rhs;")
@@ -300,19 +300,22 @@ object Emitter {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
         case firrtl.WireKind => {
-          if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+          if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
+            Seq(s"$lhs = $rhs;")
           else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
         }
         case firrtl.PortKind => {
           if (lhs.contains("$")) {
-            if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+            if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
+              Seq(s"$lhs = $rhs;")
             else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
           } else Seq(s"$lhs = $rhs;")
         }
         case firrtl.InstanceKind => {
           if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
           else {
-            if (bitWidth(c.loc.tpe) > 64) Seq(s"$lhs = $rhs;")
+            if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
+              Seq(s"$lhs = $rhs;")
             else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
           }
         }
@@ -398,6 +401,7 @@ object Emitter {
       case _ => false
     }}
     Seq("if (done_reset && update_registers) {") ++ Seq("if(verbose) {") ++
-      (prints flatMap emitStmt) ++ Seq("}") ++ (stops flatMap emitStmt) ++ Seq("}")
+      (prints flatMap emitStmt(Set())) ++ Seq("}") ++
+      (stops flatMap emitStmt(Set())) ++ Seq("}")
   }
 }

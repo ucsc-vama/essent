@@ -181,4 +181,32 @@ class Graph {
     }
     shadows
   }
+
+  def growZones(frontier: Seq[Int], zones: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    // println(s"${(zones filter {_ == -1}).size} / ${zones.size}")
+    if (frontier.isEmpty) zones
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        if ((zones(neigh) == -1) && (inNeigh(neigh) forall { zones(_) == zones(id)})) {
+          zones(neigh) = zones(id)
+          Seq(neigh)
+        } else Seq()
+      }}}
+      growZones(nextFrontier, zones)
+    }
+  }
+
+  def findZones(regNames: Seq[String]) = {
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val zones = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach { id => zones(id) = id }
+    growZones(regIDs, zones)
+    val skipUnreached = zones.zipWithIndex filter { _._1 != -1 }
+    val skipSelf = skipUnreached filter { p => p._1 != p._2 }
+    val zonesGrouped = skipSelf groupBy { _._1 }
+    val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
+    useNames
+  }
 }

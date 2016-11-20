@@ -165,7 +165,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     val allDeps = resetConnects flatMap findDependencesStmt
     val reorderedConnects = buildGraph(allDeps).reorderCommands
-    reorderedConnects flatMap emitStmt
+    reorderedConnects flatMap emitStmt(Set())
   }
 
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
@@ -196,7 +196,7 @@ class EmitCpp(writer: Writer) extends Transform {
       // build graph on new hyperedges and run topo sort
       val reorderedStmts = buildGraph(topLevelHE).reorderCommands
       reorderedStmts map { stmt => {
-        val emitted = emitStmt(stmt)
+        val emitted = emitStmt(Set())(stmt)
         if (emitted.head.contains("?")) {
           val muxName = emitted.head.split("=").head.trim.split(" ").last
           if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
@@ -220,6 +220,55 @@ class EmitCpp(writer: Writer) extends Transform {
         } else writeLines(indentLevel, emitted)
       }}
     }
+  }
+
+  def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
+                         allRegUpdates: Seq[String], resetTree: Seq[String],
+                         topName: String, otherDeps: Seq[String]) {
+    def genFlagName(regName: String) = s"ZONE_$regName".replace('.','$')
+    // map of name -> original hyperedge
+    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+    // calculate zones based on all edges
+    val zoneMap = buildGraph(bodyEdges).findZones(regNames)//Map[String,Seq[String]]()
+    // set of all nodes in zones
+    val nodesInZones = zoneMap.values.flatten.toSet
+    // map of zone name -> zone edges (easy) - needed?
+    val zoneEdges = zoneMap map {case (k,v) => (k, v map heMap)}
+    // seq of edges not in zones
+    val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
+    // set of all dependences from non-zone edges
+    val nonZoneDeps = (nonZoneEdges map { _.deps }).flatten.toSet ++ otherDeps.toSet
+    // output nodes (intersection of deps and zone nodes)
+    val zoneOutputs = nonZoneDeps.intersect(nodesInZones)
+    val doNotDec = zoneOutputs.toSet
+    // predeclare output nodes
+    val outputTypes = zoneOutputs.toSeq map {name => findResultType(heMap(name).stmt)}
+    val outputPairs = (outputTypes zip zoneOutputs).toSeq
+    val noBigs = outputPairs filter { case (tpe, name) => bitWidth(tpe) <= 64 }
+    writeLines(0, noBigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"})
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers) {")
+    writeLines(1, resetTree)
+    // predeclare zone activity flags
+    writeLines(1, (zoneMap.keys map { zoneName => s"bool ${genFlagName(zoneName)} = reset == 0;"}).toSeq)
+    // emit update checks
+    zoneMap.keys foreach { name => {
+      writeLines(1, s"if ($name != $name$$next) ${genFlagName(name)} = true;")
+    }}
+    // emit reg updates
+    writeLines(1, "if (update_registers) {")
+    writeLines(2, allRegUpdates)
+    writeLines(1, "}")
+    // emit each zone
+    zoneMap.keys foreach { zoneName => {
+      writeLines(1, s"if (${genFlagName(zoneName)}) {")
+      val zoneGraph = buildGraph(zoneEdges(zoneName))
+      writeLines(2, zoneGraph.reorderCommands flatMap emitStmt(doNotDec))
+      writeLines(1, s"}")
+    }}
+    // emit body (without redeclaring)
+    val g = buildGraph(nonZoneEdges)
+    writeLines(1, g.reorderCommands flatMap emitStmt(doNotDec))
   }
 
   def writeRegActivityTracking(regNames: Seq[String]) {
@@ -256,13 +305,15 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     // writeLines(0, "uint64_t total_transitions = 0;")
     // writeLines(0, "uint64_t cycles_ticked = 0;")
-    writeLines(0, s"void $topName::eval(bool update_registers) {")
-    writeLines(1, resetTree)
-    writeLines(1, "if (update_registers) {")
-    // writeRegActivityTracking(regNames) // note doesn't consider resets
-    writeLines(2, allRegUpdates.flatten)
-    writeLines(1, "}")
-    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    // writeLines(0, s"void $topName::eval(bool update_registers) {")
+    // writeLines(1, resetTree)
+    // writeLines(1, "if (update_registers) {")
+    // // writeRegActivityTracking(regNames) // note doesn't consider resets
+    // writeLines(2, allRegUpdates.flatten)
+    // writeLines(1, "}")
+    writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+                       topName, memDeps ++ pAndSDeps)
+    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
