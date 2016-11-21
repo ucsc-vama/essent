@@ -234,13 +234,13 @@ class EmitCpp(writer: Writer) extends Transform {
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
     // map of zone name -> zone edges (easy) - needed?
-    val zoneEdges = zoneMap map {case (k,v) => (k, v map heMap)}
+    val zoneEdges = zoneMap map {case (k,v) => (k, v filter {heMap.contains} map {heMap})}
     // seq of edges not in zones
     val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
     // set of all dependences from non-zone edges
     val nonZoneDeps = (nonZoneEdges map { _.deps }).flatten.toSet ++ otherDeps.toSet
     // output nodes (intersection of deps and zone nodes)
-    val zoneOutputs = nonZoneDeps.intersect(nodesInZones)
+    val zoneOutputs = nonZoneDeps.intersect(nodesInZones) filter {!regNames.contains(_)}
     val doNotDec = zoneOutputs.toSet
     // predeclare output nodes
     val outputTypes = zoneOutputs.toSeq map {name => findResultType(heMap(name).stmt)}

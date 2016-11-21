@@ -210,7 +210,7 @@ class Graph {
                   zones(id) = -2
     }
     growZones(regIDs, zones)
-    (0 until 3) foreach { i => {
+    (0 until 800) foreach { i => {
       val fringe = (0 until zones.size) filter { id => (zones(id) == -1) &&
                       (inNeigh(id).forall {
                         neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
