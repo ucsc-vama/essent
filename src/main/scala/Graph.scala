@@ -187,7 +187,10 @@ class Graph {
     if (frontier.isEmpty) zones
     else {
       val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
-        if ((zones(neigh) == -1) && (inNeigh(neigh) forall { zones(_) == zones(id)})) {
+        if ((zones(neigh) == -1) && (inNeigh(neigh) forall { nneigh =>
+            (zones(nneigh) == zones(id)) || (zones(nneigh) == -2)})) {
+          inNeigh(neigh) foreach {
+            nneigh => if (zones(nneigh) == -2) zones(nneigh) = zones(id)}
           zones(neigh) = zones(id)
           Seq(neigh)
         } else Seq()
@@ -201,8 +204,13 @@ class Graph {
       if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
     regIDs foreach { id => zones(id) = id }
+    (0 until zones.size) foreach {
+      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
+                nameToStmt.contains(idToName(id)))
+                  zones(id) = -2
+    }
     growZones(regIDs, zones)
-    val skipUnreached = zones.zipWithIndex filter { _._1 != -1 }
+    val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
     val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipSelf groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
