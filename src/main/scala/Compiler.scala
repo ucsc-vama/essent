@@ -253,8 +253,10 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare zone activity flags
     writeLines(1, (zoneMap.keys map { zoneName => s"bool ${genFlagName(zoneName)} = reset == 0;"}).toSeq)
     // emit update checks
-    zoneMap.keys foreach { name => {
-      writeLines(1, s"if ($name != $name$$next) ${genFlagName(name)} = true;")
+    zoneMap foreach { case (zoneName, zoneContents) => {
+      writeLines(1, s"if ($zoneName != $zoneName$$next) ${genFlagName(zoneName)} = true;")
+      zoneContents filter { name => regNames.contains(name) } foreach { name =>
+        writeLines(1, s"if ($name != $name$$next) ${genFlagName(zoneName)} = true;")}
     }}
     // emit reg updates
     writeLines(1, "if (update_registers) {")
