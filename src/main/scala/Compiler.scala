@@ -222,10 +222,11 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  def genFlagName(regName: String) = s"ZONE_$regName".replace('.','$')
+
   def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                          allRegUpdates: Seq[String], resetTree: Seq[String],
                          topName: String, otherDeps: Seq[String]) {
-    def genFlagName(regName: String) = s"ZONE_$regName".replace('.','$')
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
@@ -247,6 +248,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val outputPairs = (outputTypes zip zoneOutputs).toSeq
     val noBigs = outputPairs filter { case (tpe, name) => bitWidth(tpe) <= 64 }
     writeLines(0, noBigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"})
+    // activity tracking
+    writeLines(0, "uint64_t total_transitions = 0;")
+    writeLines(0, "uint64_t total_zones_active = 0;")
+    writeLines(0, "uint64_t cycles_ticked = 0;")
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, resetTree)
@@ -260,6 +265,8 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     // emit reg updates
     writeLines(1, "if (update_registers) {")
+    writeRegActivityTracking(regNames)
+    writeZoneActivityTracking(zoneMap.keys.toSeq)
     writeLines(2, allRegUpdates)
     writeLines(1, "}")
     // emit each zone
@@ -286,6 +293,17 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, s"""printf("Average Active: %g\\n", (double) total_transitions/cycles_ticked);""")
   }
 
+  def writeZoneActivityTracking(zoneNames: Seq[String]) {
+    writeLines(2, s"const uint64_t num_zones = ${zoneNames.size};")
+    writeLines(2, s"uint64_t zones_active = 0;")
+    zoneNames foreach { zoneName =>
+      writeLines(2, s"if (${genFlagName(zoneName)}) zones_active++;")
+    }
+    writeLines(2, s"total_zones_active += zones_active;")
+    writeLines(2, s"""printf("Zones Active %llu/%llu\\n", zones_active, num_zones);""")
+    writeLines(2, s"""printf("Average Zones: %g\\n", (double) total_zones_active/cycles_ticked);""")
+  }
+
   def emitEval(topName: String, circuit: Circuit) = {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
@@ -307,11 +325,12 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, bigDecs)
     writeLines(0, "")
     // writeLines(0, "uint64_t total_transitions = 0;")
+    // writeLines(0, "uint64_t total_zones_active = 0;")
     // writeLines(0, "uint64_t cycles_ticked = 0;")
     // writeLines(0, s"void $topName::eval(bool update_registers) {")
     // writeLines(1, resetTree)
     // writeLines(1, "if (update_registers) {")
-    // // writeRegActivityTracking(regNames) // note doesn't consider resets
+    // writeRegActivityTracking(regNames) // note doesn't consider resets
     // writeLines(2, allRegUpdates.flatten)
     // writeLines(1, "}")
     writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
