@@ -228,6 +228,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                          allRegUpdates: Seq[String], resetTree: Seq[String],
                          topName: String, otherDeps: Seq[String]) {
+    val trackActivity = false
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
@@ -250,9 +251,11 @@ class EmitCpp(writer: Writer) extends Transform {
     val noBigs = outputPairs filter { case (tpe, name) => bitWidth(tpe) <= 64 }
     writeLines(0, noBigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"})
     // activity tracking
-    writeLines(0, "uint64_t total_transitions = 0;")
-    writeLines(0, "uint64_t total_zones_active = 0;")
-    writeLines(0, "uint64_t cycles_ticked = 0;")
+    if (trackActivity) {
+      writeLines(0, "uint64_t total_transitions = 0;")
+      writeLines(0, "uint64_t total_zones_active = 0;")
+      writeLines(0, "uint64_t cycles_ticked = 0;")
+    }
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, resetTree)
@@ -266,8 +269,10 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     // emit reg updates
     writeLines(1, "if (update_registers) {")
-    writeRegActivityTracking(regNames)
-    writeZoneActivityTracking(zoneMap.keys.toSeq)
+    if (trackActivity) {
+      writeRegActivityTracking(regNames)
+      writeZoneActivityTracking(zoneMap.keys.toSeq)
+    }
     writeLines(2, allRegUpdates)
     writeLines(1, "}")
     // emit each zone
