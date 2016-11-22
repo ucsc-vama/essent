@@ -21,7 +21,8 @@ class EmitCpp(writer: Writer) extends Transform {
   // Graph Building
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
-      case w: WRef => Seq(w.name)
+      case w: WRef => {if (w.name.contains('[')) w.name.init.split('[').toSeq
+                       else Seq(w.name)}
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField => Seq(emitExpr(w))
       case p: DoPrim => p.args flatMap findDependencesExpr
@@ -256,7 +257,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"void $topName::eval(bool update_registers) {")
     writeLines(1, resetTree)
     // predeclare zone activity flags
-    writeLines(1, (zoneMap.keys map { zoneName => s"bool ${genFlagName(zoneName)} = reset == 0;"}).toSeq)
+    writeLines(1, (zoneMap.keys map { zoneName => s"bool ${genFlagName(zoneName)} = reset;"}).toSeq)
     // emit update checks
     zoneMap foreach { case (zoneName, zoneContents) => {
       writeLines(1, s"if ($zoneName != $zoneName$$next) ${genFlagName(zoneName)} = true;")
