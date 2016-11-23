@@ -169,7 +169,8 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt(Set())
   }
 
-  def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String]) {
+  def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
+      doNotDec: Set[String]) {
     if (!bodyEdges.isEmpty) {
       val muxOutputNames = findMuxOutputNames(bodyEdges)
       val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
@@ -197,7 +198,7 @@ class EmitCpp(writer: Writer) extends Transform {
       // build graph on new hyperedges and run topo sort
       val reorderedStmts = buildGraph(topLevelHE).reorderCommands
       reorderedStmts map { stmt => {
-        val emitted = emitStmt(Set())(stmt)
+        val emitted = emitStmt(doNotDec)(stmt)
         if (emitted.head.contains("?")) {
           val muxName = emitted.head.split("=").head.trim.split(" ").last
           if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
@@ -206,15 +207,16 @@ class EmitCpp(writer: Writer) extends Transform {
             val muxExpr = grabMux(stmt)
             // declare output type - don't redeclare big sigs
             val resultTpe = findResultType(stmt)
-            if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")))
+            if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")) &&
+                (!doNotDec.contains(muxName)))
               writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
             writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
             val trueHE = trueShadows(muxName) map { heMap(_) }
-            writeBody(indentLevel + 1, trueHE, doNotShadow)
+            writeBody(indentLevel + 1, trueHE, doNotShadow, doNotDec)
             writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.tval)};")
             writeLines(indentLevel, "} else {")
             val falseHE = falseShadows(muxName) map { heMap(_) }
-            writeBody(indentLevel + 1, falseHE, doNotShadow)
+            writeBody(indentLevel + 1, falseHE, doNotShadow, doNotDec)
             writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.fval)};")
             writeLines(indentLevel, "}")
           }
@@ -227,7 +229,8 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                          allRegUpdates: Seq[String], resetTree: Seq[String],
-                         topName: String, otherDeps: Seq[String]) {
+                         topName: String, otherDeps: Seq[String],
+                         doNotShadow: Seq[String]) {
     val trackActivity = false
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
@@ -278,13 +281,13 @@ class EmitCpp(writer: Writer) extends Transform {
     // emit each zone
     zoneMap.keys foreach { zoneName => {
       writeLines(1, s"if (${genFlagName(zoneName)}) {")
-      val zoneGraph = buildGraph(zoneEdges(zoneName))
-      writeLines(2, zoneGraph.reorderCommands flatMap emitStmt(doNotDec))
+      writeBody(2, zoneEdges(zoneName), doNotShadow ++ doNotDec, doNotDec)
+      // val zoneGraph = buildGraph(zoneEdges(zoneName))
+      // writeLines(2, zoneGraph.reorderCommands flatMap emitStmt(doNotDec))
       writeLines(1, s"}")
     }}
     // emit body (without redeclaring)
-    val g = buildGraph(nonZoneEdges)
-    writeLines(1, g.reorderCommands flatMap emitStmt(doNotDec))
+    writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
   def writeRegActivityTracking(regNames: Seq[String]) {
@@ -340,7 +343,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // writeLines(2, allRegUpdates.flatten)
     // writeLines(1, "}")
     writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-                       topName, memDeps ++ pAndSDeps)
+                       topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
     writeLines(1, allMemUpdates.flatten)
