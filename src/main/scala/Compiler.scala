@@ -139,7 +139,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "}")
     if (modName == topName) {
       writeLines(0, "")
-      writeLines(1, "void eval(bool update_registers);")
+      writeLines(1, "void eval(bool update_registers, bool verbose, bool done_reset);")
       writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     }
     writeLines(0, s"} $modName;")
@@ -260,7 +260,7 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(0, "uint64_t cycles_ticked = 0;")
     }
     // start emitting eval function
-    writeLines(0, s"void $topName::eval(bool update_registers) {")
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // predeclare zone activity flags
     writeLines(1, (zoneMap.keys map { zoneName => s"bool ${genFlagName(zoneName)} = reset;"}).toSeq)
