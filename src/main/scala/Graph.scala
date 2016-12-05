@@ -210,21 +210,23 @@ class Graph {
     val mergesCleaned = mergesWanted filter { !_.isEmpty }
     val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
       regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
-    val smallZoneRemaining = numRegsInZones.values exists { _ < 8 }
-    if (!mergesCleaned.isEmpty && smallZoneRemaining) {
+    if (!mergesCleaned.isEmpty) {
       def mergedSize(mergeReq: Seq[Int]) = (mergeReq map numRegsInZones).sum
       val zonesToMerge = mergesCleaned.reduceLeft{ (p1,p2) =>
         if (mergedSize(p1) < mergedSize(p2)) p1 else p2
       }
-      println(s"Zone sizes ${(zonesToMerge map numRegsInZones).mkString("+")}")
-      zonesToMerge foreach {zone => println(idToName(zone)) }
-      val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
-      (0 until zones.size) foreach { id =>
-        if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
-      val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
-      growZones(newFront, zones)
-      println(s"distinct: ${zones.distinct.size}")
-      mergeZones(zones, regIDsSet)
+      val newSize = zonesToMerge.map{numRegsInZones(_)}.sum
+      if (newSize < 10) {
+        println(s"Zone sizes ${(zonesToMerge map numRegsInZones).mkString("+")}")
+        zonesToMerge foreach {zone => println(idToName(zone)) }
+        val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
+        (0 until zones.size) foreach { id =>
+          if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
+        val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
+        growZones(newFront, zones)
+        println(s"distinct: ${zones.distinct.size}")
+        mergeZones(zones, regIDsSet)
+      }
     }
   }
 
