@@ -235,7 +235,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
-    val allZones = buildGraph(bodyEdges).findZones(regNames)//Map[String,Seq[String]]()
+    val allZones = buildGraph(bodyEdges).findZones(regNames)
     val zoneMap = allZones filter { case (k,v) => v.size > 10}
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
@@ -333,15 +333,6 @@ class EmitCpp(writer: Writer) extends Transform {
     val pAndSDeps = printsAndStops flatMap { he => he.deps }
     writeLines(0, bigDecs)
     writeLines(0, "")
-    // writeLines(0, "uint64_t total_transitions = 0;")
-    // writeLines(0, "uint64_t total_zones_active = 0;")
-    // writeLines(0, "uint64_t cycles_ticked = 0;")
-    // writeLines(0, s"void $topName::eval(bool update_registers) {")
-    // writeLines(1, resetTree)
-    // writeLines(1, "if (update_registers) {")
-    // writeRegActivityTracking(regNames) // note doesn't consider resets
-    // writeLines(2, allRegUpdates.flatten)
-    // writeLines(1, "}")
     writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
                        topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
