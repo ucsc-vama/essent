@@ -328,10 +328,10 @@ object Emitter {
       val replacements = formatters zip argWidths map { case(format, width) =>
         if (format == "%h") {
           val printWidth = math.ceil((width/4).toDouble).toInt
-          (format, s"%0${printWidth}llx")
+          (format, s"""%0${printWidth}" PRIx64 """")
         } else {
           val printWidth = math.ceil(math.log10((1l<<width.toInt).toDouble)).toInt
-          (format, s"%${printWidth}llu")
+          (format, s"""%${printWidth}" PRIu64 """")
         }
       }
       val formatString = replacements.foldLeft(p.string.serialize){
