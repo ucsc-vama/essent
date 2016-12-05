@@ -67,12 +67,16 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
-    val (stopAndPrints, otherDeps) = deps.partition { dep => dep.stmt match {
+    val (printsAndStops, otherDeps) = deps.partition { dep => dep.stmt match {
+      case p: Print => true
       case s: Stop => true
+      case _ => false
+    }}
+    val (prints, stops) = printsAndStops partition { dep => dep.stmt match {
       case p: Print => true
       case _ => false
     }}
-    (otherDeps, stopAndPrints)
+    (otherDeps, prints, stops)
   }
 
   def predeclareBigSigs(hyperEdges: Seq[HyperedgeDep]) = {
@@ -271,13 +275,15 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(1, s"if ($name != $name$$next) ${genFlagName(zoneName)} = true;")}
     }}
     // emit reg updates
-    writeLines(1, "if (update_registers) {")
-    if (trackActivity) {
-      writeRegActivityTracking(regNames)
-      writeZoneActivityTracking(zoneMap.keys.toSeq)
+    if (!allRegUpdates.isEmpty || trackActivity) {
+      writeLines(1, "if (update_registers) {")
+      if (trackActivity) {
+        writeRegActivityTracking(regNames)
+        writeZoneActivityTracking(zoneMap.keys.toSeq)
+      }
+      writeLines(2, allRegUpdates)
+      writeLines(1, "}")
     }
-    writeLines(2, allRegUpdates)
-    writeLines(1, "}")
     // emit each zone
     zoneMap.keys foreach { zoneName => {
       writeLines(1, s"if (${genFlagName(zoneName)}) {")
@@ -326,17 +332,27 @@ class EmitCpp(writer: Writer) extends Transform {
     val resetTree = buildResetTree(allInstances)
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
-    val (otherDeps, printsAndStops) = separatePrintsAndStops(allDeps)
+    val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val bigDecs = predeclareBigSigs(otherDeps)
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
     val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
-    val pAndSDeps = printsAndStops flatMap { he => he.deps }
+    val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     writeLines(0, bigDecs)
     writeLines(0, "")
     writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
                        topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    writeLines(1, emitPrintsAndStops(printsAndStops.map {dep => dep.stmt}))
+    // val (prints, stops) = emitPrintsAndStops(printsAndStops.map {dep => dep.stmt})
+    if (!prints.isEmpty || !stops.isEmpty) {
+      writeLines(1, "if (done_reset && update_registers) {")
+      if (!prints.isEmpty) {
+        writeLines(2, "if(verbose) {")
+        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(2, "}")
+      }
+      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+      writeLines(1, "}")
+    }
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
   }
