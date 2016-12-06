@@ -342,7 +342,6 @@ class EmitCpp(writer: Writer) extends Transform {
     writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
                        topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    // val (prints, stops) = emitPrintsAndStops(printsAndStops.map {dep => dep.stmt})
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
