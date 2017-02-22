@@ -348,6 +348,12 @@ class EmitCpp(writer: Writer) extends Transform {
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
+    // emit reg updates
+    if (!allRegUpdates.isEmpty) {
+      writeLines(1, "if (update_registers) {")
+      writeLines(2, allRegUpdates.flatten)
+      writeLines(1, "}")
+    }
     // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
     //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
