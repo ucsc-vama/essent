@@ -173,6 +173,12 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt(Set())
   }
 
+  def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep]) {
+    // Simplified body, no mux shadowing
+    val reorderedStmts = buildGraph(bodyEdges).reorderCommands
+    reorderedStmts foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+  }
+
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String]) {
     if (!bodyEdges.isEmpty) {
@@ -344,7 +350,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, resetTree)
     // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
     //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    writeBodySimple(1, otherDeps)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
