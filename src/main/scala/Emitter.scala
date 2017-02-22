@@ -18,12 +18,14 @@ object Emitter {
   // Declaration Methods
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => {
-      if (w <= 64) "uint64_t"
-      else "mpz_class"
+      s"UInt<$w>"
+      // if (w <= 64) "uint64_t"
+      // else "mpz_class"
     }
     case SIntType(IntWidth(w)) => {
-      if (w <= 64) "int64_t"
-      else "mpz_class"
+      "SInt<$w>"
+      // if (w <= 64) "int64_t"
+      // else "mpz_class"
     }
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
@@ -122,23 +124,25 @@ object Emitter {
 
   def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = {
-      val width = bitWidth(tpe).toInt
-      if (width > 64)
-        s"""$name = mpz_class("${BigInt(width,Random).toString(16)}",16);"""
-      else if (width > 32) s"$name = rand();"
-      else tpe match {
-        case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
-        case SIntType(_) => {
-          val shamt = 32 - width
-          s"$name = (rand() << $shamt) >> $shamt;"
-        }
-      }
+      s"$name.rand_init();"
+      // val width = bitWidth(tpe).toInt
+      // if (width > 64)
+      //   s"""$name = mpz_class("${BigInt(width,Random).toString(16)}",16);"""
+      // else if (width > 32) s"$name = rand();"
+      // else tpe match {
+      //   case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
+      //   case SIntType(_) => {
+      //     val shamt = 32 - width
+      //     s"$name = (rand() << $shamt) >> $shamt;"
+      //   }
+      // }
     }
     val regInits = registers map {
       r: DefRegister => initVal(r.name + "$next", r.tpe)
     }
     val memInits = memories map { m: DefMemory => {
-      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = rand() & ${genMask(m.dataType)};"
+      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"
+      // s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = rand() & ${genMask(m.dataType)};"
     }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()

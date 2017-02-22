@@ -349,7 +349,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // emit reg updates
-    if (!allRegUpdates.isEmpty) {
+    if (!allRegUpdates.flatten.isEmpty) {
       writeLines(1, "if (update_registers) {")
       writeLines(2, allRegUpdates.flatten)
       writeLines(1, "}")
@@ -381,7 +381,9 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
-    writeLines(0, "#include <gmpxx.h>")
+    writeLines(0, "#include <uint.h>")
+    writeLines(0, "#include <sint.h>")
+    // writeLines(0, "#include <gmpxx.h>")
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)
