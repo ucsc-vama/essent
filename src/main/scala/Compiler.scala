@@ -339,9 +339,12 @@ class EmitCpp(writer: Writer) extends Transform {
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     writeLines(0, bigDecs)
     writeLines(0, "")
-    writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-                       topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, resetTree)
+    // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+    //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
