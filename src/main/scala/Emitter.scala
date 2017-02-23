@@ -173,7 +173,7 @@ object Emitter {
       // else u.value.toString(10)
       if (bitWidth(u.tpe) <= 64) s"SInt<${bitWidth(u.tpe)}>(${u.value.toString(10)})"
       else if (u.value >= 0) s"""SInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
-      else s"""-SInt<${bitWidth(u.tpe)}>("0x${(-u.value).toString(16)}")"""
+      else s"""(-SInt<${bitWidth(u.tpe)}>("0x${(-u.value).toString(16)}")).tail<1>()"""
     }
     case m: Mux => {
       val condName = emitExpr(m.cond)
