@@ -23,7 +23,7 @@ object Emitter {
       // else "mpz_class"
     }
     case SIntType(IntWidth(w)) => {
-      "SInt<$w>"
+      s"SInt<$w>"
       // if (w <= 64) "int64_t"
       // else "mpz_class"
     }
@@ -115,10 +115,10 @@ object Emitter {
     val resetName = emitExpr(r.reset)
     val resetVal = r.init match {
       case l: Literal => emitExpr(r.init)
-      case _ => if (resetName != "0x0")
+      case _ => if (resetName != "UInt<1>(0x0)")
         throw new Exception("register reset isn't a literal " + r.init)
     }
-    if (resetName == "0x0") s"$regName = $regName$$next;"
+    if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
     else s"$regName = $resetName ? $resetVal : $regName$$next;"
   }
 
