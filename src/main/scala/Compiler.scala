@@ -21,7 +21,7 @@ class EmitCpp(writer: Writer) extends Transform {
   // Graph Building
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
-      case w: WRef => {if (w.name.contains('[')) w.name.init.split('[').toSeq
+      case w: WRef => {if (w.name.contains('[')) w.name.init.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)""",""))
                        else Seq(w.name)}
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField => Seq(emitExpr(w))
@@ -60,10 +60,10 @@ class EmitCpp(writer: Writer) extends Transform {
   def findDependencesMemWrite(emittedCmd: String): Seq[String] = {
     val insideIf = "([(].*[)])".r.findAllIn(emittedCmd).toList.head.tail.init
     val enAndMask = insideIf.split(" && ")
-    val memAndAddr = emittedCmd.split("=").head.trim.split(" ").last.init.split('[')
+    val memAndAddr = emittedCmd.split("=").head.trim.split(" ").last.init.split('[').map(_.replaceFirst(""".as_single_word\(\)""",""))
     val dataName = emittedCmd.split("=").last.trim.init
     val deps = enAndMask.toSeq ++ memAndAddr.toSeq ++ Seq(dataName)
-    deps filter { name: String => !name.startsWith("0x") }
+    deps filter { name: String => !name.startsWith("UInt<1>(0x") }
   }
 
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
