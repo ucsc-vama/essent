@@ -40,11 +40,12 @@ object HarnessGenerator {
         if (p.name == "reset") signalNames += "&" + p.name
         else {
           val width = bitWidth(p.tpe)
-          val sigName = if (width > 64) s"&${p.name}, $width"
-            else p.tpe match {
-              case UIntType(_) => s"&${p.name}"
-              case SIntType(_) => s"reinterpret_cast<uint64_t*>(&${p.name})"
-            }
+          val sigName = s"&${p.name}"
+            // if (width > 64) s"&${p.name}, $width"
+            // else p.tpe match {
+            //   case UIntType(_) => s"&${p.name}"
+            //   case SIntType(_) => s"reinterpret_cast<uint64_t*>(&${p.name})"
+            // }
           p.direction match {
             case Input => inputNames += sigName
             case Output => outputNames += sigName

@@ -339,11 +339,11 @@ class EmitCpp(writer: Writer) extends Transform {
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
-    val bigDecs = predeclareBigSigs(otherDeps)
+    // val bigDecs = predeclareBigSigs(otherDeps)
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
     val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
-    writeLines(0, bigDecs)
+    // writeLines(0, bigDecs)
     writeLines(0, "")
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
