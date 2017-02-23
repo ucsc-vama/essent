@@ -195,7 +195,11 @@ object Emitter {
         //     argNames map {name => s"fromUInt($name)"}
         //   else argNames
         // possiblyCast mkString(" * ")
-        argNames mkString(" * ")
+        val mulStr = argNames mkString(" * ")
+        if (bitWidth(p.tpe) != (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe))) {
+          val delta = (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe)) - bitWidth(p.tpe)
+          s"($mulStr).tail<$delta>()"
+        } else mulStr
       }
       case Div => p.args map emitExpr mkString(" / ")
       case Rem => p.args map emitExpr mkString(" % ")
