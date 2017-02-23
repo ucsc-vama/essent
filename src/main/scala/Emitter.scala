@@ -183,9 +183,9 @@ object Emitter {
     case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExpr mkString(" + ")
-      case Addw => s"${p.args(0)}.addw(${p.args(1)})}" //p.args map emitExpr mkString(" + ")
+      case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})" //p.args map emitExpr mkString(" + ")
       case Sub => p.args map emitExpr mkString(" - ")
-      case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})}" // p.args map emitExpr mkString(" - ")
+      case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})" // p.args map emitExpr mkString(" - ")
       case Mul => {
         val argNames = p.args map emitExpr
         // val possiblyCast =
