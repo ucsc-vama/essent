@@ -26,7 +26,7 @@ object InferAddw extends Pass {
     case b: Block => b.stmts flatMap findAddSigs
     case DefNode(_, name: String, primE: DoPrim) => primE.op match { 
       case Add => Seq((name, primE copy (tpe = oneNarrower(primE.tpe))))
-      case Sub => Seq((name, primE copy (tpe = oneNarrower(primE.tpe))))
+      // case Sub => Seq((name, primE copy (tpe = oneNarrower(primE.tpe))))
       case _ => Seq()
     }
     case _ => Seq()
@@ -72,7 +72,7 @@ object InferAddw extends Pass {
   def convertExpToW(primE: DoPrim): DoPrim = {
     val newOp = primE.op match {
       case Add => Addw
-      case Sub => Subw
+      // case Sub => Subw
     }
     primE copy (op = newOp)
   }
@@ -89,10 +89,10 @@ object InferAddw extends Pass {
           if (addsToRemove.contains(nodeName)) EmptyStmt
           else s
         }
-        case Sub => {
-          if (addsToRemove.contains(nodeName)) EmptyStmt
-          else s
-        }
+        // case Sub => {
+        //   if (addsToRemove.contains(nodeName)) EmptyStmt
+        //   else s
+        // }
         case _ => s
       }
       case _ => s
