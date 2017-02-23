@@ -401,7 +401,7 @@ object Emitter {
         val wrAddrNameRep = renames.getOrElse(wrAddrName, wrAddrName)
         val wrDataNameRep = renames.getOrElse(wrDataName, wrDataName)
         val wrMaskNameRep = renames.getOrElse(wrMaskName, wrMaskName)
-        s"if ($wrEnNameRep && $wrMaskNameRep) $prefix${m.name}[$wrAddrNameRep] = $wrDataNameRep;"
+        s"if ($wrEnNameRep && $wrMaskNameRep) $prefix${m.name}[${wrAddrNameRep}.as_single_word()] = $wrDataNameRep;"
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
@@ -410,7 +410,7 @@ object Emitter {
         val rdDataName = s"$prefix${m.name}.$readPortName.data"
         val rdAddrRep = renames.getOrElse(rdAddrName, rdAddrName)
         val rdDataRep = renames.getOrElse(rdDataName, rdDataName)
-        (rdDataRep, s"$prefix${m.name}[$rdAddrRep]")
+        (rdDataRep, s"$prefix${m.name}[${rdAddrRep}.as_single_word()]")
       }
     }}
     val readMappings = readOutputs.toMap
