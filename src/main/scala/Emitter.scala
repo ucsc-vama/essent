@@ -349,6 +349,7 @@ object Emitter {
     case p: Print => {
       val formatters = "(%h)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
       val argWidths = p.args map {e: Expression => bitWidth(e.tpe)}
+      if (!(argWidths forall { _ <= 64 })) throw new Exception(s"Can't print wide signals")
       val replacements = formatters zip argWidths map { case(format, width) =>
         if (format == "%h") {
           val printWidth = math.ceil((width/4).toDouble).toInt
@@ -361,7 +362,8 @@ object Emitter {
       val formatString = replacements.foldLeft(p.string.serialize){
         case (str, (searchFor, replaceWith)) => str.replaceFirst(searchFor, replaceWith)
       }
-      val printfArgs = Seq(s""""$formatString"""") ++ (p.args map emitExpr)
+      val printfArgs = Seq(s""""$formatString"""") ++
+                        (p.args map {arg => s"${emitExpr(arg)}.as_single_word()"})
       Seq(s"if (${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => Seq(s"if (${emitExpr(st.en)}) exit(${st.ret});")
