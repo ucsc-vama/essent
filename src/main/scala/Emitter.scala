@@ -165,7 +165,7 @@ object Emitter {
     case u: UIntLiteral => {
       // if (bitWidth(u.tpe) > 64) s"""mpz_class("${u.value.toString(10)}",10)"""
       // else "0x" + u.value.toString(16)
-      if (bitWidth(u.tpe) > 64) s"""UInt<${bitWidth(u.tpe)}>("${u.value.toString(16)}")"""
+      if (bitWidth(u.tpe) > 64) s"""UInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
       else s"UInt<${bitWidth(u.tpe)}>(0x${u.value.toString(16)})"
     }
     case u: SIntLiteral => {
