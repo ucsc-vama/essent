@@ -39,10 +39,6 @@ object Driver {
 
   def compileCPP(dutName: String, buildDir: String): ProcessBuilder = {
     Seq("g++", "-O3", "-std=c++11", "-Icsrc/", s"-I$buildDir", s"-I../big-sig",
-      s"$buildDir/$dutName-harness.cc", "-o", s"$buildDir/$dutName",
-      "-lgmpxx", "-lgmp")
-    // Seq("g++", "-O3", "-std=c++11", "-Icsrc/", s"-I$buildDir",
-    //   s"$buildDir/$dutName-harness.cc", "-o", s"$buildDir/$dutName",
-    //   "-lgmpxx", "-lgmp")
+      s"$buildDir/$dutName-harness.cc", "-o", s"$buildDir/$dutName")
   }
 }

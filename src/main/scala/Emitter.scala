@@ -17,16 +17,8 @@ object Emitter {
 
   // Declaration Methods
   def genCppType(tpe: Type) = tpe match {
-    case UIntType(IntWidth(w)) => {
-      s"UInt<$w>"
-      // if (w <= 64) "uint64_t"
-      // else "mpz_class"
-    }
-    case SIntType(IntWidth(w)) => {
-      s"SInt<$w>"
-      // if (w <= 64) "int64_t"
-      // else "mpz_class"
-    }
+    case UIntType(IntWidth(w)) => s"UInt<$w>"
+    case SIntType(IntWidth(w)) => s"SInt<$w>"
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
@@ -123,26 +115,12 @@ object Emitter {
   }
 
   def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
-    def initVal(name: String, tpe:Type) = {
-      s"$name.rand_init();"
-      // val width = bitWidth(tpe).toInt
-      // if (width > 64)
-      //   s"""$name = mpz_class("${BigInt(width,Random).toString(16)}",16);"""
-      // else if (width > 32) s"$name = rand();"
-      // else tpe match {
-      //   case UIntType(_) => s"$name = rand() & ${genMask(tpe)};"
-      //   case SIntType(_) => {
-      //     val shamt = 32 - width
-      //     s"$name = (rand() << $shamt) >> $shamt;"
-      //   }
-      // }
-    }
+    def initVal(name: String, tpe:Type) = s"$name.rand_init();"
     val regInits = registers map {
       r: DefRegister => initVal(r.name + "$next", r.tpe)
     }
     val memInits = memories map { m: DefMemory => {
       s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"
-      // s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = rand() & ${genMask(m.dataType)};"
     }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
@@ -163,14 +141,10 @@ object Emitter {
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => {
-      // if (bitWidth(u.tpe) > 64) s"""mpz_class("${u.value.toString(10)}",10)"""
-      // else "0x" + u.value.toString(16)
       if (bitWidth(u.tpe) > 64) s"""UInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
       else s"UInt<${bitWidth(u.tpe)}>(0x${u.value.toString(16)})"
     }
     case u: SIntLiteral => {
-      // if (bitWidth(u.tpe) > 64) s"""mpz_class("${u.value.toString(10)}",10)"""
-      // else u.value.toString(10)
       if (bitWidth(u.tpe) <= 64) s"SInt<${bitWidth(u.tpe)}>(${u.value.toString(10)})"
       else if (u.value >= 0) s"""SInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
       else s"""(-SInt<${bitWidth(u.tpe)}>("0x${(-u.value).toString(16)}")).tail<1>()"""
@@ -184,17 +158,11 @@ object Emitter {
     case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExpr mkString(" + ")
-      case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})" //p.args map emitExpr mkString(" + ")
+      case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})"
       case Sub => p.args map emitExpr mkString(" - ")
-      case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})" // p.args map emitExpr mkString(" - ")
+      case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})"
       case Mul => {
         val argNames = p.args map emitExpr
-        // val possiblyCast =
-        //   // assuming args are already same width
-        //   if ((bitWidth(p.tpe) > 64) && (bitWidth(p.args.head.tpe) <= 64))
-        //     argNames map {name => s"fromUInt($name)"}
-        //   else argNames
-        // possiblyCast mkString(" * ")
         val mulStr = argNames mkString(" * ")
         if (bitWidth(p.tpe) != (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe))) {
           val delta = (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe)) - bitWidth(p.tpe)
@@ -209,101 +177,29 @@ object Emitter {
       case Geq => p.args map emitExpr mkString(" >= ")
       case Eq => p.args map emitExpr mkString(" == ")
       case Neq => p.args map emitExpr mkString(" != ")
-      case Pad => {
-        // if ((bitWidth(p.tpe) > 64) && (bitWidth(p.args.head.tpe) <= 64))
-        //   s"fromUInt(${emitExpr(p.args.head)})"
-        // else emitExpr(p.args.head)
-        s"${emitExpr(p.args.head)}.pad<${bitWidth(p.tpe)}>()"
-      }
-      case AsUInt => {
-        s"${emitExpr(p.args.head)}.asUInt()"
-        // if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
-        // else p.args.head.tpe match {
-        //   case UIntType(_) => emitExpr(p.args.head)
-        //   case SIntType(_) => s"static_cast<uint64_t>(${emitExpr(p.args.head)}) & ${genMask(p.tpe)}"
-        // }
-      }
-      case AsSInt => {
-        s"${emitExpr(p.args.head)}.asSInt()"
-        // if (bitWidth(p.tpe) > 64) emitExpr(p.args.head)
-        // else p.args.head.tpe match {
-        //   case UIntType(_) => {
-        //     val shamt = 64 - bitWidth(p.args.head.tpe)
-        // s"((static_cast<int64_t>(${emitExpr(p.args.head)}))<<$shamt)>>$shamt"
-        //   }
-        //   case SIntType(_) => emitExpr(p.args.head)
-        // }
-      }
+      case Pad => s"${emitExpr(p.args.head)}.pad<${bitWidth(p.tpe)}>()"
+      case AsUInt => s"${emitExpr(p.args.head)}.asUInt()"
+      case AsSInt => s"${emitExpr(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
-      case Shl => //s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
-        s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>()"
-      case Shlw => //s"${emitExpr(p.args.head)} << ${p.consts.head.toInt}"
-        s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>().bits<${bitWidth(p.tpe)}-1,0>()"
+      case Shl => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>()"
+      case Shlw => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>().bits<${bitWidth(p.tpe)}-1,0>()"
       case Shr => s"${emitExpr(p.args.head)}.shr<${p.consts.head.toInt}>()"
-          // if ((bitWidth(p.tpe) <= 64) && (bitWidth(p.args(0).tpe) > 64))
-          //   s"mpz_class(${emitExpr(p.args.head)} >> ${p.consts.head.toInt}).get_ui()"
-          // else
-          //   s"${emitExpr(p.args.head)} >> ${p.consts.head.toInt}"
       case Dshl => p.args map emitExpr mkString(" << ")
-      case Dshlw => // p.args map emitExpr mkString(" << ")
-        s"(${emitExpr(p.args(0))} << ${emitExpr(p.args(1))}).bits<${bitWidth(p.tpe)}-1,0>()"
+      case Dshlw => s"(${emitExpr(p.args(0))} << ${emitExpr(p.args(1))}).bits<${bitWidth(p.tpe)}-1,0>()"
       case Dshr => p.args map emitExpr mkString(" >> ")
-      case Cvt => {
-        s"${emitExpr(p.args.head)}.cvt()"
-        // if (bitWidth(p.tpe) > 63) {
-        //   if (bitWidth(p.args.head.tpe) == 64) s"fromUInt(${emitExpr(p.args.head)})"
-        //   else emitExpr(p.args.head)
-        // } else p.args.head.tpe match {
-        //   case UIntType(_) => s"static_cast<int64_t>(${emitExpr(p.args.head)})"
-        //   case SIntType(_) => emitExpr(p.args.head)
-        // }
-      }
+      case Cvt => s"${emitExpr(p.args.head)}.cvt()"
       case Neg => s"-${emitExpr(p.args.head)}"
-      case Not => { s"~${emitExpr(p.args.head)}"
-        // if (bitWidth(p.tpe) > 64) s"~${emitExpr(p.args.head)}"
-        // else s"(~${emitExpr(p.args.head)}) & ${genMask(p.tpe)}"
-      }
+      case Not => s"~${emitExpr(p.args.head)}"
       case And => p.args map emitExpr mkString(" & ")
       case Or => p.args map emitExpr mkString(" | ")
       case Xor => p.args map emitExpr mkString(" ^ ")
       case Andr => throw new Exception("Andr unimplemented!")
       case Orr => throw new Exception("Orr unimplemented!")
       case Xorr => throw new Exception("Xorr unimplemented!")
-      case Cat => { s"${emitExpr(p.args(0))}.cat(${emitExpr(p.args(1))})"
-        // val shamt = bitWidth(p.args(1).tpe)
-        // if (bitWidth(p.tpe) > 64) {
-        //   val upper = if (bitWidth(p.args(0).tpe) > 64) emitExpr(p.args(0))
-        //               else s"fromUInt(${emitExpr(p.args(0))})"
-        //   val lower = if (bitWidth(p.args(1).tpe) > 64) emitExpr(p.args(1))
-        //               else s"fromUInt(${emitExpr(p.args(1))})"
-        //   s"($upper << $shamt) | $lower"
-        // } else {
-        //   val needL = p.args(0) match {
-        //     case u: UIntLiteral => "l"
-        //     case _ => ""
-        //   }
-        //   s"(${emitExpr(p.args(0))}$needL << $shamt) | ${emitExpr(p.args(1))}"
-        // }
-      }
-      case Bits => { s"${emitExpr(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
-        // val name = emitExpr(p.args.head)
-        // if (bitWidth(p.args.head.tpe) > 64) {
-        //   val internalShift = if (p.consts(1) == 0) name
-        //     else s"($name >> ${p.consts(1)})"
-        //   if (bitWidth(p.tpe) > 64) s"$internalShift & ${genMask(p.tpe)}"
-        //   else s"mpz_class($internalShift).get_ui() & ${genMask(p.tpe)}"
-        // } else {
-        //   val hi_shamt = 64 - p.consts(0).toInt - 1
-        //   val lo_shamt = p.consts(1).toInt + hi_shamt
-        //   s"($name << $hi_shamt) >> $lo_shamt"
-        // }
-      }
-      case Head => { s"${emitExpr(p.args.head)}.head<${p.consts.head.toInt}>()"
-        // val shamt = bitWidth(p.args.head.tpe) - p.consts.head.toInt
-        // s"${emitExpr(p.args.head)} >> shamt"
-      }
-      case Tail => //s"${emitExpr(p.args.head)} & ${genMask(p.tpe)}"
-        s"${emitExpr(p.args.head)}.tail<${p.consts.head.toInt}>()"
+      case Cat => s"${emitExpr(p.args(0))}.cat(${emitExpr(p.args(1))})"
+      case Bits => s"${emitExpr(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
+      case Head => s"${emitExpr(p.args.head)}.head<${p.consts.head.toInt}>()"
+      case Tail => s"${emitExpr(p.args.head)}.tail<${p.consts.head.toInt}>()"
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
@@ -313,8 +209,6 @@ object Emitter {
     case d: DefNode => {
       val lhs = if (doNotDec.contains(d.name)) d.name
                 else genCppType(d.value.tpe) + " " + d.name
-      // val lhs = if ((bitWidth(d.value.tpe) > 64) || doNotDec.contains(d.name)) d.name
-      //           else genCppType(d.value.tpe) + " " + d.name
       val rhs = emitExpr(d.value)
       Seq(s"$lhs = $rhs;")
     }
@@ -325,14 +219,12 @@ object Emitter {
         case firrtl.MemKind => Seq()
         case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
         case firrtl.WireKind => {
-          // if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
           if (doNotDec.contains(lhs))
             Seq(s"$lhs = $rhs;")
           else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
         }
         case firrtl.PortKind => {
           if (lhs.contains("$")) {
-            // if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
             if (doNotDec.contains(lhs))
               Seq(s"$lhs = $rhs;")
             else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
@@ -341,7 +233,6 @@ object Emitter {
         case firrtl.InstanceKind => {
           if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
           else {
-            // if ((bitWidth(c.loc.tpe) > 64) || doNotDec.contains(lhs))
             if (doNotDec.contains(lhs))
               Seq(s"$lhs = $rhs;")
             else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
