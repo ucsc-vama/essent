@@ -198,7 +198,7 @@ class EmitCpp(writer: Writer) extends Transform {
         if (shadowedSigs.contains(he.name)) Seq()
         else {
           val deps = if (!trueShadows.contains(he.name)) he.deps
-          else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
+                     else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
             name => heMap(name).deps
           })
           // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
@@ -215,10 +215,9 @@ class EmitCpp(writer: Writer) extends Transform {
             writeLines(indentLevel, emitted)
           else {
             val muxExpr = grabMux(stmt)
-            // declare output type - don't redeclare big sigs
+            // declare output type
             val resultTpe = findResultType(stmt)
-            if ((bitWidth(resultTpe) <= 64) && (!muxName.endsWith("$next")) &&
-                (!doNotDec.contains(muxName)))
+            if ((!muxName.endsWith("$next")) && (!doNotDec.contains(muxName)))
               writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
             writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
             val trueHE = trueShadows(muxName) map { heMap(_) }
@@ -356,8 +355,8 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
     //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
-    writeBodySimple(1, otherDeps)
+    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    // writeBodySimple(1, otherDeps)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
