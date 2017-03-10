@@ -260,8 +260,8 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare output nodes
     val outputTypes = zoneOutputs.toSeq map {name => findResultType(heMap(name).stmt)}
     val outputPairs = (outputTypes zip zoneOutputs).toSeq
-    val noBigs = outputPairs filter { case (tpe, name) => bitWidth(tpe) <= 64 }
-    writeLines(0, noBigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"})
+    val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
+    writeLines(0, preDecs)
     // activity tracking
     if (trackActivity) {
       writeLines(0, "uint64_t total_transitions = 0;")
@@ -338,24 +338,22 @@ class EmitCpp(writer: Writer) extends Transform {
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
-    // val bigDecs = predeclareBigSigs(otherDeps)
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
     val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
-    // writeLines(0, bigDecs)
     writeLines(0, "")
     // start emitting eval function
-    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    writeLines(1, resetTree)
-    // emit reg updates
-    if (!allRegUpdates.flatten.isEmpty) {
-      writeLines(1, "if (update_registers) {")
-      writeLines(2, allRegUpdates.flatten)
-      writeLines(1, "}")
-    }
-    // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-    //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
-    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    // writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    // writeLines(1, resetTree)
+    // // emit reg updates
+    // if (!allRegUpdates.flatten.isEmpty) {
+    //   writeLines(1, "if (update_registers) {")
+    //   writeLines(2, allRegUpdates.flatten)
+    //   writeLines(1, "}")
+    // }
+    writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+                       topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     // writeBodySimple(1, otherDeps)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
