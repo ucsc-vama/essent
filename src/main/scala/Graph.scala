@@ -262,6 +262,14 @@ class Graph {
     }
   }
 
+  def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
+    nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
+  }
+
+  def zoneInputs(nodesInZone: Seq[Int]): Seq[Int] = {
+    nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
+  }
+
   def scoutZones(regNames: Seq[String]) = {
     val regIDs = regNames flatMap {name =>
       if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
@@ -276,5 +284,7 @@ class Graph {
     println(regNames.size)
     println(startingSources.size)
     println(grouped.size) //map { _._2.size })
+    println(zoneInputs(Seq(34814, 34817, 34948, 34973)))
+    println(zoneOutputs(Seq(34814, 34817, 34948, 34973)))
   }
 }
