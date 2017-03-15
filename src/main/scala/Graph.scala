@@ -250,4 +250,31 @@ class Graph {
     val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
     useNames
   }
+
+  def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
+    if (frontier.isEmpty) sources
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        sources(neigh) ++= sources(id)
+        Seq(neigh)
+      }}}
+      stepBFSZone(nextFrontier.toSet, sources)
+    }
+  }
+
+  def scoutZones(regNames: Seq[String]) = {
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    // for all registers, perform BFS and mark reachable (could do in parallel)
+    val startingSources = ArrayBuffer.fill(nameToID.size)(Set[Int]())
+    regIDs foreach {regID => startingSources(regID) = Set(regID)}
+    val finalSources = stepBFSZone(regIDsSet, startingSources)
+    // set of inputs -> contained nodes
+    val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
+    // println(grouped)
+    println(regNames.size)
+    println(startingSources.size)
+    println(grouped.size) //map { _._2.size })
+  }
 }
