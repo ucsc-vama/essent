@@ -281,10 +281,16 @@ class Graph {
     // set of inputs -> contained nodes
     val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
     // println(grouped)
-    println(regNames.size)
+    // println(regNames.size)
     println(startingSources.size)
-    println(grouped.size) //map { _._2.size })
-    println(zoneInputs(Seq(34814, 34817, 34948, 34973)))
-    println(zoneOutputs(Seq(34814, 34817, 34948, 34973)))
+    println(finalSources.map(_.size).reduceLeft(_ + _))
+    println(grouped.size)
+    // println(zoneInputs(Seq(34814, 34817, 34948, 34973)))
+    // println(zoneOutputs(Seq(34814, 34817, 34948, 34973)))
+    println(finalSources.filter(_.contains(nameToID("dut.T_3641"))).size)
+    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5611"))).size)
+    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.icache.s1_pc_"))).size)
+    println(finalSources.filter(_.contains(nameToID("dut.coreplex.DebugModule_1.dbStateReg"))).size)
+    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5600"))).size)
   }
 }

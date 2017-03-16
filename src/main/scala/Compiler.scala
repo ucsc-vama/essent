@@ -173,9 +173,11 @@ class EmitCpp(writer: Writer) extends Transform {
     reorderedConnects flatMap emitStmt(Set())
   }
 
-  def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep]) {
+  def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
     // Simplified body, no mux shadowing
-    val reorderedStmts = buildGraph(bodyEdges).reorderCommands
+    val g = buildGraph(bodyEdges)
+    // g.scoutZones(regNames)
+    val reorderedStmts = g.reorderCommands
     reorderedStmts foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
   }
 
@@ -301,6 +303,29 @@ class EmitCpp(writer: Writer) extends Transform {
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
+  def decRegActivityTracking(regNames: Seq[String]) = {
+    regNames foreach { regName => {
+      val noDotsInName = regName.replace('.', '$')
+      writeLines(0, s"uint64_t $noDotsInName$$trans = 0;")
+    }}
+  }
+
+  def recRegActivityTracking(regNames: Seq[String]) = {
+    regNames foreach { regName => {
+      val noDotsInName = regName.replace('.', '$')
+      writeLines(2, s"if ($regName != ${regName}$$next) $noDotsInName$$trans++;")
+    }}
+  }
+
+  def printRegActivityTracking(regNames: Seq[String]) = {
+    writeLines(0, "void print_activity() {")
+    regNames foreach { regName => {
+      val noDotsInName = regName.replace('.', '$')
+      writeLines(1, s"""printf("$regName %llu\\n", $noDotsInName$$trans);""")
+    }}
+    writeLines(0, "}")
+  }
+
   def writeRegActivityTracking(regNames: Seq[String]) {
     writeLines(2, s"const uint64_t num_regs = ${regNames.size};")
     writeLines(2, s"uint64_t transitions = 0;")
@@ -342,19 +367,22 @@ class EmitCpp(writer: Writer) extends Transform {
     val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     writeLines(0, "")
+    decRegActivityTracking(regNames)
+    writeLines(0, "")
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // emit reg updates
     if (!allRegUpdates.flatten.isEmpty) {
       writeLines(1, "if (update_registers) {")
+      recRegActivityTracking(regNames)
       writeLines(2, allRegUpdates.flatten)
       writeLines(1, "}")
     }
     // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
     //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
-    writeBodySimple(1, otherDeps)
+    writeBodySimple(1, otherDeps, regNames)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -367,6 +395,8 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
+    writeLines(0, "")
+    printRegActivityTracking(regNames)
   }
 
 
