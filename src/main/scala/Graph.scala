@@ -285,6 +285,9 @@ class Graph {
     println(startingSources.size)
     println(finalSources.map(_.size).reduceLeft(_ + _))
     println(grouped.size)
+    // finalSources.zipWithIndex.foreach {
+    //   case (sources, id) => println(s"${idToName(id)} ${sources.size}")
+    // }
     // println(zoneInputs(Seq(34814, 34817, 34948, 34973)))
     // println(zoneOutputs(Seq(34814, 34817, 34948, 34973)))
     println(finalSources.filter(_.contains(nameToID("dut.T_3641"))).size)
