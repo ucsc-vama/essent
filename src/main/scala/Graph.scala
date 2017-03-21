@@ -262,6 +262,21 @@ class Graph {
     }
   }
 
+  def stepBFSDepth(frontier: Set[Int], depths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    if (frontier.isEmpty) depths
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        if (depths(neigh) == -1) {
+          depths(neigh) = depths(id) + 1
+          Seq(neigh)
+        } else {
+          Seq()
+        }
+      }}}
+      stepBFSDepth(nextFrontier.toSet, depths)
+    }
+  }
+
   def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
   }
@@ -282,18 +297,28 @@ class Graph {
     val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
     // println(grouped)
     // println(regNames.size)
-    println(startingSources.size)
-    println(finalSources.map(_.size).reduceLeft(_ + _))
-    println(grouped.size)
+    // println(startingSources.size)
+    // println(finalSources.map(_.size).reduceLeft(_ + _))
+    // println(grouped.size)
     // finalSources.zipWithIndex.foreach {
     //   case (sources, id) => println(s"${idToName(id)} ${sources.size}")
     // }
     // println(zoneInputs(Seq(34814, 34817, 34948, 34973)))
     // println(zoneOutputs(Seq(34814, 34817, 34948, 34973)))
-    println(finalSources.filter(_.contains(nameToID("dut.T_3641"))).size)
-    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5611"))).size)
-    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.icache.s1_pc_"))).size)
-    println(finalSources.filter(_.contains(nameToID("dut.coreplex.DebugModule_1.dbStateReg"))).size)
-    println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5600"))).size)
+    // println(finalSources.filter(_.contains(nameToID("dut.T_3641"))).size)
+    // println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5611"))).size)
+    // println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.icache.s1_pc_"))).size)
+    // println(finalSources.filter(_.contains(nameToID("dut.coreplex.DebugModule_1.dbStateReg"))).size)
+    // println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5600"))).size)
+    val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach {regID => startingDepths(regID) = 0}
+    val depths = stepBFSDepth(regIDsSet, startingDepths)
+    // val unreachable = depths.zipWithIndex filter { _._1 == -1 } map { _._2 }
+    // println(unreachable.size)
+    // unreachable foreach { id => println(idToName(id)) }
+    // depths.zipWithIndex.foreach {
+    //   case (depth, id) => println(s"${idToName(id)} $depth")
+    // }
+    println(depths reduceLeft (_ max _))
   }
 }
