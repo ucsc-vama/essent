@@ -200,13 +200,15 @@ class Graph {
   }
 
   def mergeZones(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
+    val cutoff = 10
+    // warning, cutoff set manually in Compiler.scala
     val fringe = (0 until zones.size) filter { id => (zones(id) == -1) &&
                     (inNeigh(id).forall {
                       neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
     }
     // FUTURE: maybe want to allow fringe to be -2 descendants
     println(fringe.size)
-    val mergesWanted = fringe map {id => inNeigh(id) map {zones(_)}}
+    val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
     val mergesCleaned = mergesWanted filter { !_.isEmpty }
     val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
       regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
@@ -216,7 +218,7 @@ class Graph {
         if (mergedSize(p1) < mergedSize(p2)) p1 else p2
       }
       val newSize = zonesToMerge.map{numRegsInZones(_)}.sum
-      if (newSize < 10) {
+      if (newSize < cutoff) {
         println(s"Zone sizes ${(zonesToMerge map numRegsInZones).mkString("+")}")
         zonesToMerge foreach {zone => println(idToName(zone)) }
         val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
@@ -224,7 +226,8 @@ class Graph {
           if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
         val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
         growZones(newFront, zones)
-        println(s"distinct: ${zones.distinct.size}")
+        val numZones = zones.groupBy(i => i).values.filter(_.size > cutoff).size
+        println(s"distinct: $numZones")
         mergeZones(zones, regIDsSet)
       }
     }

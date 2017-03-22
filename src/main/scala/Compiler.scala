@@ -242,7 +242,7 @@ class EmitCpp(writer: Writer) extends Transform {
                          allRegUpdates: Seq[String], resetTree: Seq[String],
                          topName: String, otherDeps: Seq[String],
                          doNotShadow: Seq[String]) {
-    val trackActivity = false
+    val trackActivity = true
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
@@ -250,6 +250,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val zoneMap = allZones filter { case (k,v) => v.size > 10}
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
+    println(s"Nodes in zones: ${nodesInZones.size}")
     // map of zone name -> zone edges (easy) - needed?
     val zoneEdges = zoneMap map {case (k,v) => (k, v filter {heMap.contains} map {heMap})}
     // seq of edges not in zones
