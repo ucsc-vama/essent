@@ -288,6 +288,16 @@ class Graph {
     nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
   }
 
+  def findCoParents(regId: Int, grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+    grouped.keys.filter(_.contains(regId)).reduceLeft(_ ++ _)
+  }
+
+  def findNumKids(regSet: Set[Int], grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+    grouped.filter{
+      case (k,v) => k.intersect(regSet).size == regSet.size
+    }.values.map(_.size).sum
+  }
+
   def scoutZones(regNames: Seq[String]) = {
     val regIDs = regNames flatMap {name =>
       if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
@@ -299,6 +309,16 @@ class Graph {
     // set of inputs -> contained nodes
     val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
     // println(grouped)
+    println(regIDs.head)
+    println(idToName(regIDs.head))
+    val coParents = findCoParents(regIDs.head, grouped)
+    println(coParents.size)
+    println(findNumKids(Set(regIDs.head),grouped))
+    // val commonRegPrefixes = regNames.groupBy{
+    //   s => if (s.contains('_')) s.slice(0,s.lastIndexOf('_')) else s
+    // }
+    // println(commonRegPrefixes)
+    // println(commonRegPrefixes.size)
     // println(regNames.size)
     // println(startingSources.size)
     // println(finalSources.map(_.size).reduceLeft(_ + _))
@@ -313,15 +333,15 @@ class Graph {
     // println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.icache.s1_pc_"))).size)
     // println(finalSources.filter(_.contains(nameToID("dut.coreplex.DebugModule_1.dbStateReg"))).size)
     // println(finalSources.filter(_.contains(nameToID("dut.coreplex.tileList_0.core.csr.T_5600"))).size)
-    val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
-    regIDs foreach {regID => startingDepths(regID) = 0}
-    val depths = stepBFSDepth(regIDsSet, startingDepths)
+    // val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+    // regIDs foreach {regID => startingDepths(regID) = 0}
+    // val depths = stepBFSDepth(regIDsSet, startingDepths)
     // val unreachable = depths.zipWithIndex filter { _._1 == -1 } map { _._2 }
     // println(unreachable.size)
     // unreachable foreach { id => println(idToName(id)) }
     // depths.zipWithIndex.foreach {
     //   case (depth, id) => println(s"${idToName(id)} $depth")
     // }
-    println(depths reduceLeft (_ max _))
+    // println(depths reduceLeft (_ max _))
   }
 }
