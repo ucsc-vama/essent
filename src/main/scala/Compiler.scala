@@ -242,11 +242,11 @@ class EmitCpp(writer: Writer) extends Transform {
                          allRegUpdates: Seq[String], resetTree: Seq[String],
                          topName: String, otherDeps: Seq[String],
                          doNotShadow: Seq[String]) {
-    val trackActivity = true
+    val trackActivity = false
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
-    val allZones = buildGraph(bodyEdges).findZones(regNames)
+    val allZones = buildGraph(bodyEdges).findZonesHmetis(regNames)
     val zoneMap = allZones filter { case (k,v) => v.size > 10}
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
@@ -380,10 +380,10 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(2, allRegUpdates.flatten)
     //   writeLines(1, "}")
     // }
-    // writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-    //                    topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+                       topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
-    writeBodySimple(1, otherDeps, regNames)
+    // writeBodySimple(1, otherDeps, regNames)
     // if (!prints.isEmpty || !stops.isEmpty) {
     //   writeLines(1, "if (done_reset && update_registers) {")
     //   if (!prints.isEmpty) {

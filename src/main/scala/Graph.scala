@@ -8,6 +8,10 @@ import essent.Extract._
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.util.Random
 
+import scala.io.Source
+import scala.sys.process._
+import java.io.{File, FileWriter}
+
 
 class Graph {
   // Vertex name (string of destination variable) -> numeric ID
@@ -298,6 +302,71 @@ class Graph {
     }.values.map(_.size).sum
   }
 
+  def writeHmetisFile(filename: String, regIDs: Seq[Int],
+                      grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+    // compressing out empty vertices from ID range, and starting at 1
+    val remappedIDs = regIDs.zipWithIndex.toMap.mapValues(_ + 1)
+    val fw = new FileWriter(new File(filename))
+    fw.write(s"${remappedIDs.size} ${grouped.size}\n")
+    grouped foreach { case (triggerSet, children) => {
+      val triggersRemapped = triggerSet.toSeq.map(remappedIDs(_))
+      fw.write(s"""${children.size} ${triggersRemapped.mkString(" ")}\n""")
+    }}
+    fw.close()
+    remappedIDs
+  }
+
+  def generateHmetisRegZones(numZones:Int, regIDs: Seq[Int],
+                      grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+    // build input for hmetis
+    val filename = "regfile.hm"
+    val remappedIDs = writeHmetisFile(filename, regIDs, grouped)
+    val metisPath = "/Users/sbeamer/Downloads/hmetis-1.5-osx-i686/shmetis"
+    val ubFactor = 10
+    // run hmetis
+    s"$metisPath regfile.hm $numZones $ubFactor".!
+    // parse hmetis output
+    val newPartIDs = Source.fromFile(s"$filename.part.$numZones").getLines.toList
+    // undo vertex ID remapping and clump register sets
+    val unmapIDs = remappedIDs.map(_.swap)
+    val partRegIDPairs = newPartIDs zip ((1 to regIDs.size) map { unmapIDs(_) })
+    val regGroups = partRegIDPairs.groupBy(_._1).mapValues(_.map(_._2)).values
+    // regGroups foreach {
+    //   group => println("\n" + group.map(idToName(_)).mkString(","))
+    // }
+    regGroups
+  }
+
+  def findZonesHmetis(regNames: Seq[String]) = {
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    // for all registers, perform BFS and mark reachable (could do in parallel)
+    val startingSources = ArrayBuffer.fill(nameToID.size)(Set[Int]())
+    regIDs foreach {regID => startingSources(regID) = Set(regID)}
+    val finalSources = stepBFSZone(regIDsSet, startingSources)
+    // set of inputs -> contained nodes
+    val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
+    val startingRegGroups = generateHmetisRegZones(400, regIDs, grouped)
+    val zones = ArrayBuffer.fill(nameToID.size)(-1)
+    startingRegGroups foreach { group => {
+      val groupID = group.min
+      group foreach { regID => zones(regID) = groupID }
+    }}
+    (0 until zones.size) foreach {
+      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
+                nameToStmt.contains(idToName(id)))
+                  zones(id) = -2
+    }
+    growZones(regIDs, zones)
+    val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
+    val skipSelf = skipUnreached filter { p => p._1 != p._2 }
+    val zonesGrouped = skipSelf groupBy { _._1 }
+    val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
+    useNames
+  }
+
   def scoutZones(regNames: Seq[String]) = {
     val regIDs = regNames flatMap {name =>
       if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
@@ -309,11 +378,11 @@ class Graph {
     // set of inputs -> contained nodes
     val grouped = finalSources.zipWithIndex.groupBy(_._1).mapValues(_.map(_._2))
     // println(grouped)
-    println(regIDs.head)
-    println(idToName(regIDs.head))
-    val coParents = findCoParents(regIDs.head, grouped)
-    println(coParents.size)
-    println(findNumKids(Set(regIDs.head),grouped))
+    // println(regIDs.head)
+    // println(idToName(regIDs.head))
+    // val coParents = findCoParents(regIDs.head, grouped)
+    // println(coParents.size)
+    // println(findNumKids(Set(regIDs.head),grouped))
     // val commonRegPrefixes = regNames.groupBy{
     //   s => if (s.contains('_')) s.slice(0,s.lastIndexOf('_')) else s
     // }
