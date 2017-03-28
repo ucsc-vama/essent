@@ -238,7 +238,7 @@ class Graph {
   }
 
   def mergeZonesML(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
-    val cutoff = 10
+    val cutoff = 2
     val fringe = (0 until zones.size) filter { id =>
                     (zones(id) == -1) &&
                     (inNeigh(id) forall { neigh => zones(neigh) != -1 } )
@@ -271,7 +271,7 @@ class Graph {
         growZones(newFront, zones)
         val numZones = zones.groupBy(i => i).values.filter(_.size > cutoff).size
         println(s"distinct: $numZones")
-        mergeZonesML(zones, regIDsSet)
+        // mergeZonesML(zones, regIDsSet)
       }
     }
   }
@@ -297,7 +297,7 @@ class Graph {
     useNames
   }
 
-  def findZonesML(regNames: Seq[String]) = {
+  def findZonesML(regNames: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val regIDs = regNames flatMap {name =>
     if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
     val regIDsSet = regIDs.toSet
@@ -321,11 +321,18 @@ class Graph {
     // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
     // println(zones.filter(_ == -2).size)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
-    val skipSelf = skipUnreached filter { p => p._1 != p._2 }
-    val zonesGrouped = skipSelf groupBy { _._1 }
+    // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
+    val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
-    val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
-    useNames
+    val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val inputNames = zoneInputs(zoneMemberIDs) map idToName
+      val memberNames = zoneMemberIDs map idToName
+      val outputNames = zoneOutputs(zoneMemberIDs) map idToName
+      (idToName(zoneID), Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+    // val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
+    // useNames
   }
 
   def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
@@ -487,4 +494,8 @@ class Graph {
     // }
     // println(depths reduceLeft (_ max _))
   }
+}
+
+object Graph {
+  case class ZoneInfo(inputs: Seq[String], members: Seq[String], outputs: Seq[String])
 }

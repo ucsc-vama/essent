@@ -246,7 +246,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     // calculate zones based on all edges
-    val allZones = buildGraph(bodyEdges).findZonesML(regNames)
+    val allZones = buildGraph(bodyEdges).findZones(regNames)
     val zoneMap = allZones filter { case (k,v) => v.size > 10}
     // set of all nodes in zones
     val nodesInZones = zoneMap.values.flatten.toSet
@@ -301,6 +301,72 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(1, s"}")
     }}
     // emit body (without redeclaring)
+    writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
+  }
+
+  def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
+                           allRegUpdates: Seq[String], resetTree: Seq[String],
+                           topName: String, otherDeps: Seq[String],
+                           doNotShadow: Seq[String]) {
+    val trackActivity = false
+    // map of name -> original hyperedge
+    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+    val regNamesSet = regNames.toSet
+
+    // calculate zones based on all edges
+    val zoneMap = buildGraph(bodyEdges).findZonesML(regNames)
+    val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
+    val nodesInZones = zoneMap.flatMap(_._2.members).toSet
+    val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+    println(s"Nodes in zones: ${nodesInZones.size}")
+
+    // predeclare output nodes
+    val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
+    val outputPairs = (outputTypes zip outputsFromZones).toSeq
+    val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
+    writeLines(0, preDecs)
+    val doNotDec = outputsFromZones.toSet
+
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, resetTree)
+    // predeclare zone activity flags
+    val inputActivityFlags = inputsToZones map genFlagName
+    writeLines(1, (inputActivityFlags map { flagName => s"bool $flagName = reset;"}).toSeq)
+
+    // emit update checks for registers
+    val regUpdateChecks = regNamesSet intersect inputsToZones map {
+      regName => s"${genFlagName(regName)} = $regName != $regName$$next;"
+    }
+    writeLines(1, regUpdateChecks.toSeq)
+
+    // emit reg updates
+    if (!allRegUpdates.isEmpty || trackActivity) {
+      writeLines(1, "if (update_registers) {")
+      writeLines(2, allRegUpdates)
+      writeLines(1, "}")
+    }
+
+    // emit each zone
+    zoneMap foreach { case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+      val sensitivityListStr = inputs map genFlagName mkString(" || ")
+      writeLines(1, s"if ($sensitivityListStr) {")
+      val noRegOutputs = (outputs.toSet diff regNamesSet).toSeq
+      val outputTypes = noRegOutputs map {name => findResultType(heMap(name).stmt)}
+      val oldOutputs = noRegOutputs zip outputTypes map {case (name, tpe) => {
+        s"${genCppType(tpe)} $name$$old = $name;"
+      }}
+      writeLines(2, oldOutputs)
+      val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
+      writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      val outputChangeDetections = noRegOutputs map {
+        name => s"${genFlagName(name)} = $name != $name$$old;"
+      }
+      writeLines(2, outputChangeDetections)
+    }}
+
+    // emit rest of body (without redeclaring)
+    val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
@@ -380,8 +446,8 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(2, allRegUpdates.flatten)
     //   writeLines(1, "}")
     // }
-    writeBodyWithZones(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-                       topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    writeBodyWithZonesML(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+                         topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     // writeBodySimple(1, otherDeps, regNames)
     // if (!prints.isEmpty || !stops.isEmpty) {
