@@ -237,6 +237,45 @@ class Graph {
     }
   }
 
+  def mergeZonesML(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
+    val cutoff = 10
+    val fringe = (0 until zones.size) filter { id =>
+                    (zones(id) == -1) &&
+                    (inNeigh(id) forall { neigh => zones(neigh) != -1 } )
+    }
+    println(fringe.size)
+    val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
+    val mergesCleaned = mergesWanted map {_ filter {_ != -2}} filter { !_.isEmpty }
+    val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
+      regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
+    // map from zone ID to seq of member ids
+    val zoneMap = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
+    // number of zone inputs as signals (registers in future)
+    val inDegreeToZone = zoneMap mapValues { zoneMembers =>
+      (zoneMembers.flatMap{ inNeigh(_) }.toSeq.distinct diff zoneMembers).size
+    }
+    if (!mergesCleaned.isEmpty) {
+      def mergedSize(mergeReq: Seq[Int]) = (mergeReq map inDegreeToZone).sum
+      // using reduce left to find smallest new merged zone
+      val zonesToMerge = mergesCleaned.reduceLeft{ (p1,p2) =>
+        if (mergedSize(p1) < mergedSize(p2)) p1 else p2
+      }
+      val newSize = zonesToMerge.map{inDegreeToZone(_)}.sum
+      if (newSize < cutoff) {
+        println(s"Zone sizes ${(zonesToMerge map inDegreeToZone).mkString("+")}")
+        zonesToMerge foreach {zone => println(idToName(zone)) }
+        val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
+        (0 until zones.size) foreach { id =>
+          if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
+        val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
+        growZones(newFront, zones)
+        val numZones = zones.groupBy(i => i).values.filter(_.size > cutoff).size
+        println(s"distinct: $numZones")
+        mergeZonesML(zones, regIDsSet)
+      }
+    }
+  }
+
   def findZones(regNames: Seq[String]) = {
     val regIDs = regNames flatMap {name =>
       if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
@@ -250,6 +289,37 @@ class Graph {
     }
     growZones(regIDs, zones)
     mergeZones(zones, regIDsSet)
+    val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
+    val skipSelf = skipUnreached filter { p => p._1 != p._2 }
+    val zonesGrouped = skipSelf groupBy { _._1 }
+    val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
+    useNames
+  }
+
+  def findZonesML(regNames: Seq[String]) = {
+    val regIDs = regNames flatMap {name =>
+    if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    val zones = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach { id => zones(id) = id }
+    (0 until zones.size) foreach {
+      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
+                nameToStmt.contains(idToName(id)))
+                  zones(id) = -2
+    }
+    growZones(regIDs, zones)
+    mergeZonesML(zones, regIDsSet)
+    // println("trying to do second layer")
+    // val newFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
+    //                   (inNeigh(id).exists {
+    //                   neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
+    // }
+    // newFront foreach { id => zones(id) = id }
+    // growZones(newFront, zones)
+    // mergeZones(zones, regIDsSet)
+    // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
+    // println(zones.filter(_ == -2).size)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
     val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipSelf groupBy { _._1 }
@@ -290,6 +360,10 @@ class Graph {
 
   def zoneInputs(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
+  }
+
+  def findZoneMembers(zoneID: Int, zones: ArrayBuffer[Int]) = {
+    zones.zipWithIndex.filter(_._1 == zoneID).map(_._2).toSeq
   }
 
   def findCoParents(regId: Int, grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
