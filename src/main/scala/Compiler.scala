@@ -363,6 +363,7 @@ class EmitCpp(writer: Writer) extends Transform {
         name => s"${genFlagName(name)} = $name != $name$$old;"
       }
       writeLines(2, outputChangeDetections)
+      writeLines(1, "}")
     }}
 
     // emit rest of body (without redeclaring)
