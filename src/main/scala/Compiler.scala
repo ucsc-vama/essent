@@ -324,7 +324,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val regNamesSet = regNames.toSet
 
     // calculate zones based on all edges
-    val zoneMap = buildGraph(bodyEdges).findZonesML(regNames)
+    val zoneMapWithSources = buildGraph(bodyEdges).findZonesML(regNames)
+    val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
@@ -381,6 +382,10 @@ class EmitCpp(writer: Writer) extends Transform {
     // reordered names
     val g = buildGraph(topLevelHE.toSeq)
     val zonesReordered = g.reorderNames
+
+    // emit zone of sources
+    val sourceZoneEdges = zoneMapWithSources("ZONE_SOURCE").members map heMap
+    writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec, doNotDec)
 
     // emit each zone
     zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {

@@ -326,7 +326,7 @@ class Graph {
     // growZones(newFront, zones)
     // mergeZones(zones, regIDsSet)
     // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
-    val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
+    val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
@@ -336,7 +336,8 @@ class Graph {
       val inputNames = zoneInputs(noSources) map idToName
       val memberNames = noSources map idToName
       val outputNames = zoneOutputs(noSources) map idToName
-      (idToName(zoneID), Graph.ZoneInfo(inputNames, memberNames, outputNames))
+      val zoneName = if (zoneID != -2) idToName(zoneID) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
   }
 
@@ -366,12 +367,19 @@ class Graph {
     }
   }
 
-  def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
+  def zoneConsumers(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
   }
 
   def zoneInputs(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
+  }
+
+  def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
+    val nodesInZoneSet = nodesInZone.toSet
+    nodesInZone filter { nodeID => outNeigh(nodeID) exists {
+      outNeigh => !nodesInZoneSet.contains(outNeigh)
+    }}
   }
 
   def findZoneMembers(zoneID: Int, zones: ArrayBuffer[Int]) = {
