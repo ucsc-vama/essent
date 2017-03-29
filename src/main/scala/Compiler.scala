@@ -358,8 +358,32 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(1, "}")
     }
 
+    // compute zone order
+    // map of name -> zone name (if in zone)
+    val nameToZoneName = zoneMap flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        outputs map { portName => (portName, zoneName) }
+    }}
+    // list of super hyperedges for zones
+    val zoneSuperEdges = zoneMap map {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        HyperedgeDep(zoneName, inputs, heMap(zoneName).stmt)
+    }}
+    // list of non-zone hyperedges
+    val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
+    // list of hyperedges with zone members replaced with zone names
+    val topLevelHE = zoneSuperEdges map { he:HyperedgeDep => {
+      val depsRenamedForZones = he.deps map {
+        depName => nameToZoneName.getOrElse(depName, depName)
+      }
+      HyperedgeDep(he.name, depsRenamedForZones, he.stmt)
+    }}
+    // reordered names
+    val g = buildGraph(topLevelHE.toSeq)
+    val zonesReordered = g.reorderNames
+
     // emit each zone
-    zoneMap foreach { case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+    zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
       val sensitivityListStr = inputs map genFlagName mkString(" || ")
       writeLines(1, s"if ($sensitivityListStr) {")
       val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
@@ -378,7 +402,6 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
 
     // emit rest of body (without redeclaring)
-    val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
