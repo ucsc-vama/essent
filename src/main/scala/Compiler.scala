@@ -21,8 +21,12 @@ class EmitCpp(writer: Writer) extends Transform {
   // Graph Building
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
-      case w: WRef => {if (w.name.contains('[')) w.name.init.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)""",""))
-                       else Seq(w.name)}
+      case w: WRef => {
+        if (w.name.contains('[')) {
+          val deps = w.name.init.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)""",""))
+          deps filter { !_.contains("Int<") } // remove literals
+        } else Seq(w.name)
+      }
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField => Seq(emitExpr(w))
       case p: DoPrim => p.args flatMap findDependencesExpr

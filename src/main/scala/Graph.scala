@@ -331,9 +331,10 @@ class Graph {
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
     val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
     smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
-      val inputNames = zoneInputs(zoneMemberIDs) map idToName
-      val memberNames = zoneMemberIDs map idToName
-      val outputNames = zoneOutputs(zoneMemberIDs) map idToName
+      val noSources = zoneMemberIDs filter { id => nameToStmt.contains(idToName(id)) }
+      val inputNames = zoneInputs(noSources) map idToName
+      val memberNames = noSources map idToName
+      val outputNames = zoneOutputs(noSources) map idToName
       (idToName(zoneID), Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
   }
