@@ -308,10 +308,12 @@ class Graph {
                 nameToStmt.contains(idToName(id)))
                   zones(id) = -2
     }
-    // growZones(regIDs, zones)
+    // growZones(regIDs, zones) to fill out -2's
     // make neighbors of registers initial zone set
     (0 until zones.size) foreach { id =>
-      if (inNeigh(id) forall { parentID => (regIDsSet.contains(parentID)) || (zones(parentID) == -2)})
+      if (!inNeigh(id).isEmpty && (inNeigh(id) forall {
+        parentID => (regIDsSet.contains(parentID)) || (zones(parentID) == -2) && (zones(id) != -2)
+      }))
         zones(id) = id
     }
     mergeZonesML(zones, regIDsSet)
