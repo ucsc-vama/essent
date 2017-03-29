@@ -188,14 +188,15 @@ class Graph {
     // println(s"${(zones filter {_ == -1}).size} / ${zones.size}")
     if (frontier.isEmpty) zones
     else {
-      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
-        if ((zones(neigh) == -1) && (inNeigh(neigh) forall { nneigh =>
-            (zones(nneigh) == zones(id)) || (zones(nneigh) == -2)})) {
-          inNeigh(neigh) foreach {
-            nneigh => if (zones(nneigh) == -2) zones(nneigh) = zones(id)}
-          zones(neigh) = zones(id)
-          Seq(neigh)
-        } else Seq()
+      val nextFrontier = frontier flatMap { id =>
+        outNeigh(id) flatMap { neigh => {
+          if ((zones(neigh) == -1) && (inNeigh(neigh) forall { nneigh =>
+                  (zones(nneigh) == zones(id)) || (zones(nneigh) == -2)})) {
+            // inNeigh(neigh) foreach {
+            //   nneigh => if (zones(nneigh) == -2) zones(nneigh) = zones(id)}
+            zones(neigh) = zones(id)
+            Seq(neigh)
+          } else Seq()
       }}}
       growZones(nextFrontier, zones)
     }
@@ -302,18 +303,19 @@ class Graph {
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
     // regIDs foreach { id => zones(id) = id }
     (0 until zones.size) foreach {
-      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
-                validNodes.contains(id))
-                  zones(id) = -2
+      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id))
+              zones(id) = -2
     }
-    // growZones(regIDs, zones) to fill out -2's
     // make neighbors of registers initial zone set
     (0 until zones.size) foreach { id =>
       if (!inNeigh(id).isEmpty && (inNeigh(id) forall {
-        parentID => (regIDsSet.contains(parentID)) || (zones(parentID) == -2) && (zones(id) != -2)
+        parentID => ((regIDsSet.contains(parentID)) || (zones(parentID) == -2)) && (zones(id) != -2)
       }))
         zones(id) = id
     }
+    val newFront = (0 until zones.size) filter { id => (zones(id) != -1) }
+    growZones(newFront, zones)
+    // growZones(regIDs, zones)
     mergeZonesML(zones, regIDsSet)
     // println("trying to do second layer")
     // val newFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
@@ -324,7 +326,6 @@ class Graph {
     // growZones(newFront, zones)
     // mergeZones(zones, regIDsSet)
     // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
-    // println(zones.filter(_ == -2).size)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
