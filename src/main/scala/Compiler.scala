@@ -355,15 +355,15 @@ class EmitCpp(writer: Writer) extends Transform {
     zoneMap foreach { case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
       val sensitivityListStr = inputs map genFlagName mkString(" || ")
       writeLines(1, s"if ($sensitivityListStr) {")
-      val noRegOutputs = (outputs.toSet diff regNamesSet).toSeq
-      val outputTypes = noRegOutputs map {name => findResultType(heMap(name).stmt)}
-      val oldOutputs = noRegOutputs zip outputTypes map {case (name, tpe) => {
+      val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
+      val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
+      val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
         s"${genCppType(tpe)} $name$$old = $name;"
       }}
       writeLines(2, oldOutputs)
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
-      val outputChangeDetections = noRegOutputs map {
+      val outputChangeDetections = outputsCleaned map {
         name => s"${genFlagName(name)} = $name != $name$$old;"
       }
       writeLines(2, outputChangeDetections)
