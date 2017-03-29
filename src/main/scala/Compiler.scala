@@ -322,6 +322,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+    println(s"Zones: ${zoneMap.size}")
     println(s"Nodes in zones: ${nodesInZones.size}")
 
     // predeclare output nodes

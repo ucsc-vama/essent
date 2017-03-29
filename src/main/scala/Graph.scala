@@ -264,7 +264,7 @@ class Graph {
                     (zones(id) == -1) &&
                     (inNeigh(id) forall { neigh => zones(neigh) != -1 } )
     }
-    println(fringe.size)
+    println(s"Finge size: ${fringe.size}")
     val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
     val mergesCleaned = mergesWanted map {_ filter {_ != -2}} filter { !_.isEmpty }
     val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
