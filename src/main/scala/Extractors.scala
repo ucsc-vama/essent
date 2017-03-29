@@ -77,6 +77,14 @@ object Extract {
     }
   }
 
+  def findMuxExpr(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
+    he: HyperedgeDep => he.stmt match {
+      case DefNode(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
+      case Connect(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
+      case _ => Seq()
+    }
+  }
+
   def findResultType(stmt: Statement) = stmt match {
     case d: DefNode => d.value.tpe
     case c: Connect => c.loc.tpe

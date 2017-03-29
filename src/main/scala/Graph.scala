@@ -5,7 +5,7 @@ import firrtl.ir._
 
 import essent.Extract._
 
-import collection.mutable.{ArrayBuffer, BitSet, HashMap}
+import collection.mutable.{ArrayBuffer, BitSet, HashMap, HashSet}
 import scala.util.Random
 
 import scala.io.Source
@@ -22,8 +22,9 @@ class Graph {
   val inNeigh = ArrayBuffer[ArrayBuffer[Int]]()
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh = ArrayBuffer[ArrayBuffer[Int]]()
-  // Vertex name -> corresponding FIRRTL statement
-  val nameToStmt = HashMap[String,Statement]()
+  // Intended vertices (did vertex ID get called with addNode)
+  val validNodes = HashSet[Int]()
+
 
   def getID(vertexName: String) = {
     if (nameToID contains vertexName) nameToID(vertexName)
@@ -43,9 +44,9 @@ class Graph {
     inNeigh(getID(dest)) += getID(source)
   }
 
-  def addNodeWithDeps(result: String, deps: Seq[String], stmt: Statement) = {
-    nameToStmt(result) = stmt
+  def addNodeWithDeps(result: String, deps: Seq[String]) = {
     val potentiallyNewDestID = getID(result)
+    validNodes += potentiallyNewDestID
     deps foreach {dep : String => addEdge(dep, result)}
   }
 
@@ -77,20 +78,17 @@ class Graph {
 
   def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
     (0 until nameToID.size) foreach {id: Int =>
-      if (temporaryMarks(id)) {
-        println(nameToStmt(idToName(id)))
-        println(id + " "  + inNeigh(id))
-      }
+      if (temporaryMarks(id))
+        println(s"${idToName(id)} $id ${inNeigh(id)}")
     }
   }
 
-  def reorderCommands() = {
-    val orderedResults = topologicalSort map idToName
-    orderedResults filter {nameToStmt.contains} map nameToStmt
+  def reorderNames() = {
+    topologicalSort filter { validNodes.contains(_) } map idToName
   }
 
   def printTopologyStats() {
-    println(s"Nodes: ${nameToStmt.size}")
+    println(s"Nodes: ${validNodes.size}")
     println(s"Referenced Nodes: ${idToName.size}")
     val allDegrees = outNeigh map { _.size }
     val totalRefs = allDegrees reduceLeft { _+_ }
@@ -160,7 +158,7 @@ class Graph {
         }
       }
     }
-    (result.toSeq) filter { id => nameToStmt.contains(idToName(id)) } map idToName
+    (result.toSeq) filter { id => validNodes.contains(id) } map idToName
   }
 
   def grabIDs(e: Expression): Seq[Int] = e match {
@@ -170,13 +168,13 @@ class Graph {
     case _ => throw new Exception(s"expression is not a WRef $e")
   }
 
-  def findAllShadows(muxNames: Seq[String], dontPassSigs: Seq[String]) = {
+  def findAllShadows(muxMap: Map[String,Mux], dontPassSigs: Seq[String]) = {
     val dontPass = ArrayBuffer.fill(nameToID.size)(false)
     dontPassSigs foreach {
       name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
     }
-    val shadows = muxNames flatMap {name =>
-      val muxExpr = grabMux(nameToStmt(name))
+    val shadows = muxMap.keys flatMap {name =>
+      val muxExpr = muxMap(name)
       val muxNameID = nameToID(name)
       // FUTURE: check to make sure not equal
       val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxNameID)
@@ -245,7 +243,7 @@ class Graph {
     regIDs foreach { id => zones(id) = id }
     (0 until zones.size) foreach {
       id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
-                nameToStmt.contains(idToName(id)))
+                validNodes.contains(id))
                   zones(id) = -2
     }
     growZones(regIDs, zones)
@@ -305,7 +303,7 @@ class Graph {
     // regIDs foreach { id => zones(id) = id }
     (0 until zones.size) foreach {
       id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
-                nameToStmt.contains(idToName(id)))
+                validNodes.contains(id))
                   zones(id) = -2
     }
     // growZones(regIDs, zones) to fill out -2's
@@ -333,7 +331,7 @@ class Graph {
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
     val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
     smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
-      val noSources = zoneMemberIDs filter { id => nameToStmt.contains(idToName(id)) }
+      val noSources = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(noSources) map idToName
       val memberNames = noSources map idToName
       val outputNames = zoneOutputs(noSources) map idToName
@@ -441,9 +439,8 @@ class Graph {
       group foreach { regID => zones(regID) = groupID }
     }}
     (0 until zones.size) foreach {
-      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) &&
-                nameToStmt.contains(idToName(id)))
-                  zones(id) = -2
+      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id))
+              zones(id) = -2
     }
     growZones(regIDs, zones)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 && p._1 != -2}

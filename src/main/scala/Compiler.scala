@@ -103,7 +103,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
     val g = new Graph
     hyperEdges foreach { he:HyperedgeDep =>
-      g.addNodeWithDeps(he.name, he.deps, he.stmt)
+      g.addNodeWithDeps(he.name, he.deps)
     }
     g
   }
@@ -173,23 +173,29 @@ class EmitCpp(writer: Writer) extends Transform {
               WRef(s"${parentName}reset", UIntType(IntWidth(1)), PortKind, MALE))
     }}
     val allDeps = resetConnects flatMap findDependencesStmt
-    val reorderedConnects = buildGraph(allDeps).reorderCommands
-    reorderedConnects flatMap emitStmt(Set())
+    val nameToStmt = (allDeps map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+    val reorderedConnectNames = buildGraph(allDeps).reorderNames
+    reorderedConnectNames map nameToStmt flatMap emitStmt(Set())
   }
 
   def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
     // Simplified body, no mux shadowing
     val g = buildGraph(bodyEdges)
-    g.scoutZones(regNames)
-    val reorderedStmts = g.reorderCommands
-    reorderedStmts foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+    // g.scoutZones(regNames)
+    val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+    g.reorderNames foreach {
+      name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
+    }
   }
 
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String]) {
     if (!bodyEdges.isEmpty) {
-      val muxOutputNames = findMuxOutputNames(bodyEdges)
-      val shadows = buildGraph(bodyEdges).findAllShadows(muxOutputNames, doNotShadow)
+      // val muxOutputNames = findMuxOutputNames(bodyEdges)
+      // name to mux expression
+      val muxMap = findMuxExpr(bodyEdges).toMap
+      val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+      val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
       // map of muxName -> true shadows, map of muxName -> false shadows
       val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
       val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
@@ -212,8 +218,8 @@ class EmitCpp(writer: Writer) extends Transform {
         }
       }}
       // build graph on new hyperedges and run topo sort
-      val reorderedStmts = buildGraph(topLevelHE).reorderCommands
-      reorderedStmts map { stmt => {
+      val reorderedNames = buildGraph(topLevelHE).reorderNames
+      reorderedNames map nameToStmt map { stmt => {
         val emitted = emitStmt(doNotDec)(stmt)
         if (emitted.head.contains("?")) {
           val muxName = emitted.head.split("=").head.trim.split(" ").last
