@@ -349,7 +349,7 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // emit update checks for registers
     val regUpdateChecks = regNamesSet intersect inputsToZones map {
-      regName => s"${genFlagName(regName)} = $regName != $regName$$next;"
+      regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
     }
     writeLines(1, regUpdateChecks.toSeq)
 
@@ -385,8 +385,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val zonesReordered = g.reorderNames
 
     // emit zone of sources
-    val sourceZoneEdges = zoneMapWithSources("ZONE_SOURCE").members map heMap
-    writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec, doNotDec)
+    if (zoneMapWithSources.contains("ZONE_SOURCE")) {
+      val sourceZoneEdges = zoneMapWithSources("ZONE_SOURCE").members map heMap
+      writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec, doNotDec)
+    }
 
     // emit each zone
     zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
