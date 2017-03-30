@@ -324,14 +324,14 @@ class EmitCpp(writer: Writer) extends Transform {
     val regNamesSet = regNames.toSet
 
     // calculate zones based on all edges
-    val zoneMapWithSources = buildGraph(bodyEdges).findZonesML(regNames, doNotShadow)
+    val g = buildGraph(bodyEdges)
+    val zoneMapWithSources = g.findZonesML(regNames, doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
+    g.analyzeZoningQuality(zoneMap)
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
-    println(s"Zones: ${zoneMap.size}")
-    println(s"Nodes in zones: ${nodesInZones.size}")
 
     // predeclare output nodes
     val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
@@ -339,6 +339,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
     writeLines(0, preDecs)
     val doNotDec = outputsFromZones.toSet
+    println(s"Output nodes: ${outputsFromZones.size}")
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
@@ -346,6 +347,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare zone activity flags
     val inputActivityFlags = inputsToZones map genFlagName
     writeLines(1, (inputActivityFlags map { flagName => s"bool $flagName = reset;"}).toSeq)
+    println(s"Activity flags: ${inputsToZones.size}")
 
     // emit update checks for registers
     val regUpdateChecks = regNamesSet intersect inputsToZones map {
@@ -381,8 +383,8 @@ class EmitCpp(writer: Writer) extends Transform {
       HyperedgeDep(he.name, depsRenamedForZones, he.stmt)
     }}
     // reordered names
-    val g = buildGraph(topLevelHE.toSeq)
-    val zonesReordered = g.reorderNames
+    val gTopLevel = buildGraph(topLevelHE.toSeq)
+    val zonesReordered = gTopLevel.reorderNames
 
     // emit zone of sources
     if (zoneMapWithSources.contains("ZONE_SOURCE")) {

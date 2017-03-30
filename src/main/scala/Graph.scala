@@ -87,12 +87,19 @@ class Graph {
     topologicalSort filter { validNodes.contains(_) } map idToName
   }
 
+  def numNodes() = validNodes.size
+
+  def numNodeRefs() = idToName.size
+
+  def allOutDegrees() = outNeigh map { _.size }
+
+  def numEdges() = allOutDegrees() reduceLeft { _+_ }
+
   def printTopologyStats() {
-    println(s"Nodes: ${validNodes.size}")
-    println(s"Referenced Nodes: ${idToName.size}")
-    val allDegrees = outNeigh map { _.size }
-    val totalRefs = allDegrees reduceLeft { _+_ }
-    println(s"Total References: $totalRefs")
+    println(s"Nodes: ${numNodes()}")
+    println(s"Referenced Nodes: ${numNodeRefs()}")
+    println(s"Total References: ${numEdges()}")
+    val allDegrees = allOutDegrees()
     val maxDegree = allDegrees reduceLeft { math.max(_,_) }
     val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
     println(s"Max Degree: $maxDegree ($maxDegreeName)")
@@ -340,6 +347,25 @@ class Graph {
       val zoneName = if (zoneID != -2) idToName(zoneID) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
+  }
+
+  def analyzeZoningQuality(zoneMap: Map[String, Graph.ZoneInfo]) {
+    println(s"Zones: ${zoneMap.size}")
+    val nodesInZones = zoneMap.flatMap(_._2.members).toSet
+    val percNodesInZones = 100d * nodesInZones.size / numNodes()
+    println(f"Nodes in zones: ${nodesInZones.size} ($percNodesInZones%2.1f%%)")
+    // Only counting edges that stay within a zone
+    val numEdgesInZones = (zoneMap.values map { case Graph.ZoneInfo(inputs, members, outputs) => {
+      val zoneNodeIDs = (members map nameToID).toSet
+      (members map nameToID map { nodeID =>
+        (outNeigh(nodeID) filter { zoneNodeIDs.contains(_) }).size }).sum
+    }}).sum
+    val percEdgesInZones = 100d * numEdgesInZones / numEdges()
+    println(f"Edges in zones: $numEdgesInZones ($percEdgesInZones%2.1f%%)")
+    val numNodesPerZone = nodesInZones.size.toDouble / zoneMap.size
+    println(f"Nodes/zone: $numNodesPerZone%.1f")
+    val numInputsPerZone = (zoneMap.values map { _.inputs.size }).sum.toDouble / zoneMap.size
+    println(f"Inputs/zone: $numInputsPerZone%.1f")
   }
 
   def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
