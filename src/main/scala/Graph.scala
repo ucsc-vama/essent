@@ -378,7 +378,7 @@ class Graph {
   def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
     val nodesInZoneSet = nodesInZone.toSet
     nodesInZone filter { nodeID => outNeigh(nodeID) exists {
-      outNeigh => !nodesInZoneSet.contains(outNeigh)
+      neigh => !nodesInZoneSet.contains(neigh)
     }}
   }
 

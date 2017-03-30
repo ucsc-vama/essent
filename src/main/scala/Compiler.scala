@@ -328,6 +328,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
+    val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
     println(s"Zones: ${zoneMap.size}")
     println(s"Nodes in zones: ${nodesInZones.size}")
@@ -371,7 +372,7 @@ class EmitCpp(writer: Writer) extends Transform {
         HyperedgeDep(zoneName, inputs, heMap(zoneName).stmt)
     }}
     // list of non-zone hyperedges
-    val nonZoneEdges = bodyEdges filter { he => !nodesInZones.contains(he.name) }
+    val nonZoneEdges = bodyEdges filter { he => !nodesInZonesWithSources.contains(he.name) }
     // list of hyperedges with zone members replaced with zone names
     val topLevelHE = zoneSuperEdges map { he:HyperedgeDep => {
       val depsRenamedForZones = he.deps map {
