@@ -265,7 +265,7 @@ class Graph {
   }
 
   def mergeZonesML(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
-    val cutoff = 2
+    val cutoff = 16
     val fringe = (0 until zones.size) filter { id =>
                     (zones(id) == -1) &&
                     (inNeigh(id) forall { neigh => zones(neigh) != -1 } )
