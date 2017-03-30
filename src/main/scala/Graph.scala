@@ -296,10 +296,11 @@ class Graph {
     }
   }
 
-  def findZonesML(regNames: Seq[String]): Map[String, Graph.ZoneInfo] = {
+  def findZonesML(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val regIDs = regNames flatMap {name =>
     if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
     val regIDsSet = regIDs.toSet
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
     // regIDs foreach { id => zones(id) = id }
     (0 until zones.size) foreach {
@@ -335,7 +336,7 @@ class Graph {
       val noSources = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(noSources) map idToName
       val memberNames = noSources map idToName
-      val outputNames = zoneOutputs(noSources) map idToName
+      val outputNames = (zoneOutputs(noSources) ++ (doNotShadowSet.intersect(noSources.toSet))).distinct map idToName
       val zoneName = if (zoneID != -2) idToName(zoneID) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}

@@ -324,7 +324,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val regNamesSet = regNames.toSet
 
     // calculate zones based on all edges
-    val zoneMapWithSources = buildGraph(bodyEdges).findZonesML(regNames)
+    val zoneMapWithSources = buildGraph(bodyEdges).findZonesML(regNames, doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
