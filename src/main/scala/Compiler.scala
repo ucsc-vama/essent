@@ -491,16 +491,16 @@ class EmitCpp(writer: Writer) extends Transform {
                          topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     // writeBodySimple(1, otherDeps, regNames)
-    // if (!prints.isEmpty || !stops.isEmpty) {
-    //   writeLines(1, "if (done_reset && update_registers) {")
-    //   if (!prints.isEmpty) {
-    //     writeLines(2, "if(verbose) {")
-    //     writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
-    //     writeLines(2, "}")
-    //   }
-    //   writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
-    //   writeLines(1, "}")
-    // }
+    if (!prints.isEmpty || !stops.isEmpty) {
+      writeLines(1, "if (done_reset && update_registers) {")
+      if (!prints.isEmpty) {
+        writeLines(2, "if(verbose) {")
+        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(2, "}")
+      }
+      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+      writeLines(1, "}")
+    }
     writeLines(1, allMemUpdates.flatten)
     writeLines(0, "}")
     writeLines(0, "")
