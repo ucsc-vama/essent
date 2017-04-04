@@ -371,15 +371,15 @@ class EmitCpp(writer: Writer) extends Transform {
     // list of super hyperedges for zones
     val zoneSuperEdges = zoneMap map {
       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
-        HyperedgeDep(zoneName, inputs, heMap(zoneName).stmt)
+        HyperedgeDep(zoneName, inputs, heMap(members.head).stmt)
     }}
     // list of non-zone hyperedges
     val nonZoneEdges = bodyEdges filter { he => !nodesInZonesWithSources.contains(he.name) }
     // list of hyperedges with zone members replaced with zone names
     val topLevelHE = zoneSuperEdges map { he:HyperedgeDep => {
-      val depsRenamedForZones = he.deps map {
+      val depsRenamedForZones = (he.deps map {
         depName => nameToZoneName.getOrElse(depName, depName)
-      }
+      }).distinct
       HyperedgeDep(he.name, depsRenamedForZones, he.stmt)
     }}
     // reordered names
@@ -395,7 +395,10 @@ class EmitCpp(writer: Writer) extends Transform {
     // emit each zone
     zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
       val sensitivityListStr = inputs map genFlagName mkString(" || ")
-      writeLines(1, s"if ($sensitivityListStr) {")
+      if (sensitivityListStr.isEmpty)
+        writeLines(1, s"{")
+      else
+        writeLines(1, s"if ($sensitivityListStr) {")
       val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
       val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
       val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
