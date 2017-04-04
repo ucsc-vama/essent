@@ -61,7 +61,8 @@ class Graph {
     val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
     val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
     def visit(vertexID: Int) {
-      if (temporaryMarks(vertexID)){
+      if (temporaryMarks(vertexID)) {
+        println(s"${idToName(vertexID)} $vertexID")
         printCycle(temporaryMarks)
         throw new Exception("There is a cycle!")
       } else if (!finalMarks(vertexID)) {
@@ -78,9 +79,19 @@ class Graph {
 
   def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
     (0 until nameToID.size) foreach {id: Int =>
-      if (temporaryMarks(id))
-        println(s"${idToName(id)} $id ${inNeigh(id)}")
+      if (temporaryMarks(id)) {
+        println(s"${idToName(id)} $id")
+        println(s"  ${inNeigh(id)}")
+        println(s"  ${outNeigh(id)}")
+      }
     }
+  }
+
+  def printNode(nodeName: String) {
+    val nodeID = nameToID(nodeName)
+    println(s"$nodeName ($nodeID)")
+    println(s"  ${inNeigh(nodeID)}")
+    println(s"  ${outNeigh(nodeID)}")
   }
 
   def reorderNames() = {
