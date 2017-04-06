@@ -62,7 +62,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def findDependencesMemWrite(emittedCmd: String): Seq[String] = {
-    val insideIf = "([(].*[)])".r.findAllIn(emittedCmd).toList.head.tail.init
+    val insideIf = "([(].*[)]) ".r.findAllIn(emittedCmd).toList.head.tail.init.init
     val enAndMask = insideIf.split(" && ")
     val memAndAddr = emittedCmd.split("=").head.trim.split(" ").last.init.split('[').map(_.replaceFirst(""".as_single_word\(\)""",""))
     val dataName = emittedCmd.split("=").last.trim.init
