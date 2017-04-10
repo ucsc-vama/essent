@@ -388,8 +388,9 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // emit zone of sources
     if (zoneMapWithSources.contains("ZONE_SOURCE")) {
-      val sourceZoneEdges = zoneMapWithSources("ZONE_SOURCE").members map heMap
-      writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
+      val sourceZoneEdges = sourceZoneInfo.members map heMap
+      writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
     }
 
     // emit each zone
