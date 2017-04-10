@@ -320,29 +320,26 @@ class Graph {
     val regIDsSet = regIDs.toSet
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
-    // regIDs foreach { id => zones(id) = id }
+    regIDs foreach { id => zones(id) = id }
     (0 until zones.size) foreach {
       id => if ((zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id))
               zones(id) = -2
     }
-    // make neighbors of registers initial zone set
-    (0 until zones.size) foreach { id =>
-      if (!inNeigh(id).isEmpty && (inNeigh(id) forall {
-        parentID => ((regIDsSet.contains(parentID)) || (zones(parentID) == -2)) && (zones(id) != -2)
-      }))
-        zones(id) = id
+    val newFront = (0 until zones.size) filter { id => (zones(id) == -1) && validNodes.contains(id) &&
+                      (inNeigh(id).forall { parent => (zones(parent) != -1) && (zones(parent) != -2) })
     }
+    newFront foreach { id => zones(id) = id }
     val startingFront = (0 until zones.size) filter { id => (zones(id) != -1) }
     growZones(startingFront, zones)
     // growZones(regIDs, zones)
-    mergeZonesML(zones, regIDsSet, Set())
-    println("trying to do second layer")
-    val frozenZones = zones.toSet
-    val newFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
-                      (inNeigh(id).forall {
-                      neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
-    }
-    newFront foreach { id => zones(id) = id }
+    mergeZonesML(zones, regIDsSet, regIDsSet)
+    // println("trying to do second layer")
+    // val frozenZones = zones.toSet
+    // val newFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
+    //                   (inNeigh(id).forall {
+    //                   neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
+    // }
+    // newFront foreach { id => zones(id) = id }
     // growZones(newFront, zones)
     // mergeZonesML(zones, regIDsSet, frozenZones)
     // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
