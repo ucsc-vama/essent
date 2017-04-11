@@ -409,7 +409,7 @@ class EmitCpp(writer: Writer) extends Transform {
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
       val outputChangeDetections = outputsCleaned map {
-        name => s"${genFlagName(name)} = $name != $name$$old;"
+        name => s"${genFlagName(name)} |= $name != $name$$old;"
       }
       writeLines(2, outputChangeDetections)
       writeLines(1, "}")

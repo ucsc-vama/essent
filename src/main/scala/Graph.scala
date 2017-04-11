@@ -350,10 +350,10 @@ class Graph {
     val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
     smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
       val noSources = zoneMemberIDs filter { id => validNodes.contains(id) }
-      val inputNames = zoneInputs(zoneMemberIDs) map idToName
+      val inputNames = zoneInputs(noSources) map idToName
       val memberNames = noSources map idToName
       val outputNames = (zoneOutputs(noSources) ++ (doNotShadowSet.intersect(noSources.toSet))).distinct map idToName
-      val zoneName = if (zoneID != -2) idToName(zoneID) else "ZONE_SOURCE"
+      val zoneName = if (zoneID != -2) idToName(noSources.head) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
   }
