@@ -349,11 +349,11 @@ class Graph {
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
     val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
     smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
-      val noSources = zoneMemberIDs filter { id => validNodes.contains(id) }
-      val inputNames = zoneInputs(noSources) map idToName
-      val memberNames = noSources map idToName
-      val outputNames = (zoneOutputs(noSources) ++ (doNotShadowSet.intersect(noSources.toSet))).distinct map idToName
-      val zoneName = if (zoneID != -2) idToName(noSources.head) else "ZONE_SOURCE"
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
   }
