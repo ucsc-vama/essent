@@ -362,6 +362,13 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(1, "}")
     }
 
+    // set input flags to true for other inputs (resets, mems, or external IOs)
+    val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
+    val otherFlagsTrue = otherFlags map {
+      flagName => s"${genFlagName(flagName)} = true;"
+    }
+    writeLines(1, otherFlagsTrue.toSeq)
+
     // compute zone order
     // map of name -> zone name (if in zone)
     val nameToZoneName = zoneMap flatMap {
