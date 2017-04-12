@@ -363,6 +363,8 @@ class EmitCpp(writer: Writer) extends Transform {
     }
 
     // set input flags to true for other inputs (resets, mems, or external IOs)
+    // FUTURE: remove. should make change detection for these inputs so consuming
+    //         zones have a chance to sleep
     val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
     val otherFlagsTrue = otherFlags map {
       flagName => s"${genFlagName(flagName)} = true;"

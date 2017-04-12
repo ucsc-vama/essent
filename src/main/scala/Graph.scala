@@ -333,20 +333,22 @@ class Graph {
     val startingFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
     growZones(startingFront, zones)
     mergeZonesML(zones, regIDsSet, regIDsSet)
-    // println("trying to do second layer")
-    // val frozenZones = zones.toSet
-    // val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
-    //                   (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
-    // }
-    // secondFront foreach { id => zones(id) = id }
-    // growZones(secondFront, zones)
-    // mergeZonesML(zones, regIDsSet, frozenZones)
-    // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
+    println("trying to do second layer")
+    val frozenZones = zones.toSet
+    val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
+                      (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
+    }
+    secondFront foreach { id => zones(id) = id }
+    growZones(secondFront, zones)
+    mergeZonesML(zones, regIDsSet, frozenZones)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
-    val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
+    // val smallZonesRemoved = zoneMap filter { _._2.size > 10 }
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
     smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
