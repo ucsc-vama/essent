@@ -321,26 +321,25 @@ class Graph {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
     regIDs foreach { id => zones(id) = id }
-    (0 until zones.size) foreach {
-      id => if ((zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id))
-              zones(id) = -2
+    val sourceZoneSeeds = (0 until zones.size) filter {
+      id => (zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id)
     }
-    val newFront = (0 until zones.size) filter { id => (zones(id) == -1) && validNodes.contains(id) &&
-                      (inNeigh(id).forall { parent => (zones(parent) != -1) && (zones(parent) != -2) })
+    sourceZoneSeeds foreach { zones(_) = -2 }
+    growZones(sourceZoneSeeds, zones)
+    val firstFront = (0 until zones.size) filter { id => (zones(id) == -1) && validNodes.contains(id) &&
+                      (inNeigh(id).forall { parent => (zones(parent) != -1) })
     }
-    newFront foreach { id => zones(id) = id }
-    val startingFront = (0 until zones.size) filter { id => (zones(id) != -1) }
+    firstFront foreach { id => zones(id) = id }
+    val startingFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
     growZones(startingFront, zones)
-    // growZones(regIDs, zones)
     mergeZonesML(zones, regIDsSet, regIDsSet)
     // println("trying to do second layer")
     // val frozenZones = zones.toSet
-    // val newFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
-    //                   (inNeigh(id).forall {
-    //                   neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
+    // val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
+    //                   (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
     // }
-    // newFront foreach { id => zones(id) = id }
-    // growZones(newFront, zones)
+    // secondFront foreach { id => zones(id) = id }
+    // growZones(secondFront, zones)
     // mergeZonesML(zones, regIDsSet, frozenZones)
     // (0 until zones.size) foreach { id => if (zones(id) == -2) println(idToName(id)) }
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
