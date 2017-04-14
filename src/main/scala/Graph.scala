@@ -433,11 +433,14 @@ class Graph {
     }.values.map(_.size).sum
   }
 
-  def writeCOOFile(filename: String) {
+  def writeCOOFile(filename: String, order: Option[Seq[String]] = None) {
+    val intOrder = if (order.isEmpty) List.range(0, outNeigh.size)
+                   else (order.get map nameToID)
+    val renameMap = intOrder.zipWithIndex.toMap
     val fw = new FileWriter(new File(filename))
     validNodes foreach { rowID => {
       outNeigh(rowID) foreach { colID => {
-        fw.write(s"$rowID $colID 1\n")
+        fw.write(s"${renameMap(rowID)} ${renameMap(colID)} 1\n")
       }}
     }}
     fw.close()
