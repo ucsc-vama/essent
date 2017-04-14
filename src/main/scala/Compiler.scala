@@ -319,6 +319,7 @@ class EmitCpp(writer: Writer) extends Transform {
                            topName: String, otherDeps: Seq[String],
                            doNotShadow: Seq[String]) {
     val trackActivity = false
+    val exportSparsity = false
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     val regNamesSet = regNames.toSet
@@ -332,6 +333,13 @@ class EmitCpp(writer: Writer) extends Transform {
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+
+    // sparsity output
+    val zoneStmtOutputOrder = scala.collection.mutable.ArrayBuffer[String]()
+    if (exportSparsity) {
+      g.writeCOOFile("rocketchip.coo")
+      g.writeCOOFile("rocketchip.topo.coo", Option(g.reorderNames.toSeq))
+    }
 
     // predeclare output nodes
     val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
@@ -400,6 +408,7 @@ class EmitCpp(writer: Writer) extends Transform {
       val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
       val sourceZoneEdges = sourceZoneInfo.members map heMap
       writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
+      if (exportSparsity) zoneStmtOutputOrder ++= buildGraph(sourceZoneEdges.toSeq).reorderNames
     }
 
     // emit each zone
@@ -422,10 +431,15 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       writeLines(2, outputChangeDetections)
       writeLines(1, "}")
+      if (exportSparsity) zoneStmtOutputOrder ++= buildGraph(zoneEdges.toSeq).reorderNames
     }}
 
     // emit rest of body (without redeclaring)
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
+    if (exportSparsity) {
+      zoneStmtOutputOrder ++= buildGraph(nonZoneEdges.toSeq).reorderNames
+      g.writeCOOFile("rocketchip.zones.coo", Option(zoneStmtOutputOrder.toSeq))
+    }
   }
 
   def decRegActivityTracking(regNames: Seq[String]) = {
