@@ -433,6 +433,16 @@ class Graph {
     }.values.map(_.size).sum
   }
 
+  def writeCOOFile(filename: String) {
+    val fw = new FileWriter(new File(filename))
+    validNodes foreach { rowID => {
+      outNeigh(rowID) foreach { colID => {
+        fw.write(s"$rowID $colID 1\n")
+      }}
+    }}
+    fw.close()
+  }
+
   def writeHmetisFile(filename: String, regIDs: Seq[Int],
                       grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
     // compressing out empty vertices from ID range, and starting at 1
