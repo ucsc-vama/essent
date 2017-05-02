@@ -446,6 +446,16 @@ class Graph {
     fw.close()
   }
 
+  def writeDegreeFile(filename: String) {
+    val fw = new FileWriter(new File(filename))
+    validNodes foreach { nodeID => {
+      val inDegree = inNeigh(nodeID).size
+      val outDegree = outNeigh(nodeID).size
+      fw.write(s"$nodeID $inDegree $outDegree\n")
+    }}
+    fw.close()
+  }
+
   def writeHmetisFile(filename: String, regIDs: Seq[Int],
                       grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
     // compressing out empty vertices from ID range, and starting at 1
