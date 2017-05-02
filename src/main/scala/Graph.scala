@@ -446,12 +446,18 @@ class Graph {
     fw.close()
   }
 
-  def writeDegreeFile(filename: String) {
+  def writeDegreeFile(regNames: Seq[String], filename: String) {
     val fw = new FileWriter(new File(filename))
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach {regID => startingDepths(regID) = 0}
+    val depths = stepBFSDepth(regIDsSet, startingDepths)
     validNodes foreach { nodeID => {
       val inDegree = inNeigh(nodeID).size
       val outDegree = outNeigh(nodeID).size
-      fw.write(s"$nodeID $inDegree $outDegree\n")
+      fw.write(s"$nodeID $inDegree $outDegree ${depths(nodeID)}\n")
     }}
     fw.close()
   }

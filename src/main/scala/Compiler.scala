@@ -181,6 +181,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
     // Simplified body, no mux shadowing
     val g = buildGraph(bodyEdges)
+    g.writeDegreeFile(regNames, "rocketchip.degrees")
     // g.scoutZones(regNames)
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     g.reorderNames foreach {
@@ -518,10 +519,10 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(2, allRegUpdates.flatten)
     //   writeLines(1, "}")
     // }
-    writeBodyWithZonesML(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-                         topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+    // writeBodyWithZonesML(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+    //                      topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
-    // writeBodySimple(1, otherDeps, regNames)
+    writeBodySimple(1, otherDeps, regNames)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
