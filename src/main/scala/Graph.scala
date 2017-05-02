@@ -359,6 +359,27 @@ class Graph {
     }}
   }
 
+  def findZonesTopo(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+    val numParts = 400
+    val topoOrder = topologicalSort()
+    val filtered = topoOrder diff doNotShadow
+    val partSize = filtered.size / numParts
+    val intoParts = filtered.grouped(partSize).toSeq
+    val zoneMap = ((intoParts zip intoParts) map { case (l1,l2) => (l1.head, l2) }).toMap
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
   def analyzeZoningQuality(zoneMap: Map[String, Graph.ZoneInfo]) {
     println(s"Zones: ${zoneMap.size}")
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
