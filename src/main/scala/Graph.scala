@@ -359,12 +359,78 @@ class Graph {
     }}
   }
 
+  // makes zones by evenly splitting output of topo sort
   def findZonesTopo(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val numParts = 1000
     val topoOrder = topologicalSort()
     val partSize = topoOrder.size / numParts
     val intoParts = topoOrder.grouped(partSize).toSeq
     val zoneMap = (intoParts map { l => (l.head, l) }).toMap
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
+  // makes zones by splitting output of topo sort every time a new search is started
+  def findZonesTopo2(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+    val topoOrder = topologicalSort()
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach {regID => startingDepths(regID) = 0}
+    val depths = stepBFSDepth(regIDsSet, startingDepths)
+    val topoSearches = topoOrder.foldLeft((100, Seq[Seq[Int]]())) {
+      case ((lastDepth:Int , partList:Seq[Seq[Int]]), id:Int) => {
+        if (depths(id) < lastDepth) (depths(id), partList :+ Seq(id))
+        else (depths(id), partList.init :+ (partList.last :+ id))
+    }}._2
+    val zoneMap = (topoSearches map { l => (l.head, l) }).toMap
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
+  // makes zones by splitting output of topo sort every time a new search is started, then clumps them
+  def findZonesTopo3(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+    val numParts = 1000
+    val topoOrder = topologicalSort()
+    val partSize = topoOrder.size / numParts
+    val regIDs = regNames flatMap {name =>
+      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
+    val regIDsSet = regIDs.toSet
+    val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach {regID => startingDepths(regID) = 0}
+    val depths = stepBFSDepth(regIDsSet, startingDepths)
+    val topoSearches = topoOrder.foldLeft((100, Seq[Seq[Int]]())) {
+      case ((lastDepth:Int , partList:Seq[Seq[Int]]), id:Int) => {
+        if (depths(id) < lastDepth) (depths(id), partList :+ Seq(id))
+        else (depths(id), partList.init :+ (partList.last :+ id))
+    }}._2
+    val clumped = topoSearches.tail.foldLeft(Seq[Seq[Int]](topoSearches.head)) {
+      case (partList:Seq[Seq[Int]], currPart:Seq[Int]) => {
+        if (partList.last.size > partSize) partList :+ currPart
+        else partList.init :+ (partList.last ++ currPart)
+    }}
+    val zoneMap = (clumped map { l => (l.head, l) }).toMap
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val smallZonesRemoved = zoneMap filter {
       case (name,members) => !(members filter validNodes).isEmpty
