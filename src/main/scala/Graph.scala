@@ -360,12 +360,11 @@ class Graph {
   }
 
   def findZonesTopo(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
-    val numParts = 400
+    val numParts = 1000
     val topoOrder = topologicalSort()
-    val filtered = topoOrder diff doNotShadow
-    val partSize = filtered.size / numParts
-    val intoParts = filtered.grouped(partSize).toSeq
-    val zoneMap = ((intoParts zip intoParts) map { case (l1,l2) => (l1.head, l2) }).toMap
+    val partSize = topoOrder.size / numParts
+    val intoParts = topoOrder.grouped(partSize).toSeq
+    val zoneMap = (intoParts map { l => (l.head, l) }).toMap
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val smallZonesRemoved = zoneMap filter {
       case (name,members) => !(members filter validNodes).isEmpty
