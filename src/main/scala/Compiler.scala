@@ -327,7 +327,7 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
-    // val zoneMapWithSources = g.findZonesTopo(regNames, doNotShadow)
+    // val zoneMapWithSources = g.findZonesTopo3(regNames, doNotShadow)
     val zoneMapWithSources = g.findZonesML(regNames, doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     g.analyzeZoningQuality(zoneMap)

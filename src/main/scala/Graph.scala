@@ -284,8 +284,6 @@ class Graph {
     println(s"Finge size: ${fringe.size}")
     val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
     val mergesCleaned = mergesWanted map {_ filter {_ != -2}} filter { !_.isEmpty } filter { _ forall { !frozenZones.contains(_)}}
-    val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
-      regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
     // map from zone ID to seq of member ids
     val zoneMap = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
     // number of zone inputs as signals (registers in future)
