@@ -332,13 +332,16 @@ class Graph {
     growZones(startingFront, zones)
     mergeZonesML(zones, regIDsSet, regIDsSet)
     println("trying to do second layer")
-    val frozenZones = zones.toSet
-    val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
-                      (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
-    }
-    secondFront foreach { id => zones(id) = id }
-    growZones(secondFront, zones)
-    mergeZonesML(zones, regIDsSet, frozenZones)
+    findZonesMLHelper(zones, regIDsSet)
+    // println("trying to do third layer")
+    // findZonesMLHelper(zones, regIDsSet)
+    // val frozenZones = zones.toSet
+    // val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
+    //                   (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
+    // }
+    // secondFront foreach { id => zones(id) = id }
+    // growZones(secondFront, zones)
+    // mergeZonesML(zones, regIDsSet, frozenZones)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
@@ -355,6 +358,16 @@ class Graph {
       val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
+  }
+
+  def findZonesMLHelper(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
+    val frozenZones = zones.toSet
+    val frontier = (0 until zones.size) filter { id => (zones(id) == -1) &&
+                      (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
+    }
+    frontier foreach { id => zones(id) = id }
+    growZones(frontier, zones)
+    mergeZonesML(zones, regIDsSet, frozenZones)
   }
 
   // makes zones by evenly splitting output of topo sort
