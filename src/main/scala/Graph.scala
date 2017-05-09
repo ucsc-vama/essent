@@ -559,6 +559,37 @@ class Graph {
     fw.close()
   }
 
+  def countChains() {
+    val chainNodes = validNodes filter {
+      id => (inNeigh(id).size == 1) && (outNeigh(id).size == 1)
+    }
+    val percChainNodes = 100d * chainNodes.size / numNodes()
+    println(f"Chain Nodes: ${chainNodes.size} ($percChainNodes%2.1f%%)")
+    // want to find number of distinct chains, basically connected components
+    val chainIDs = ArrayBuffer.fill(nameToID.size)(-1)
+    chainNodes foreach { id => chainIDs(id) = id }
+    val finalChainAssignments = countChainsHelper(chainNodes.toSeq, chainIDs)
+    val reachedChains = finalChainAssignments filter { _ != -1 }
+    val chainGroups = reachedChains groupBy { id => id }
+    println(s"# Chains: ${chainGroups.size}")
+  }
+
+  def countChainsHelper(frontier: Seq[Int], chainIDs: ArrayBuffer[Int]):ArrayBuffer[Int]  = {
+    val newFront = frontier flatMap { id => {
+      val parent = inNeigh(id).head
+      val child = outNeigh(id).head
+      if ((chainIDs(parent) <= chainIDs(id)) && (chainIDs(child) <= chainIDs(id)))
+        Seq()
+      else {
+        if (chainIDs(parent) > chainIDs(id)) chainIDs(parent) = chainIDs(id)
+        if (chainIDs(child) > chainIDs(id)) chainIDs(child) = chainIDs(id)
+        Seq(id)
+      }
+    }}
+    if (newFront.isEmpty) chainIDs
+    else countChainsHelper(newFront, chainIDs)
+  }
+
   def writeHmetisFile(filename: String, regIDs: Seq[Int],
                       grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
     // compressing out empty vertices from ID range, and starting at 1

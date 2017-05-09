@@ -181,6 +181,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
     // Simplified body, no mux shadowing
     val g = buildGraph(bodyEdges)
+    // g.countChains()
     // g.writeDegreeFile(regNames, "rocketchip.degrees")
     // g.scoutZones(regNames)
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
