@@ -559,24 +559,19 @@ class Graph {
     fw.close()
   }
 
-  def RCMordering(regNames: Seq[String]) = {
+  def RCMordering() = {
     // Find depth 0 nodes to seed search
-    val regIDs = regNames flatMap {name =>
-      if (nameToID.contains(name)) Seq(nameToID(name)) else Seq()}
-    val regIDsSet = regIDs.toSet
     val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
-    regIDs foreach {regID => startingDepths(regID) = 0}
-    val depths = stepBFSDepth(regIDsSet, startingDepths)
+    val sourceNodes = (0 until inNeigh.size) filter { inNeigh(_).size == 0 }
+    sourceNodes foreach {id => startingDepths(id) = 0}
+    val depths = stepBFSDepth(sourceNodes.toSet, startingDepths)
     val depth0Nodes = depths.zipWithIndex.collect{ case (d,i) if d == 0 => i}
     // Order initial frontier ascending by degree
     val sortedByOutDegree = sortByOutDegree(depth0Nodes)
     val visited = ArrayBuffer.fill(nameToID.size)(false)
     sortedByOutDegree foreach { visited(_) = true }
     val orderedIDs = RCMstep(sortedByOutDegree, visited).reverse
-    val missingIDs = validNodes diff orderedIDs.toSet
-    // missingIDs foreach { id => println(s"${idToName(id)} ${inNeigh(id).size}")}
-    // println(s"${orderedIDs.size} ${numNodes()} ${reorderNames().size}")
-    (orderedIDs ++ missingIDs) filter { validNodes.contains(_) } map idToName
+    orderedIDs filter { validNodes } map idToName
   }
 
   def sortByOutDegree(nodes: Seq[Int]) = {

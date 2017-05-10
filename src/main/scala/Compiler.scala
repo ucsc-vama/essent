@@ -184,6 +184,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // g.countChains()
     // g.writeDegreeFile(regNames, "rocketchip.degrees")
     // g.scoutZones(regNames)
+    // g.writeCOOFile("rocketchip.rcm.coo", Option(g.RCMordering()))
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     g.reorderNames foreach {
       name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
