@@ -34,7 +34,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case s: SIntLiteral => Seq()
       case _ => throw new Exception("unexpected expression type! " + e)
     }
-    result map grabMemAddr
+    result.distinct map grabMemAddr
   }
 
   def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
