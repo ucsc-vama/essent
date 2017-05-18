@@ -589,6 +589,57 @@ class Graph {
     else frontier ++ RCMstep(newFront, visited)
   }
 
+  def doubleOrdering() = {
+    val identityOrder = ((0 until outNeigh.size) map identity).toSeq
+    doDoubleOrder(identityOrder,5) filter validNodes map idToName
+  }
+
+  def doDoubleOrder(initialOrder: Seq[Int], times: Int): Seq[Int] = {
+    println(s"$times to go")
+    if (times == 0) initialOrder
+    else {
+      val rowAdj = renameGraph(outNeigh, initialOrder)
+      val rowOrder = sortGraph(rowAdj)
+      val colAdj = renameGraph(inNeigh, rowOrder)
+      val colOrder = sortGraph(colAdj)
+      // val newOrder = rowOrder.zipWithIndex.toMap
+      // rowOrder.zipWithIndex foreach { case(oldID, newID) => {
+      //   if (!outNeigh(oldID).isEmpty)
+      //     // println(s"$newID ${outNeigh(oldID).head}")
+      //     println(s"$newID ${newOrder(outNeigh(oldID).head)}")
+      // }}
+      doDoubleOrder(colOrder, times - 1)
+    }
+  }
+
+  // returns bool if idA's adjacencies are lower than idB
+  def nodeOrder(idA: Int, idB: Int, adjMap: Map[Int, Seq[Int]], index: Int=0): Boolean = {
+    // FUTURE: contemplate right outcome for running out of neighbors
+    if ((adjMap(idA).size <= index) || (adjMap(idB).size <= index))
+      (adjMap(idA).size < adjMap(idB).size)
+    else if (adjMap(idA)(index) == adjMap(idB)(index))
+      nodeOrder(idA, idB, adjMap, index+1)
+    else adjMap(idA)(index) < adjMap(idB)(index)
+  }
+
+  // sorts the vertex IDs based on adjacencies and returns new order
+  def sortGraph(adjMap: Map[Int, Seq[Int]]): Seq[Int] = {
+    val nodeIDs = (0 until outNeigh.size).toSeq
+    nodeIDs sortWith { (idA:Int, idB:Int) => nodeOrder(idA, idB, adjMap) }
+  }
+
+  // returns new adjacency list with renames done and neighbors sorted
+  // renames is oldIDs in new order, so seq maps newID -> oldID
+  def renameGraph(adjList: ArrayBuffer[ArrayBuffer[Int]], renames: Seq[Int]) = {
+    // val renameMap = (renames.zipWithIndex map { _.swap }).toMap
+    val renameMap = renames.zipWithIndex.toMap
+    val renamedAdjMap = ((0 until outNeigh.size) map { oldID: Int => {
+      val neighborsRenamed = adjList(oldID) map renameMap
+      (renameMap(oldID), neighborsRenamed.sorted)
+    }}).toMap
+    renamedAdjMap
+  }
+
   def countChains() {
     val chainNodes = validNodes filter {
       id => (inNeigh(id).size == 1) && (outNeigh(id).size == 1)
@@ -734,4 +785,15 @@ class Graph {
 
 object Graph {
   case class ZoneInfo(inputs: Seq[String], members: Seq[String], outputs: Seq[String])
+
+  def GenReversedChain(n: Int) = {
+    val nodeRange = Seq.range(0,n)
+    val offset = 1
+    val offsetRange = nodeRange.drop(offset) ++ nodeRange.take(offset)
+    val edgeList = scala.util.Random.shuffle(nodeRange zip offsetRange)
+    val g = new Graph
+    edgeList.init foreach { case (idA, idB) => g.addNodeWithDeps("s" + idA, Seq("s" + idB)) }
+    g.printTopologyStats()
+    g
+  }
 }
