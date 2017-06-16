@@ -9,6 +9,7 @@ import collection.mutable.{ArrayBuffer, BitSet, HashMap, HashSet}
 import scala.util.Random
 
 import scala.io.Source
+import scala.math.Ordering.Implicits._
 import scala.sys.process._
 import java.io.{File, FileWriter}
 
@@ -442,6 +443,72 @@ class Graph {
         else partList.init :+ (partList.last ++ currPart)
     }}
     val zoneMap = (clumped map { l => (l.head, l) }).toMap
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
+  def partialCutCost(order: Seq[Int], orderInv: Map[Int,Int], currStart: Int,
+                     desiredEnd: Int) = {
+    val nodesExposed = (currStart until desiredEnd) map order
+    val nodeDests = nodesExposed flatMap { id => outNeigh(id) }
+    val destsPastEnd = nodeDests map orderInv filter { _ >= desiredEnd }
+    destsPastEnd.toSet.size
+  }
+
+  def pickBestSplit(order: Seq[Int], orderInv: Map[Int,Int], scoresWithSplits: Seq[(Int,Int)],
+                    lastScoreIndex: Int, maxPartSize: Int) = {
+    def splitCost(splitAt: Int) = scoresWithSplits(splitAt)._1 +
+                    partialCutCost(order, orderInv, splitAt, lastScoreIndex + 1)
+    val nodesToConsider = (math.max(0, lastScoreIndex-maxPartSize) to lastScoreIndex)
+    val costsWithNodes = nodesToConsider map { id => (splitCost(id), id)}
+    def minPair(pA: (Int,Int), pB: (Int,Int)) = {
+      if (pA < pB) pA
+      else pB
+    }
+    costsWithNodes.reduceLeft(minPair)
+  }
+
+  def kernHelper(order: Seq[Int], orderInv: Map[Int,Int], maxPartSize: Int,
+                 scoresWithSplits: Seq[(Int,Int)]): Seq[(Int,Int)] = {
+    if (scoresWithSplits.size < order.size) {
+      val (lowestScore, splitIndex) = pickBestSplit(order, orderInv,
+                                        scoresWithSplits, scoresWithSplits.size - 1, maxPartSize)
+      kernHelper(order, orderInv, maxPartSize, scoresWithSplits :+ (lowestScore, splitIndex))
+    } else scoresWithSplits
+  }
+
+  def pickOutSplits(scoresWithSplits: Seq[(Int,Int)], currIndex: Int): Seq[Int] = {
+    val topoID = scoresWithSplits(currIndex)._2
+    if (topoID > 0) Seq(topoID) ++ pickOutSplits(scoresWithSplits, topoID)
+    else Seq(topoID)
+  }
+
+  def splitUpSeq(l: Seq[Int], splits: Seq[Int], offset: Int=0): Seq[Seq[Int]] = {
+    val globalIndex = splits.head
+    val (part, rest) = l.splitAt(globalIndex - offset)
+    if (splits.tail.isEmpty) Seq(part)
+    else Seq(part) ++ splitUpSeq(rest, splits.tail, globalIndex)
+  }
+
+  // make zones from Kernigan approach after topo sorting graph
+  def findZonesKern(regNames: Seq[String], doNotShadow: Seq[String]) = {
+    val topoOrder = topologicalSort()
+    val maxPartSize = 100
+    val getOrderID = topoOrder.zipWithIndex.toMap
+    val scoresWithSplits = kernHelper(topoOrder, getOrderID, maxPartSize, Seq((0,topoOrder.size)))
+    val splitIndices = pickOutSplits(scoresWithSplits, scoresWithSplits.size-1).reverse
+    val intoParts = splitUpSeq(topoOrder, splitIndices) filter { !_.isEmpty }
+    val zoneMap = (intoParts map { l => (l.head, l) }).toMap
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val smallZonesRemoved = zoneMap filter {
       case (name,members) => !(members filter validNodes).isEmpty
