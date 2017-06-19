@@ -568,6 +568,21 @@ class Graph {
     }
   }
 
+  def stepBFSDepthMax(frontier: Set[Int], depths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    if (frontier.isEmpty) depths
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        if (depths(id) + 1 > depths(neigh)) {
+          depths(neigh) = depths(id) + 1
+          Seq(neigh)
+        } else {
+          Seq()
+        }
+      }}}
+      stepBFSDepthMax(nextFrontier.toSet, depths)
+    }
+  }
+
   def zoneConsumers(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
   }
@@ -618,10 +633,13 @@ class Graph {
     val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
     regIDs foreach {regID => startingDepths(regID) = 0}
     val depths = stepBFSDepth(regIDsSet, startingDepths)
+    val startingDepthsMax = ArrayBuffer.fill(nameToID.size)(-1)
+    regIDs foreach {regID => startingDepthsMax(regID) = 0}
+    val maxDepths = stepBFSDepthMax(regIDsSet, startingDepthsMax)
     validNodes foreach { nodeID => {
       val inDegree = inNeigh(nodeID).size
       val outDegree = outNeigh(nodeID).size
-      fw.write(s"$nodeID $inDegree $outDegree ${depths(nodeID)}\n")
+      fw.write(s"${idToName(nodeID)} $inDegree $outDegree ${depths(nodeID)} ${maxDepths(nodeID)}\n")
     }}
     fw.close()
   }
