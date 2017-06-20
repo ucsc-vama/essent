@@ -625,6 +625,19 @@ class Graph {
     fw.close()
   }
 
+  def writeDotFile(filename: String) {
+    val fw = new FileWriter(new File(filename))
+    fw.write("digraph rocketchip {\n")
+      // (0 until numNodeRefs())
+    validNodes foreach { rowID => {
+      outNeigh(rowID) foreach { colID => {
+        fw.write(s"  ${idToName(rowID)} -> ${idToName(colID)};\n")
+      }}
+    }}
+    fw.write("}\n")
+    fw.close()
+  }
+
   def writeDegreeFile(regNames: Seq[String], filename: String) {
     val fw = new FileWriter(new File(filename))
     val regIDs = regNames flatMap {name =>
