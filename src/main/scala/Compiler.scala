@@ -183,6 +183,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val g = buildGraph(bodyEdges)
     // g.countChains()
     // g.writeDegreeFile(regNames, "rocketchip.degrees")
+    // g.writeDotFile("rocketchip.dot")
+    // g.writeMetisFile("rocketchip.metis")
     // g.scoutZones(regNames)
     // g.writeCOOFile("rocketchip.rcm.coo", Option(g.RCMordering()))
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap

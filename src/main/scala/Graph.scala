@@ -502,8 +502,8 @@ class Graph {
 
   // make zones from Kernigan approach after topo sorting graph
   def findZonesKern(regNames: Seq[String], doNotShadow: Seq[String]) = {
+    val maxPartSize = 150
     val topoOrder = topologicalSort()
-    val maxPartSize = 100
     val getOrderID = topoOrder.zipWithIndex.toMap
     val scoresWithSplits = kernHelper(topoOrder, getOrderID, maxPartSize, Seq((0,topoOrder.size)))
     val splitIndices = pickOutSplits(scoresWithSplits, scoresWithSplits.size-1).reverse
@@ -635,6 +635,16 @@ class Graph {
       }}
     }}
     fw.write("}\n")
+    fw.close()
+  }
+
+  def writeMetisFile(filename: String) {
+    val fw = new FileWriter(new File(filename))
+    fw.write(s"${numNodeRefs()} ${numEdges()} 000\n")
+    (0 until numNodeRefs()) foreach { rowID => {
+      val neighs = (outNeigh(rowID) ++ inNeigh(rowID)).distinct map { _ + 1 }
+      fw.write(s"${neighs.mkString(" ")}\n")
+    }}
     fw.close()
   }
 
