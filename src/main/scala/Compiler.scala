@@ -353,6 +353,12 @@ class EmitCpp(writer: Writer) extends Transform {
     val outputPairs = (outputTypes zip outputsFromZones).toSeq
     val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
     writeLines(0, preDecs)
+    // activity tracking
+    if (trackActivity) {
+      writeLines(0, "uint64_t total_transitions = 0;")
+      writeLines(0, "uint64_t total_zones_active = 0;")
+      writeLines(0, "uint64_t cycles_ticked = 0;")
+    }
     val doNotDec = outputsFromZones.toSet
     println(s"Output nodes: ${outputsFromZones.size}")
 
@@ -373,8 +379,16 @@ class EmitCpp(writer: Writer) extends Transform {
     // emit reg updates
     if (!allRegUpdates.isEmpty || trackActivity) {
       writeLines(1, "if (update_registers) {")
+      if (trackActivity) {
+        writeRegActivityTracking(regNames)
+      }
       writeLines(2, allRegUpdates)
       writeLines(1, "}")
+      if (trackActivity) {
+        // writeZoneActivityTracking(zoneMap.keys.toSeq)
+        writeLines(2, s"const uint64_t num_zones = ${zoneMap.size};")
+        writeLines(2, s"uint64_t zones_active = 0;")
+      }
     }
 
     // set input flags to true for other inputs (resets, mems, or external IOs)
@@ -425,6 +439,8 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(1, s"{")
       else
         writeLines(1, s"if ($sensitivityListStr) {")
+      if (trackActivity)
+        writeLines(2, "zones_active++;")
       val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
       val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
       val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
@@ -440,6 +456,12 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(1, "}")
       if (exportSparsity) zoneStmtOutputOrder ++= buildGraph(zoneEdges.toSeq).reorderNames
     }}
+
+    if (trackActivity) {
+      writeLines(2, s"total_zones_active += zones_active;")
+      writeLines(2, s"""printf("Zones Active %llu/%llu\\n", zones_active, num_zones);""")
+      writeLines(2, s"""printf("Average Zones: %g\\n", (double) total_zones_active/cycles_ticked);""")
+    }
 
     // emit rest of body (without redeclaring)
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
