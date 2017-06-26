@@ -502,7 +502,7 @@ class Graph {
 
   // make zones from Kernigan approach after topo sorting graph
   def findZonesKern(regNames: Seq[String], doNotShadow: Seq[String]) = {
-    val maxPartSize = 150
+    val maxPartSize = 50
     val topoOrder = topologicalSort()
     val getOrderID = topoOrder.zipWithIndex.toMap
     val scoresWithSplits = kernHelper(topoOrder, getOrderID, maxPartSize, Seq((0,topoOrder.size)))
