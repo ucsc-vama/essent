@@ -358,10 +358,10 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(0, "uint64_t total_transitions = 0;")
       writeLines(0, "uint64_t total_zones_active = 0;")
       writeLines(0, "uint64_t cycles_ticked = 0;")
-      val zoneActCounts = zoneMap.keys map genFlagName map {
-        zoneName => s"uint64_t ${zoneName}_ACTS = 0;"
-      }
-      writeLines(0, zoneActCounts.toSeq)
+      // val zoneActCounts = zoneMap.keys map genFlagName map {
+      //   zoneName => s"uint64_t ${zoneName}_ACTS = 0;"
+      // }
+      // writeLines(0, zoneActCounts.toSeq)
     }
     val doNotDec = outputsFromZones.toSet
     println(s"Output nodes: ${outputsFromZones.size}")
@@ -403,6 +403,8 @@ class EmitCpp(writer: Writer) extends Transform {
       flagName => s"${genFlagName(flagName)} = true;"
     }
     writeLines(1, otherFlagsTrue.toSeq)
+    // val zoneDescendants = findZoneDescendants(otherFlags.toSet, zoneMap)
+    // println(s"Descended from true flags: ${zoneDescendants.size}")
 
     // compute zone order
     // map of name -> zone name (if in zone)
@@ -447,7 +449,7 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(1, s"if ($sensitivityListStr) {")
       if (trackActivity) {
         writeLines(2, "zones_active++;")
-        writeLines(2, s"${genFlagName(zoneName)}_ACTS++;")
+        // writeLines(2, s"${genFlagName(zoneName)}_ACTS++;")
       }
       val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
       val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
@@ -478,14 +480,32 @@ class EmitCpp(writer: Writer) extends Transform {
       g.writeCOOFile("rocketchip.zones.coo", Option(zoneStmtOutputOrder.toSeq))
     }
 
-    if (trackActivity) {
-      writeLines(1, "if (ZONE_SimDTM_1$exit) {")
-      val zoneActCountsPrints = zoneMap.keys map genFlagName map {
-        zoneName => s"""printf("${zoneName}: %llu\\n", ${zoneName}_ACTS);"""
+    // if (trackActivity) {
+    //   writeLines(1, "if (ZONE_SimDTM_1$exit) {")
+    //   val zoneActCountsPrints = zoneMap.keys map genFlagName map {
+    //     zoneName => s"""printf("${zoneName}: %llu\\n", ${zoneName}_ACTS);"""
+    //   }
+    //   writeLines(2, zoneActCountsPrints.toSeq)
+    //   writeLines(1, "}")
+    // }
+  }
+
+  def findZoneDescendants(inSignals: Set[String], zoneMap: Map[String, Graph.ZoneInfo]): Seq[String] = {
+    val childZones = zoneMap flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        if (inputs exists inSignals) Seq(zoneName)
+        else Seq()
       }
-      writeLines(2, zoneActCountsPrints.toSeq)
-      writeLines(1, "}")
     }
+    println(s"CZ size ${childZones.size}")
+    val childZonesSet = childZones.toSet
+    val nextInSignals = inSignals ++ (zoneMap flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        if (childZonesSet.contains(zoneName)) outputs
+        else Seq()
+    }}).toSet
+    if (inSignals == nextInSignals) childZones.toSeq
+    else findZoneDescendants(nextInSignals, zoneMap)
   }
 
   def decRegActivityTracking(regNames: Seq[String]) = {
