@@ -38,13 +38,6 @@ object RegFromMem1 extends Pass {
     case _ => Seq()
   }
 
-  def findWriteInputs(mems: Seq[DefMemory], body: Statement): Seq[(String,Expression)] = {
-    val memConnects = grabMemConnects(body).toMap
-    mems filter { !_.writers.isEmpty } map { 
-      mem => (mem.name, memConnects(s"${mem.name}.${mem.writers.head}.data"))
-    }
-  }
-
   // drop mem connects
   def dropMemConnects(s: Statement): Statement = {
     val noConnects = s match {
@@ -75,25 +68,33 @@ object RegFromMem1 extends Pass {
   }
 
   // insert reg write muxes
-
-  // def replaceMemSigsStmt(memMap: Map[String,DefMemory])(s: Statement): Statement = {}
-  // def replaceMemSigsExpr(memMap: Map[String,DefMemory])(e: Expression): Expression = {}
+  def generateRegUpdates(mems: Seq[DefMemory], memConnects: Map[String, Expression]): Seq[Statement] = {
+    val memsWithWrites = mems filter { !_.writers.isEmpty }
+    memsWithWrites flatMap { mem => mem.writers map { writePortName => {
+      // FUTURE: is this correct gender
+      val selfRef = WRef(mem.name, mem.dataType, firrtl.RegKind, firrtl.BIGENDER)
+      val enSig = memConnects(s"${mem.name}.$writePortName.en")
+      val wrDataSig = memConnects(s"${mem.name}.$writePortName.data")
+      val wrEnableMux = Mux(enSig, wrDataSig, selfRef, mem.dataType)
+      Connect(NoInfo, selfRef, wrEnableMux)
+    }}}
+  }
 
   def memReplaceModule(m: Module): Module = {
     val allMems = Extract.findMemory(m.body)
     // FUTURE: put in check to make sure latencies safe (& only 1 write port)
     // FUTURE: need to explicitly handle read enables?
     val singleElementMems = allMems filter { _.depth == 1}
-    println(s"${m.name} ${singleElementMems.size}")
-    val writeInputs = findWriteInputs(singleElementMems, m.body)
+    // println(s"${m.name} ${singleElementMems.size}")
     val memMap = (singleElementMems map { mem => (mem.name, mem)}).toMap
     val memConnects = grabMemConnects(m.body).toMap
     val memsReplaced = replaceMems(memMap.keys.toSet)(m.body)
     val memConnectsRemoved = dropMemConnects(memsReplaced)
     val memsToTypes = (singleElementMems map { mem => (mem.name, mem.dataType)}).toMap
     val memReadsReplaced = replaceMemReadsStmt(memsToTypes)(memConnectsRemoved)
-    Module(m.info, m.name, m.ports, squashEmpty(memReadsReplaced))
-    // m
+    val regUpdateStmts = generateRegUpdates(singleElementMems, memConnects)
+    val newBlock = Block(Seq(squashEmpty(memReadsReplaced)) ++ regUpdateStmts)
+    Module(m.info, m.name, m.ports, newBlock)
   }
 
   def run(c: Circuit): Circuit = {
