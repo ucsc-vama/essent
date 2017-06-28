@@ -39,22 +39,25 @@ object RegFromMem1 extends Pass {
   }
 
   // drop mem connects
-  def dropMemConnects(s: Statement): Statement = {
+  def dropMemConnects(memsToReplace: Set[String])(s: Statement): Statement = {
     val noConnects = s match {
       case c: Connect => {
-        firrtl.Utils.kind(c.loc) match {
-          case firrtl.MemKind => EmptyStmt
-          case _ => s
+        c.loc match {
+          case WSubField(WSubField(WRef(name: String,_,_,_),_,_,_),_,_,_) => {
+            if (memsToReplace.contains(name)) EmptyStmt
+            else c
+          }
+          case _ => c
         }
       }
       case _ => s
     }
-    noConnects map dropMemConnects
+    noConnects map dropMemConnects(memsToReplace)
   }
 
   // replace mem reads
   def replaceMemReadsStmt(memsToTypes: Map[String,Type])(s: Statement): Statement = {
-    s map replaceMemReadsStmt(memsToTypes) map  replaceMemReadsExpr(memsToTypes)
+    s map replaceMemReadsStmt(memsToTypes) map replaceMemReadsExpr(memsToTypes)
   }
   def replaceMemReadsExpr(memsToTypes: Map[String,Type])(e: Expression): Expression = {
     val replaced = e match {
@@ -89,7 +92,7 @@ object RegFromMem1 extends Pass {
     val memMap = (singleElementMems map { mem => (mem.name, mem)}).toMap
     val memConnects = grabMemConnects(m.body).toMap
     val memsReplaced = replaceMems(memMap.keys.toSet)(m.body)
-    val memConnectsRemoved = dropMemConnects(memsReplaced)
+    val memConnectsRemoved = dropMemConnects(memMap.keys.toSet)(memsReplaced)
     val memsToTypes = (singleElementMems map { mem => (mem.name, mem.dataType)}).toMap
     val memReadsReplaced = replaceMemReadsStmt(memsToTypes)(memConnectsRemoved)
     val regUpdateStmts = generateRegUpdates(singleElementMems, memConnects)
