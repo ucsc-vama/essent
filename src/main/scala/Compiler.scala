@@ -655,7 +655,8 @@ class FinalCleanups extends Transform with SimpleRun {
     ZeroFromBits,
     WireConstProp,
     RandInitInvalids,
-    NoResetsOrClockConnects)
+    NoResetsOrClockConnects,
+    RegFromMem1)
     // passes.VerilogRename,
     // passes.VerilogPrep)
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
