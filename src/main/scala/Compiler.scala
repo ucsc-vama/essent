@@ -322,7 +322,8 @@ class EmitCpp(writer: Writer) extends Transform {
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                            allRegUpdates: Seq[String], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
-                           doNotShadow: Seq[String]) {
+                           doNotShadow: Seq[String], memUpdateEmits: Seq[String],
+                           extIOtypes: Map[String, Type]) {
     val trackActivity = false
     val exportSparsity = false
     // map of name -> original hyperedge
@@ -366,6 +367,21 @@ class EmitCpp(writer: Writer) extends Transform {
     val doNotDec = outputsFromZones.toSet
     println(s"Output nodes: ${outputsFromZones.size}")
 
+    // set input flags to true for other inputs (resets, mems, or external IOs)
+    // FUTURE: remove. should make change detection for these inputs so consuming
+    //         zones have a chance to sleep
+    val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
+    val memNames = memUpdateEmits map findDependencesMemWrite map { _(2) }
+    val nonMemFlags = otherFlags diff memNames.toSet
+    // FUTURE: fix, can't be hacking for reset, but reset isn't in signal map table
+    val nonMemFlagTypes = nonMemFlags.toSeq map {
+      name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
+    }
+    val nonMemPreDecs = (nonMemFlagTypes zip nonMemFlags.toSeq) map {
+      case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    }
+    writeLines(0, nonMemPreDecs)
+
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
@@ -395,16 +411,26 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }
 
-    // set input flags to true for other inputs (resets, mems, or external IOs)
-    // FUTURE: remove. should make change detection for these inputs so consuming
-    //         zones have a chance to sleep
-    val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
-    val otherFlagsTrue = otherFlags map {
+    // set input flags to true for mem inputs
+    val memFlags = otherFlags intersect memNames.toSet
+    val memFlagsTrue = memFlags map {
       flagName => s"${genFlagName(flagName)} = true;"
     }
-    writeLines(1, otherFlagsTrue.toSeq)
-    // val zoneDescendants = findZoneDescendants(otherFlags.toSet, zoneMap)
-    // println(s"Descended from true flags: ${zoneDescendants.size}")
+    writeLines(1, memFlagsTrue.toSeq)
+
+    // do activity detection on other inputs (external IOs and resets)
+    val nonMemChangeDetects = nonMemFlags map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      val flagName = genFlagName(sigName)
+      s"if ($sigName != $oldVersion) $flagName = true;"
+    }}
+    writeLines(1, nonMemChangeDetects.toSeq)
+    // cache old versions
+    val nonMemCaches = nonMemFlags map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      s"$oldVersion = $sigName;"
+    }}
+    writeLines(1, nonMemCaches.toSeq)
 
     // compute zone order
     // map of name -> zone name (if in zone)
@@ -564,6 +590,14 @@ class EmitCpp(writer: Writer) extends Transform {
         case em: ExtModule => (Seq(), EmptyStmt, Seq())
       }
     }
+    val extIOs = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => Seq()
+        case em: ExtModule => { em.ports map {
+          port => (s"$prefix${port.name}", port.tpe)
+        }}
+      }
+    }
     val resetTree = buildResetTree(allInstances)
     val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
@@ -585,7 +619,8 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(1, "}")
     // }
     writeBodyWithZonesML(otherDeps, regNames, allRegUpdates.flatten, resetTree,
-                         topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct)
+                         topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
+                         allMemUpdates.flatten, extIOs.toMap)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     // writeBodySimple(1, otherDeps, regNames)
     if (!prints.isEmpty || !stops.isEmpty) {
