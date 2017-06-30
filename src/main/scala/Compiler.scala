@@ -372,6 +372,11 @@ class EmitCpp(writer: Writer) extends Transform {
     //         zones have a chance to sleep
     val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
     val memNames = memUpdateEmits map findDependencesMemWrite map { _(2) }
+    val memFlags = otherFlags intersect memNames.toSet
+    val memWriteTrackDecs = memFlags map {
+      flagName => s"bool WTRACK_${flagName.replace('.','$')};"
+    }
+    writeLines(0, memWriteTrackDecs.toSeq)
     val nonMemFlags = otherFlags diff memNames.toSet
     // FUTURE: fix, can't be hacking for reset, but reset isn't in signal map table
     val nonMemFlagTypes = nonMemFlags.toSeq map {
@@ -412,11 +417,17 @@ class EmitCpp(writer: Writer) extends Transform {
     }
 
     // set input flags to true for mem inputs
-    val memFlags = otherFlags intersect memNames.toSet
+    val memEnablesAndMasks = (memUpdateEmits map findDependencesMemWrite map {
+      memDeps => (memDeps(2), Seq(memDeps(0), memDeps(1)))
+    }).toMap
     val memFlagsTrue = memFlags map {
       flagName => s"${genFlagName(flagName)} = true;"
     }
-    writeLines(1, memFlagsTrue.toSeq)
+    val memChangeDetects = memFlags map { flagName => {
+      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
+      s"${genFlagName(flagName)} |= $trackerName;"
+    }}
+    writeLines(1, memChangeDetects.toSeq)
 
     // do activity detection on other inputs (external IOs and resets)
     val nonMemChangeDetects = nonMemFlags map { sigName => {
@@ -431,6 +442,8 @@ class EmitCpp(writer: Writer) extends Transform {
       s"$oldVersion = $sigName;"
     }}
     writeLines(1, nonMemCaches.toSeq)
+    // val zoneDescendants = findZoneDescendants(memFlags.toSet, zoneMap)
+    // println(s"Descended from true flags: ${zoneDescendants.size}")
 
     // compute zone order
     // map of name -> zone name (if in zone)
@@ -505,6 +518,13 @@ class EmitCpp(writer: Writer) extends Transform {
       zoneStmtOutputOrder ++= buildGraph(nonZoneEdges.toSeq).reorderNames
       g.writeCOOFile("rocketchip.zones.coo", Option(zoneStmtOutputOrder.toSeq))
     }
+
+    val memWriteTrackerUpdates = memFlags map { flagName => {
+      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
+      val condition = memEnablesAndMasks(flagName).mkString(" && ");
+      s"$trackerName = $condition;"
+    }}
+    writeLines(1, memWriteTrackerUpdates.toSeq)
 
     // if (trackActivity) {
     //   writeLines(1, "if (ZONE_SimDTM_1$exit) {")
