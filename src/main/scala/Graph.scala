@@ -320,6 +320,10 @@ class Graph {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val zones = ArrayBuffer.fill(nameToID.size)(-1)
     regIDs foreach { id => zones(id) = id }
+    val otherZoneSeeds = (0 until zones.size) filter {
+      id => (zones(id) == -1) && (inNeigh(id).size == 0) && !validNodes.contains(id)
+    }
+    otherZoneSeeds foreach { id => zones(id) = id }
     val sourceZoneSeeds = (0 until zones.size) filter {
       id => (zones(id) == -1) && (inNeigh(id).size == 0) && validNodes.contains(id)
     }
