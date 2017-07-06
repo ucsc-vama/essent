@@ -338,15 +338,8 @@ class Graph {
     mergeZonesML(zones, regIDsSet, regIDsSet)
     println("trying to do second layer")
     findZonesMLHelper(zones, regIDsSet)
-    // println("trying to do third layer")
-    // findZonesMLHelper(zones, regIDsSet)
-    // val frozenZones = zones.toSet
-    // val secondFront = (0 until zones.size) filter { id => (zones(id) == -1) &&
-    //                   (inNeigh(id).forall { neigh => (zones(neigh) != -1) })
-    // }
-    // secondFront foreach { id => zones(id) = id }
-    // growZones(secondFront, zones)
-    // mergeZonesML(zones, regIDsSet, frozenZones)
+    println("trying to do third layer")
+    findZonesMLHelper(zones, regIDsSet)
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
