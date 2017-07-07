@@ -336,10 +336,10 @@ class Graph {
     val startingFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
     growZones(startingFront, zones)
     mergeZonesML(zones, regIDsSet, regIDsSet)
-    println("trying to do second layer")
-    findZonesMLHelper(zones, regIDsSet)
-    println("trying to do third layer")
-    findZonesMLHelper(zones, regIDsSet)
+    (0 until 3) foreach { n => {
+      println(s"doing layer $n")
+      findZonesMLHelper(zones, regIDsSet)
+    }}
     val skipUnreached = zones.zipWithIndex filter { p => p._1 != -1 }
     // val skipSelf = skipUnreached filter { p => p._1 != p._2 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
