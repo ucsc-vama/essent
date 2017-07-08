@@ -657,6 +657,15 @@ class Graph {
     fw.close()
   }
 
+  def baseSigName(sigName: String): String = {
+    val lastUnderscoreIndex = sigName.lastIndexOf('_')
+    if (lastUnderscoreIndex == -1) sigName
+    else {
+      if (sigName(lastUnderscoreIndex-1) == 'T') sigName
+      else sigName.slice(0, lastUnderscoreIndex)
+    }
+  }
+
   def writeDegreeFile(regNames: Seq[String], filename: String) {
     val fw = new FileWriter(new File(filename))
     val allSources = (0 until numNodeRefs()) filter { inNeigh(_).isEmpty }
@@ -669,6 +678,9 @@ class Graph {
     val startingSources = ArrayBuffer.fill(nameToID.size)(Set[Int]())
     allSources foreach { id => startingSources(id) += id }
     val ancestorSources = stepBFSSources(allSources.toSet, startingSources)
+    val baseSources = (allSources map idToName map baseSigName).distinct
+    println(s"Total sources: ${allSources.size}")
+    println(s"Total base sources: ${baseSources.size}")
     validNodes foreach { nodeID => {
       val inDegree = inNeigh(nodeID).size
       val outDegree = outNeigh(nodeID).size
