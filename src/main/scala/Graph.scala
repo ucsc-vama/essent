@@ -580,6 +580,18 @@ class Graph {
     }
   }
 
+  // computes all source vertices that are ancestors (not quite full transitive closure)
+  def stepBFSSources(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
+    if (frontier.isEmpty) sources
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+          sources(neigh) ++= sources(id)
+          Seq(neigh)
+      }}}
+      stepBFSSources(nextFrontier.toSet, sources)
+    }
+  }
+
   def zoneConsumers(nodesInZone: Seq[Int]): Seq[Int] = {
     nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
   }
@@ -654,10 +666,14 @@ class Graph {
     val startingDepthsMax = ArrayBuffer.fill(nameToID.size)(-1)
     allSources foreach {id => startingDepthsMax(id) = 0}
     val maxDepths = stepBFSDepthMax(allSources.toSet, startingDepthsMax)
+    val startingSources = ArrayBuffer.fill(nameToID.size)(Set[Int]())
+    allSources foreach { id => startingSources(id) += id }
+    val ancestorSources = stepBFSSources(allSources.toSet, startingSources)
     validNodes foreach { nodeID => {
       val inDegree = inNeigh(nodeID).size
       val outDegree = outNeigh(nodeID).size
-      fw.write(s"${idToName(nodeID)} $inDegree $outDegree ${depths(nodeID)} ${maxDepths(nodeID)}\n")
+      val numSources = ancestorSources(nodeID).size
+      fw.write(s"${idToName(nodeID)} $inDegree $outDegree ${depths(nodeID)} ${maxDepths(nodeID)} $numSources\n")
     }}
     fw.close()
   }
