@@ -659,10 +659,15 @@ class Graph {
 
   def baseSigName(sigName: String): String = {
     val lastUnderscoreIndex = sigName.lastIndexOf('_')
-    if (lastUnderscoreIndex == -1) sigName
+    if ((lastUnderscoreIndex == -1) || (lastUnderscoreIndex == (sigName.size-1)))
+      sigName
     else {
-      if (sigName(lastUnderscoreIndex-1) == 'T') sigName
-      else sigName.slice(0, lastUnderscoreIndex)
+      val suffix = sigName.slice(lastUnderscoreIndex+1, sigName.size)
+      if ((sigName(lastUnderscoreIndex-1) == 'T') || (suffix.contains('.')) ||
+          (suffix exists {!_.isDigit}))
+        sigName
+      else
+        sigName.slice(0, lastUnderscoreIndex)
     }
   }
 
