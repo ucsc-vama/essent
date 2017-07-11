@@ -368,6 +368,32 @@ class Graph {
     mergeZonesML(zones, regIDsSet, frozenZones)
   }
 
+  def findMFFCs() = {
+    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
+    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
+    sinks foreach { id => mffcInit(id) = id }
+    val mffc = findMFFCHelper(sinks, mffcInit)
+    val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
+    val mffcGrouped = skipUnreached groupBy { _._1 }
+    println(s"# reached: ${skipUnreached.size}")
+    println(s"# mffc: ${mffcGrouped.size}")
+    val biggestSize = mffcGrouped map { _._2} map { _.size } reduceLeft { _ max _}
+    println(s"biggest: $biggestSize")
+  }
+
+  def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
+    val newMembers = fringeAncestors flatMap { id => {
+      val childMFFCs = (outNeigh(id) map mffc).distinct
+      if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
+        mffc(id) = childMFFCs.head
+        Seq(id)
+      } else Seq()
+    }}
+    if (newMembers.isEmpty) mffc
+    else findMFFCHelper(newMembers, mffc)
+  }
+
   // makes zones by evenly splitting output of topo sort
   def findZonesTopo(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val numParts = 1000
