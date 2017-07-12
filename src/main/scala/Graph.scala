@@ -368,17 +368,47 @@ class Graph {
     mergeZonesML(zones, regIDsSet, frozenZones)
   }
 
-  def findMFFCs() = {
+  def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
     sinks foreach { id => mffcInit(id) = id }
     val mffc = findMFFCHelper(sinks, mffcInit)
-    val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
+    val afterN = findMFFCLayer(mffc)
+    val skipUnreached = afterN.zipWithIndex filter { p => p._1 != -1 }
+    val zonesGrouped = skipUnreached groupBy { _._1 }
+    val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    val smallZonesRemoved = zoneMap filter {
+      case (name,members) => !(members filter validNodes).isEmpty
+    }
+    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
+  def findMFFCLayer(priorMFFC: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    // print MFFC stats
+    val skipUnreached = priorMFFC.zipWithIndex filter { p => p._1 != -1 }
     val mffcGrouped = skipUnreached groupBy { _._1 }
-    println(s"# reached: ${skipUnreached.size}")
-    println(s"# mffc: ${mffcGrouped.size}")
+    println(s"# nodes reached: ${skipUnreached.size}")
+    println(s"# MFFC's: ${mffcGrouped.size}")
     val biggestSize = mffcGrouped map { _._2} map { _.size } reduceLeft { _ max _}
-    println(s"biggest: $biggestSize")
+    println(s"biggest MFFC: $biggestSize")
+    // compute new layer
+    val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
+    val fringeSeed = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
+    // FUTURE: exclude source nodes?
+    if (fringeSeed.isEmpty) priorMFFC
+    else {
+      fringeSeed foreach { id => priorMFFC(id) = id }
+      val mffc = findMFFCHelper(fringeSeed, priorMFFC)
+      findMFFCLayer(mffc)
+    }
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {

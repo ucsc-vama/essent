@@ -335,6 +335,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // val zoneMapWithSources = g.findZonesTopo3(regNames, doNotShadow)
     // val zoneMapWithSources = g.findZonesKern(regNames, doNotShadow)
     val zoneMapWithSources = g.findZonesML(regNames, doNotShadow)
+    // val zoneMapWithSources = g.findMFFCs(doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     g.analyzeZoningQuality(zoneMap)
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
