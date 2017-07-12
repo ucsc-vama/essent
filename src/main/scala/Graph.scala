@@ -381,7 +381,15 @@ class Graph {
     val smallZonesRemoved = zoneMap filter {
       case (name,members) => !(members filter validNodes).isEmpty
     }
-    smallZonesRemoved map { case (zoneID, zoneMemberIDs) => {
+    val unshadowedSinks = sinks.toSet diff doNotShadowSet
+    val deadSinks = unshadowedSinks filter { !idToName(_).endsWith("$next") }
+    // deadSinks map idToName foreach println
+    println(s"dead sinks: ${deadSinks.size}")
+    val deadSinkSet = deadSinks.toSet
+    val noDeadMFFCs = smallZonesRemoved filter {
+      case (name,members) => !deadSinkSet.contains(name)
+    }
+    noDeadMFFCs map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
       val memberNames = validMembers map idToName
@@ -593,6 +601,14 @@ class Graph {
     println(f"Nodes/zone: $numNodesPerZone%.1f")
     val numInputsPerZone = (zoneMap.values map { _.inputs.size }).sum.toDouble / zoneMap.size
     println(f"Inputs/zone: $numInputsPerZone%.1f")
+    val sizeOneZones = zoneMap filter {
+      case (name, Graph.ZoneInfo(inputs, members, outputs)) => members.size == 1
+    }
+    println(s"Number of size 1 zones: ${sizeOneZones.size}")
+    val sizeOneDead = sizeOneZones filter {
+      case (name, Graph.ZoneInfo(inputs, members, outputs)) => outputs.isEmpty
+    }
+    println(s"Number of dead size 1 zones: ${sizeOneDead.size}")
   }
 
   def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
