@@ -368,6 +368,12 @@ class Graph {
     mergeZonesML(zones, regIDsSet, frozenZones)
   }
 
+  def sourceZone(members: Seq[Int]): Boolean = {
+    val validMembers = members filter validNodes
+    val inputs = zoneInputs(validMembers)
+    inputs.isEmpty
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
@@ -377,8 +383,13 @@ class Graph {
     val skipUnreached = afterN.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val sourceZones = zoneMap filter { case (k,v) => sourceZone(v.toSeq) }
+    val sourceZoneIDs = sourceZones.keys.toSet
+    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
+    val sourceZonesRemoved = zoneMap filter { case (k,v) => !sourceZoneIDs.contains(k) }
+    val singleSourceZoneAdded = sourceZonesRemoved + ((-2, sourceZoneMembers))
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
-    val smallZonesRemoved = zoneMap filter {
+    val smallZonesRemoved = singleSourceZoneAdded filter {
       case (name,members) => !(members filter validNodes).isEmpty
     }
     val unshadowedSinks = sinks.toSet diff doNotShadowSet
