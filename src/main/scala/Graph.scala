@@ -377,7 +377,7 @@ class Graph {
     val skipUnreached = afterN.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
-    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v).isEmpty }
+    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
     println(s"${sourceZones.size} source zones")
     val sourceZoneIDs = sourceZones.keys.toSet
     val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
@@ -396,7 +396,40 @@ class Graph {
     val noDeadMFFCs = smallZonesRemoved filter {
       case (name,members) => !deadSinkSet.contains(name)
     }
-    noDeadMFFCs map { case (zoneID, zoneMemberIDs) => {
+
+    val singleInputZoneMFFCs = noDeadMFFCs filter { case (name, members) => {
+      if (name == -2) false
+      else {
+        val inputs = zoneInputs(members filter validNodes)
+        val inputZones = (inputs map afterN).distinct filter { _ != -2 }
+        inputZones.size == 1
+      }
+    }}
+    val singleInputZoneMFFCids = singleInputZoneMFFCs.keys.toSet
+    val availSingleInputMFFCs = singleInputZoneMFFCs filter {case (oldZoneID,members) => {
+      val inputs = zoneInputs(members filter validNodes)
+      val inputZones = (inputs map afterN).distinct filter { _ != -2 }
+      val newZoneID = inputZones.head
+      !singleInputZoneMFFCids.contains(newZoneID)
+    }}
+    val newZonesToMerge = availSingleInputMFFCs.toSeq map { case (oldZoneID, members) => {
+      val inputs = zoneInputs(members filter validNodes)
+      val inputZones = (inputs map afterN).distinct filter { _ != -2 }
+      val newZoneID = inputZones.head
+      members foreach { afterN(_) = newZoneID }
+      (newZoneID, members)
+    }}
+    val mergedSingleInputMFFCs = availSingleInputMFFCs.keys.toSet
+    println(s"merging in ${mergedSingleInputMFFCs.size} zones")
+    val mergedZonesRemoved = noDeadMFFCs filter {
+      case (k,v) => !mergedSingleInputMFFCs.contains(k)
+    }
+    val allZonesUnmerged = mergedZonesRemoved.toSeq ++ newZonesToMerge
+    val zonesMerged = allZonesUnmerged.groupBy{_._1} map {
+      case (k,v) => (k,v.map{_._2}.reduceLeft{ _ ++ _})
+    }
+
+    zonesMerged.toMap map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
       val memberNames = validMembers map idToName
@@ -616,6 +649,10 @@ class Graph {
       case (name, Graph.ZoneInfo(inputs, members, outputs)) => outputs.isEmpty
     }
     println(s"Number of dead size 1 zones: ${sizeOneDead.size}")
+    val singleInputZones = zoneMap filter {
+      case (name, Graph.ZoneInfo(inputs, members, outputs)) => inputs.size == 1
+    }
+    println(s"Number of 1 input zones: ${singleInputZones.size}")
   }
 
   def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
