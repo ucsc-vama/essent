@@ -372,6 +372,14 @@ class Graph {
     zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
   }
 
+  def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
+    println(s"${sourceZones.size} source zones")
+    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
+    sourceZoneMembers foreach { mffc(_) = -2 }
+    removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
@@ -381,15 +389,9 @@ class Graph {
     val skipUnreached = afterN.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
-    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
-    println(s"${sourceZones.size} source zones")
-    val sourceZoneIDs = sourceZones.keys.toSet
-    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
-    sourceZoneMembers foreach { afterN(_) = -2 }
-    val sourceZonesRemoved = removeZones(sourceZoneIDs, zoneMap)
-    val singleSourceZoneAdded = sourceZonesRemoved + ((-2, sourceZoneMembers))
+    val sourceZonesConsolidated = consolidateSourceZones(zoneMap, afterN)
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
-    val smallZonesRemoved = singleSourceZoneAdded filter {
+    val smallZonesRemoved = sourceZonesConsolidated filter {
       case (name,members) => !(members filter validNodes).isEmpty
     }
     val unshadowedSinks = sinks.toSet diff doNotShadowSet
