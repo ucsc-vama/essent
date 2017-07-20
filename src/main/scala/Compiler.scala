@@ -360,6 +360,8 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(0, "uint64_t total_transitions = 0;")
       writeLines(0, "uint64_t total_zones_active = 0;")
       writeLines(0, "uint64_t cycles_ticked = 0;")
+      writeLines(0, "uint64_t outputs_checked = 0;")
+      writeLines(0, "uint64_t outputs_silenced = 0;")
       // val zoneActCounts = zoneMap.keys map genFlagName map {
       //   zoneName => s"uint64_t ${zoneName}_ACTS = 0;"
       // }
@@ -480,7 +482,7 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // emit each zone
     // zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
-      zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
+    zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
         case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
       val sensitivityListStr = inputs map genFlagName mkString(" || ")
       if (sensitivityListStr.isEmpty)
@@ -499,6 +501,13 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(2, oldOutputs)
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      if (trackActivity) {
+        writeLines(2, s"outputs_checked += ${outputsCleaned.size};")
+        val outputsSilenced = outputsCleaned map {
+          name => s"if ($name == $name$$old) outputs_silenced++;"
+        }
+        writeLines(2, outputsSilenced)
+      }
       val outputChangeDetections = outputsCleaned map {
         name => s"${genFlagName(name)} |= $name != $name$$old;"
       }
@@ -511,6 +520,7 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(2, s"total_zones_active += zones_active;")
       writeLines(2, s"""printf("Zones Active %llu/%llu\\n", zones_active, num_zones);""")
       writeLines(2, s"""printf("Average Zones: %g\\n", (double) total_zones_active/cycles_ticked);""")
+      writeLines(2, s"""printf("Outputs Silenced: %llu/%llu\\n", outputs_silenced, outputs_checked);""")
     }
 
     // emit rest of body (without redeclaring)
