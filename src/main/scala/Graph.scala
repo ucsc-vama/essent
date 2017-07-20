@@ -368,6 +368,10 @@ class Graph {
     mergeZonesML(zones, regIDsSet, frozenZones)
   }
 
+  def removeZones(zonesToRemove: Set[Int], zoneMap: Map[Int, Seq[Int]]): Map[Int, Seq[Int]] = {
+    zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
@@ -382,7 +386,7 @@ class Graph {
     val sourceZoneIDs = sourceZones.keys.toSet
     val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
     sourceZoneMembers foreach { afterN(_) = -2 }
-    val sourceZonesRemoved = zoneMap filter { case (k,v) => !sourceZoneIDs.contains(k) }
+    val sourceZonesRemoved = removeZones(sourceZoneIDs, zoneMap)
     val singleSourceZoneAdded = sourceZonesRemoved + ((-2, sourceZoneMembers))
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val smallZonesRemoved = singleSourceZoneAdded filter {
@@ -393,9 +397,7 @@ class Graph {
     // deadSinks map idToName foreach println
     println(s"dead sinks: ${deadSinks.size}")
     val deadSinkSet = deadSinks.toSet
-    val noDeadMFFCs = smallZonesRemoved filter {
-      case (name,members) => !deadSinkSet.contains(name)
-    }
+    val noDeadMFFCs = removeZones(deadSinkSet, smallZonesRemoved)
 
     val singleInputZoneMFFCs = noDeadMFFCs filter { case (name, members) => {
       if (name == -2) false
