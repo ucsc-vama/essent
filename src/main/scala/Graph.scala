@@ -401,19 +401,22 @@ class Graph {
       val newZoneID = validInputZones(members).head
       !singleInputZoneMFFCids.contains(newZoneID)
     }}
-    val newZonesToMerge = availSingleInputMFFCs.toSeq map { case (oldZoneID, members) => {
-      val newZoneID = validInputZones(members).head
-      members foreach { mffc(_) = newZoneID }
-      (newZoneID, members)
-    }}
-    val mergedSingleInputMFFCs = availSingleInputMFFCs.keys.toSet
-    println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
-    val oldZonesRemoved = removeZones(availSingleInputMFFCs.keys.toSet, zoneMap)
-    val allZonesUnmerged = oldZonesRemoved.toSeq ++ newZonesToMerge
-    val zonesMerged = allZonesUnmerged.groupBy{_._1} map {
-      case (k,v) => (k,v.map{_._2}.reduceLeft{ _ ++ _})
+    if (availSingleInputMFFCs.isEmpty) zoneMap
+    else {
+      println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
+      val newZonesToMerge = availSingleInputMFFCs.toSeq map { case (oldZoneID, members) => {
+        val newZoneID = validInputZones(members).head
+        members foreach { mffc(_) = newZoneID }
+        (newZoneID, members)
+      }}
+      val mergedSingleInputMFFCs = availSingleInputMFFCs.keys.toSet
+      val oldZonesRemoved = removeZones(availSingleInputMFFCs.keys.toSet, zoneMap)
+      val allZonesUnmerged = oldZonesRemoved.toSeq ++ newZonesToMerge
+      val zonesMerged = allZonesUnmerged.groupBy{_._1} map {
+        case (k,v) => (k,v.map{_._2}.reduceLeft{ _ ++ _})
+      }
+      mergeSingleInputMFFCsToParents(zonesMerged, mffc)
     }
-    zonesMerged
   }
 
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
