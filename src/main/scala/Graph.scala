@@ -419,6 +419,27 @@ class Graph {
     }
   }
 
+  def safeToMerge(zoneA: Int, zoneB: Int, zoneMap: Map[Int, Seq[Int]]): Boolean = {
+    !extPathExists(zoneMap(zoneA), zoneMap(zoneB)) &&
+      !extPathExists(zoneMap(zoneB), zoneMap(zoneA))
+  }
+
+  def extPathExists(sourceNodes: Seq[Int], destNodes: Seq[Int]): Boolean = {
+    val destNodesSet = destNodes.toSet
+    val fringe = zoneOutputs(sourceNodes filter validNodes)
+    val exposedFringe = fringe filter { !destNodesSet.contains(_) }
+    extPathExistsHelper(sourceNodes, BitSet() ++ sourceNodes, destNodesSet)
+  }
+
+  def extPathExistsHelper(fringe: Seq[Int], reached: BitSet, destNodes: Set[Int]): Boolean = {
+    if (fringe.isEmpty) false
+    else {
+      val newFringe = fringe flatMap outNeigh filter { !reached(_) }
+      if (newFringe exists { destNodes.contains(_)}) true
+      else extPathExistsHelper(newFringe.distinct, reached ++ newFringe, destNodes)
+    }
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
