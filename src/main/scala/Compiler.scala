@@ -642,10 +642,10 @@ class EmitCpp(writer: Writer) extends Transform {
     // start emitting eval function
     // writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     // writeLines(1, resetTree)
-    // emit reg updates
+    // // emit reg updates
     // if (!allRegUpdates.flatten.isEmpty) {
     //   writeLines(1, "if (update_registers) {")
-    //   recRegActivityTracking(regNames)
+    //   // recRegActivityTracking(regNames)
     //   writeLines(2, allRegUpdates.flatten)
     //   writeLines(1, "}")
     // }
