@@ -381,11 +381,19 @@ class Graph {
   }
 
   def removeDeadZones(zoneMap: Map[Int, Seq[Int]], sinks: Seq[Int], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
-    val unshadowedSinks = sinks.toSet diff doNotShadow
-    val deadSinks = unshadowedSinks filter { !idToName(_).endsWith("$next") }
+    val unshadowedSinks = sinks filter {
+      sinkID => (!doNotShadow.contains(sinkID)) &&
+                (!zoneMap.contains(sinkID) || !zoneMap(sinkID).exists(doNotShadow.contains(_)))
+    }
+    val deadSinks = (unshadowedSinks filter { !idToName(_).endsWith("$next") }).toSet
     println(s"${deadSinks.size} dead sink MFFCs removed")
+    val deadSinkMembers = zoneMap flatMap { case (zoneName, members) => {
+      if (deadSinks.contains(zoneName)) members
+      else Seq()
+    }}
     // FUTURE: set deleted mffc array entries to -1?
-    removeZones(deadSinks.toSet, zoneMap)
+    // FUTURE: actually remove dead sinks rather than just unzoning them
+    removeZones(deadSinks, zoneMap)
   }
 
   def mergeSingleInputMFFCsToParents(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
