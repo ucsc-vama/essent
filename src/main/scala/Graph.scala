@@ -396,24 +396,25 @@ class Graph {
     removeZones(deadSinks, zoneMap)
   }
 
+  def validInputZones(memberIDs: Seq[Int], zones: ArrayBuffer[Int]) = {
+    val inputs = zoneInputs(memberIDs filter validNodes)
+    (inputs map zones).distinct filter { _ != -2 }
+  }
+
   def mergeSingleInputMFFCsToParents(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    def validInputZones(members: Seq[Int]) = {
-      val inputs = zoneInputs(members filter validNodes)
-      (inputs map mffc).distinct filter { _ != -2 }
-    }
     val singleInputZoneMFFCs = zoneMap filter {
-      case (name, members) => validInputZones(members).size == 1
+      case (name, members) => validInputZones(members, mffc).size == 1
     }
     val singleInputZoneMFFCids = singleInputZoneMFFCs.keys.toSet
     val availSingleInputMFFCs = singleInputZoneMFFCs filter {case (oldZoneID,members) => {
-      val newZoneID = validInputZones(members).head
+      val newZoneID = validInputZones(members, mffc).head
       !singleInputZoneMFFCids.contains(newZoneID)
     }}
     if (availSingleInputMFFCs.isEmpty) zoneMap
     else {
       println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
       val newZonesToMerge = availSingleInputMFFCs.toSeq map { case (oldZoneID, members) => {
-        val newZoneID = validInputZones(members).head
+        val newZoneID = validInputZones(members, mffc).head
         members foreach { mffc(_) = newZoneID }
         (newZoneID, members)
       }}
