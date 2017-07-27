@@ -449,6 +449,29 @@ class Graph {
     }
   }
 
+  def considerBiggestOverlaps(zoneMap: Map[Int, Seq[Int]]) {
+    val zoneToInputs = zoneMap map {
+      case (name, members) => (name, zoneInputs(members filter validNodes))
+    }
+    val allInputZonePairs = zoneToInputs.toSeq flatMap {
+      case (name, inputs) => inputs map { (_, name) }
+    }
+    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
+      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
+    }
+    val overlaps = inputToConsumingZones.toSeq map { case (input, consumingZones) => {
+      def overlapSize(zoneA: Int, zoneB: Int): Int = {
+        zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
+      }
+      val allCombinations = for (a <- consumingZones; b <- consumingZones) yield (a,b)
+      val overlapSizes = allCombinations map { case(a,b) => overlapSize(a,b) }
+      // println(s"${idToName(input)} ${overlapSizes.max}")
+      (overlapSizes.max, input)
+    }}
+    val overlapsSorted = overlaps.sorted.reverse
+    overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
