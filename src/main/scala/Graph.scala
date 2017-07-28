@@ -447,8 +447,8 @@ class Graph {
   def extPathExists(sourceNodes: Seq[Int], destNodes: Seq[Int]): Boolean = {
     val destNodesSet = destNodes.toSet
     val fringe = zoneOutputs(sourceNodes filter validNodes)
-    val exposedFringe = fringe filter { !destNodesSet.contains(_) }
-    extPathExistsHelper(sourceNodes, BitSet() ++ sourceNodes, destNodesSet)
+    val exposedFringe = fringe.flatMap(outNeigh).distinct.filter{ !destNodesSet.contains(_) }
+    extPathExistsHelper(exposedFringe, BitSet() ++ sourceNodes ++ exposedFringe, destNodesSet)
   }
 
   def extPathExistsHelper(fringe: Seq[Int], reached: BitSet, destNodes: Set[Int]): Boolean = {
@@ -550,7 +550,7 @@ class Graph {
     val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, doNotShadowSet)
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, mffc)
     // val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
-    singlesMergedUp.toMap map { case (zoneID, zoneMemberIDs) => {
+    singlesMergedUp map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
       val memberNames = validMembers map idToName
