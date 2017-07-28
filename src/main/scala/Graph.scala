@@ -391,7 +391,8 @@ class Graph {
     removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
   }
 
-  def removeDeadZones(zoneMap: Map[Int, Seq[Int]], sinks: Seq[Int], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
+  def removeDeadZones(zoneMap: Map[Int, Seq[Int]], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
+    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
     val unshadowedSinks = sinks filter {
       sinkID => (!doNotShadow.contains(sinkID)) &&
                 (!zoneMap.contains(sinkID) || !zoneMap(sinkID).exists(doNotShadow.contains(_)))
@@ -539,20 +540,16 @@ class Graph {
     // FUTURE: grow new merges up (fix cycle?)
   }
 
-  def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
-    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
-    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
-    sinks foreach { id => mffcInit(id) = id }
-    val mffc = findMFFCHelper(sinks, mffcInit)
-    val afterN = findMFFCLayer(mffc)
-    val skipUnreached = afterN.zipWithIndex filter { p => p._1 != -1 }
+  def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+    val mffc = findMFFCs()
+    val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
     val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
-    val sourceZonesConsolidated = consolidateSourceZones(zoneMap, afterN)
+    val sourceZonesConsolidated = consolidateSourceZones(zoneMap, mffc)
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
-    val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, sinks, doNotShadowSet)
-    val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, afterN)
-    // val smallZonesMerged = mergeSmallZones(singlesMergedUp, afterN)
+    val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, doNotShadowSet)
+    val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, mffc)
+    // val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     singlesMergedUp.toMap map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -561,6 +558,14 @@ class Graph {
       val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
+  }
+
+  def findMFFCs(): ArrayBuffer[Int] = {
+    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
+    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
+    sinks foreach { id => mffcInit(id) = id }
+    val mffc = findMFFCHelper(sinks, mffcInit)
+    findMFFCLayer(mffc)
   }
 
   def findMFFCLayer(priorMFFC: ArrayBuffer[Int]): ArrayBuffer[Int] = {
