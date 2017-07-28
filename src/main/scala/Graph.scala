@@ -472,6 +472,70 @@ class Graph {
     overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
   }
 
+  def mergeSmallZones(zoneMap: Map[Int, Seq[Int]]) = {
+    val smallZoneCutoff = 10
+    val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
+    val zoneToInputs = zoneMap map {
+      case (name, members) => (name, zoneInputs(members filter validNodes))
+    }
+    val allInputZonePairs = zoneToInputs.toSeq flatMap {
+      case (name, inputs) => inputs map { (_, name) }
+    }
+    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
+      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
+    }
+    val inputsToMerge = smallZoneIDs flatMap { smallZoneID => {
+      zoneToInputs(smallZoneID) filter {
+        inputID => inputToConsumingZones(inputID).forall(smallZoneIDs.contains(_))
+      }
+    }}
+    println(s"${inputsToMerge.size} inputs considered")
+    val safeInputsToMerge = inputsToMerge filter { inputID => {
+      val siblingsToMerge = inputToConsumingZones(inputID)
+      if (siblingsToMerge.size > 1) {
+        val allPairs = for (a <- siblingsToMerge; b <- siblingsToMerge) yield (a,b)
+        allPairs.forall{ case (zoneA, zoneB) => safeToMerge(zoneA, zoneB, zoneMap) }
+      } else false
+    }}
+    println(s"${safeInputsToMerge.size} inputs safe")
+    // score merges
+    val inputsScored = safeInputsToMerge map { inputID => {
+      val siblingsToMerge = inputToConsumingZones(inputID)
+      val allInputChecks = siblingsToMerge flatMap zoneToInputs
+      val inputChecksSaved = allInputChecks.size - allInputChecks.distinct.size
+      (inputChecksSaved, inputID)
+    }}
+    // sort by score
+    val inputScoresSorted = inputsScored.toSeq.sorted.reverse
+    // inputScoresSorted foreach { case (score, inputID) => println(s"${idToName(inputID)} $score")}
+    // select valid cover
+    val (zonesToBeMerged, takenInputPairs) = inputScoresSorted.foldLeft((Set[Int](), Seq[(Int,Int)]())){
+      case ((zonesTaken, scorePairsTaken), (score, inputID)) => {
+        val siblingsToMerge = inputToConsumingZones(inputID)
+        if (siblingsToMerge.exists(zonesTaken.contains(_)))
+          (zonesTaken, scorePairsTaken)
+        else {
+          (zonesTaken ++ siblingsToMerge.toSet, scorePairsTaken :+ (score, inputID))
+        }
+      }
+    }
+    println(s"${takenInputPairs.size} non-conflicting merges")
+    println(s"will delete ${takenInputPairs.map(_._1).sum} input checks")
+    // perform merges
+    val totalZonesToMerge = takenInputPairs.map(_._2).map(inputToConsumingZones(_).size).sum
+    println(s"will be merging $totalZonesToMerge zones")
+    val mergeReqs = takenInputPairs map { case (score, inputID) => inputToConsumingZones(inputID) }
+    val newMergedZones = mergeReqs map { zonesToMerge => {
+      val newZoneName = zonesToMerge.head
+      val allMembers = zonesToMerge flatMap zoneMap
+      (newZoneName, allMembers)
+    }}
+    val zonesToMergeRemoved = removeZones(mergeReqs.flatten.toSet, zoneMap)
+    val mergedZoneMap = zonesToMergeRemoved ++ newMergedZones.toMap
+    mergedZoneMap
+    // FUTURE: grow new merges up (fix cycle?)
+  }
+
   def findMFFCs(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
@@ -485,6 +549,7 @@ class Graph {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, sinks, doNotShadowSet)
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, afterN)
+    // val smallZonesMerged = mergeSmallZones(singlesMergedUp)
     singlesMergedUp.toMap map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
