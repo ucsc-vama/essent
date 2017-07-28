@@ -372,6 +372,17 @@ class Graph {
     zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
   }
 
+  def mergeZonesPar(mergeReqs: Seq[Seq[Int]], zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    val newMergedZones = mergeReqs map { zonesToMerge => {
+      val newZoneName = zones(zonesToMerge.head)
+      val allMembers = zonesToMerge flatMap zoneMap
+      allMembers foreach { zones(_) = newZoneName }
+      (newZoneName, allMembers)
+    }}
+    val zonesToMergeRemoved = removeZones(mergeReqs.flatten.toSet, zoneMap)
+    zonesToMergeRemoved ++ newMergedZones.toMap
+  }
+
   def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
     println(s"${sourceZones.size} source MFFCs merged")
@@ -413,17 +424,16 @@ class Graph {
     if (availSingleInputMFFCs.isEmpty) zoneMap
     else {
       println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
-      val newZonesToMerge = availSingleInputMFFCs.toSeq map { case (oldZoneID, members) => {
-        val newZoneID = validInputZones(members, mffc).head
-        members foreach { mffc(_) = newZoneID }
-        (newZoneID, members)
-      }}
-      val mergedSingleInputMFFCs = availSingleInputMFFCs.keys.toSet
-      val oldZonesRemoved = removeZones(availSingleInputMFFCs.keys.toSet, zoneMap)
-      val allZonesUnmerged = oldZonesRemoved.toSeq ++ newZonesToMerge
-      val zonesMerged = allZonesUnmerged.groupBy{_._1} map {
-        case (k,v) => (k,v.map{_._2}.reduceLeft{ _ ++ _})
+      val mergeReqsConsolidated = availSingleInputMFFCs.keys groupBy {
+        oldZoneID => {
+          val zoneToMergeInto = validInputZones(zoneMap(oldZoneID), mffc).head
+          zoneToMergeInto
+        }
       }
+      val mergeReqs = mergeReqsConsolidated.toSeq map {
+        case (parentZone, childZones) => Seq(parentZone) ++ childZones
+      }
+      val zonesMerged = mergeZonesPar(mergeReqs, zoneMap, mffc)
       mergeSingleInputMFFCsToParents(zonesMerged, mffc)
     }
   }
@@ -472,7 +482,7 @@ class Graph {
     overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
   }
 
-  def mergeSmallZones(zoneMap: Map[Int, Seq[Int]]) = {
+  def mergeSmallZones(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]) = {
     val smallZoneCutoff = 10
     val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
     val zoneToInputs = zoneMap map {
@@ -525,14 +535,7 @@ class Graph {
     val totalZonesToMerge = takenInputPairs.map(_._2).map(inputToConsumingZones(_).size).sum
     println(s"will be merging $totalZonesToMerge zones")
     val mergeReqs = takenInputPairs map { case (score, inputID) => inputToConsumingZones(inputID) }
-    val newMergedZones = mergeReqs map { zonesToMerge => {
-      val newZoneName = zonesToMerge.head
-      val allMembers = zonesToMerge flatMap zoneMap
-      (newZoneName, allMembers)
-    }}
-    val zonesToMergeRemoved = removeZones(mergeReqs.flatten.toSet, zoneMap)
-    val mergedZoneMap = zonesToMergeRemoved ++ newMergedZones.toMap
-    mergedZoneMap
+    mergeZonesPar(mergeReqs, zoneMap, zones)
     // FUTURE: grow new merges up (fix cycle?)
   }
 
@@ -549,7 +552,7 @@ class Graph {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, sinks, doNotShadowSet)
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, afterN)
-    // val smallZonesMerged = mergeSmallZones(singlesMergedUp)
+    // val smallZonesMerged = mergeSmallZones(singlesMergedUp, afterN)
     singlesMergedUp.toMap map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
