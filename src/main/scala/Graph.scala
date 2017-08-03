@@ -383,6 +383,29 @@ class Graph {
     zonesToMergeRemoved ++ newMergedZones.toMap
   }
 
+  def mergeZonesSafe(mergeReqs: Seq[Seq[Int]], zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    if (mergeReqs.isEmpty) zoneMap
+    else {
+      val zonesToMerge = mergeReqs.head
+      if (zonesToMerge.size < 2) println("tiny merge req!")
+      val zoneGraph = buildZoneGraph(zoneMap, zones)
+      val allPairs = for (a <- zonesToMerge; b <- zonesToMerge) yield (a,b)
+      // val mergeOK = allPairs.forall{ case (zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
+      val mergeOK = allPairs.forall{ case (zoneA, zoneB) => zoneGraph.safeToMerge(idToName(zoneA), idToName(zoneB)) }
+      if (mergeOK) {
+        val newZoneName = zones(zonesToMerge.head)
+        val allMembers = zonesToMerge flatMap zoneMap
+        allMembers foreach { zones(_) = newZoneName }
+        val zonesToMergeRemoved = removeZones(zonesToMerge.toSet, zoneMap)
+        val newZoneMap = zonesToMergeRemoved ++ Seq((newZoneName, allMembers)).toMap
+        mergeZonesSafe(mergeReqs.tail, newZoneMap, zones)
+      } else {
+        println(s"dropped merge req ${zonesToMerge}")
+        mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
+      }
+    }
+  }
+
   def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
     println(s"${sourceZones.size} source MFFCs merged")
@@ -439,7 +462,26 @@ class Graph {
     }
   }
 
-  def safeToMerge(zoneA: Int, zoneB: Int, zoneMap: Map[Int, Seq[Int]]): Boolean = {
+  def buildZoneGraph(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]) = {
+    val zoneGraph = new Graph
+    zoneMap foreach { case (zoneID, memberIDs) => {
+      if (zoneID != -2) {
+        val zoneName = idToName(zoneID)
+        val inputZones = validInputZones(memberIDs, zones)
+        val inputNames = inputZones map idToName
+        zoneGraph.addNodeWithDeps(zoneName, inputNames)
+      }
+    }}
+    zoneGraph
+  }
+
+  def safeToMerge(nameA: String, nameB: String): Boolean = {
+    val idA = nameToID(nameA)
+    val idB = nameToID(nameB)
+    !extPathExists(Seq(idA), Seq(idB)) && !extPathExists(Seq(idB), Seq(idA))
+  }
+
+  def safeToMergeZones(zoneA: Int, zoneB: Int, zoneMap: Map[Int, Seq[Int]]): Boolean = {
     !extPathExists(zoneMap(zoneA), zoneMap(zoneB)) &&
       !extPathExists(zoneMap(zoneB), zoneMap(zoneA))
   }
@@ -505,7 +547,7 @@ class Graph {
       val siblingsToMerge = inputToConsumingZones(inputID)
       if (siblingsToMerge.size > 1) {
         val allPairs = for (a <- siblingsToMerge; b <- siblingsToMerge) yield (a,b)
-        allPairs.forall{ case (zoneA, zoneB) => safeToMerge(zoneA, zoneB, zoneMap) }
+        allPairs.forall{ case (zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
       } else false
     }}
     println(s"${safeInputsToMerge.size} inputs safe")
@@ -536,7 +578,9 @@ class Graph {
     val totalZonesToMerge = takenInputPairs.map(_._2).map(inputToConsumingZones(_).size).sum
     println(s"will be merging $totalZonesToMerge zones")
     val mergeReqs = takenInputPairs map { case (score, inputID) => inputToConsumingZones(inputID) }
-    mergeZonesPar(mergeReqs, zoneMap, zones)
+    mergeZonesSafe(mergeReqs, zoneMap, zones)
+    // FUTURE: refactor so build one zoneGraph, then mutate it
+    // FUTURE: perform all safety filtering sequentially
     // FUTURE: grow new merges up (fix cycle?)
   }
 
@@ -549,13 +593,13 @@ class Graph {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, doNotShadowSet)
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, mffc)
-    // val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
-    singlesMergedUp map { case (zoneID, zoneMemberIDs) => {
+    val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
+    smallZonesMerged map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
       val memberNames = validMembers map idToName
       val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
-      val zoneName = if (zoneID != -2) idToName(validMembers.head) else "ZONE_SOURCE"
+      val zoneName = if (zoneID != -2) idToName(zoneID) else "ZONE_SOURCE"
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
   }
