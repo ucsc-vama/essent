@@ -138,19 +138,39 @@ object Emitter {
               else Seq(genCppType(p.tpe) + " " + p.name + ";")
   }
 
+  def chunkLitString(litStr: String, chunkWidth:Int = 16): Seq[String] = {
+    if (litStr.size < chunkWidth) Seq(litStr.takeRight(chunkWidth))
+    else chunkLitString(litStr.dropRight(chunkWidth)) ++ Seq(litStr.takeRight(chunkWidth))
+  }
+
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)
       val asHexStr = u.value.toString(16)
-      if ((bitWidth(u.tpe) <= 64) || (u.value <= maxIn64Bits)) s"UInt<$width>(0x$asHexStr)"
-      else s"""UInt<$width>("0x$asHexStr")"""
+      if ((width <= 64) || (u.value <= maxIn64Bits)) s"UInt<$width>(0x$asHexStr)"
+      else {
+        val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
+        val numWords = (width + 63) / 64
+        s"UInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))"
+      }
     }
     case u: SIntLiteral => {
-      if (bitWidth(u.tpe) <= 64) s"SInt<${bitWidth(u.tpe)}>(${u.value.toString(10)})"
-      else if (u.value >= 0) s"""SInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
-      else s"""(-SInt<${bitWidth(u.tpe)}>("0x${(-u.value).toString(16)}")).tail<1>()"""
+      val width = bitWidth(u.tpe)
+      if (width <= 64) s"SInt<$width>(${u.value.toString(10)})"
+      else {
+        val numWords = (width + 63) / 64
+        if (u.value >= 0) {
+          val asHexStr = u.value.toString(16)
+          val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
+          s"SInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))"
+        } else {
+          val asNegHexStr = (-u.value).toString(16)
+          val arrStr = (chunkLitString(asNegHexStr) map { "0x" + _}).mkString(",")
+          s"""(-SInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))).tail<1>()"""
+        }
+      }
     }
     case m: Mux => {
       val condName = emitExpr(m.cond)
