@@ -141,8 +141,11 @@ object Emitter {
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => {
-      if (bitWidth(u.tpe) > 64) s"""UInt<${bitWidth(u.tpe)}>("0x${u.value.toString(16)}")"""
-      else s"UInt<${bitWidth(u.tpe)}>(0x${u.value.toString(16)})"
+      val maxIn64Bits = (BigInt(1) << 64) - 1
+      val width = bitWidth(u.tpe)
+      val asHexStr = u.value.toString(16)
+      if ((bitWidth(u.tpe) <= 64) || (u.value <= maxIn64Bits)) s"UInt<$width>(0x$asHexStr)"
+      else s"""UInt<$width>("0x$asHexStr")"""
     }
     case u: SIntLiteral => {
       if (bitWidth(u.tpe) <= 64) s"SInt<${bitWidth(u.tpe)}>(${u.value.toString(10)})"
