@@ -335,7 +335,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // val zoneMapWithSources = g.findZonesTopo3(regNames, doNotShadow)
     // val zoneMapWithSources = g.findZonesKern(regNames, doNotShadow)
     val zoneMapWithSources = g.findZonesML(regNames, doNotShadow)
-    // val zoneMapWithSources = g.findMFFCs(doNotShadow)
+    // val zoneMapWithSources = g.findZonesMFFC(doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     g.analyzeZoningQuality(zoneMap)
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
@@ -390,19 +390,28 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     writeLines(0, nonMemPreDecs)
 
+    writeLines(0, s"bool sim_cached = false;")
+
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // predeclare zone activity flags
-    val inputActivityFlags = inputsToZones map genFlagName
-    writeLines(1, (inputActivityFlags map { flagName => s"bool $flagName = reset;"}).toSeq)
+    val nonRegActFlags = (inputsToZones diff regNamesSet) map genFlagName
+    val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+    writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = reset;"}).toSeq)
+    writeLines(1, (inputRegs map { regName => s"bool ${genFlagName(regName)};"}).toSeq)
     println(s"Activity flags: ${inputsToZones.size}")
 
     // emit update checks for registers
+    writeLines(1, "if (sim_cached && ! reset) {")
     val regUpdateChecks = regNamesSet intersect inputsToZones map {
       regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
     }
-    writeLines(1, regUpdateChecks.toSeq)
+    writeLines(2, regUpdateChecks.toSeq)
+    writeLines(1, "} else {")
+    writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = true;"})
+    writeLines(1, "}")
+    writeLines(1, "sim_cached = true;")
 
     // emit reg updates
     if (!allRegUpdates.isEmpty || trackActivity) {
