@@ -405,7 +405,8 @@ class EmitCpp(writer: Writer) extends Transform {
     // emit update checks for registers
     writeLines(1, "if (sim_cached && ! reset) {")
     val regUpdateChecks = regNamesSet intersect inputsToZones map {
-      regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
+      regName => s"${genFlagName(regName)} = $regName != $regName$$next;"
+      // regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
     }
     writeLines(2, regUpdateChecks.toSeq)
     writeLines(1, "} else {")
