@@ -398,7 +398,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare zone activity flags
     val nonRegActFlags = (inputsToZones diff regNamesSet) map genFlagName
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
-    writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = reset;"}).toSeq)
+    writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = !sim_cached;"}).toSeq)
     writeLines(1, (inputRegs map { regName => s"bool ${genFlagName(regName)};"}).toSeq)
     println(s"Activity flags: ${inputsToZones.size}")
 
