@@ -594,8 +594,8 @@ class Graph {
 
   // attemps to merge small zones into neighbors, no matter the size
   def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    val smallZoneCutoff = 10
-    val mergeThreshold = 0.6
+    val smallZoneCutoff = 20
+    val mergeThreshold = 0.5
     val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
     println(s"Small zones remaining: ${smallZoneIDs.size}")
     val zoneToInputs = zoneMap map {
