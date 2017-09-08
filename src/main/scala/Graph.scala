@@ -390,7 +390,7 @@ class Graph {
       if (zonesToMerge.size < 2) println("tiny merge req!")
       val zonesStillExist = zonesToMerge.forall{ zoneMap.contains(_) }
       if (!zonesStillExist) {
-        println(s"zones missing ${zonesToMerge}")
+        // println(s"zones missing ${zonesToMerge}")
         mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
       } else {
         val zoneGraph = buildZoneGraph(zoneMap, zones)
@@ -406,7 +406,7 @@ class Graph {
           // println(s"ok with ${zonesToMerge}")
           mergeZonesSafe(mergeReqs.tail, newZoneMap, zones)
         } else {
-          println(s"dropped merge req ${zonesToMerge}")
+          // println(s"dropped merge req ${zonesToMerge}")
           mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
         }
       }
@@ -593,7 +593,7 @@ class Graph {
   }
 
   // attemps to merge small zones into neighbors, no matter the size
-  def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]) = {
+  def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val smallZoneCutoff = 10
     val mergeThreshold = 0.6
     val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
@@ -625,7 +625,11 @@ class Graph {
       else Seq(Seq(topChoice.get._2, zoneID))
     }}
     println(s"Worthwhile merges: ${mergesToConsider.size}")
-    mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
+    if (mergesToConsider.isEmpty) zoneMap
+    else {
+      val newZoneMap = mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
+      mergeSmallZones2(newZoneMap, zones)
+    }
   }
 
   def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
