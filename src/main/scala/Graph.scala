@@ -632,6 +632,30 @@ class Graph {
     }
   }
 
+  def mergeIndentInps(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    val zoneToInputs = zoneMap map {
+      case (name, members) => (name, zoneInputs(members filter validNodes))
+    }
+    val allInputZonePairs = zoneToInputs.toSeq flatMap {
+      case (name, inputs) => inputs map { (_, name) }
+    }
+    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
+      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
+    }
+    def overlapSize(zoneA: Int, zoneB: Int): Int = {
+      zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
+    }
+    val mergesToConsider = zoneMap.keys flatMap { zoneID => {
+      val numInputs = zoneToInputs(zoneID).size.toDouble
+      val siblings = (zoneToInputs(zoneID) flatMap inputToConsumingZones filter { _ != zoneID}).distinct
+      val fullOverlaps = siblings filter { sibID => overlapSize(zoneID, sibID) == numInputs}
+      if (fullOverlaps.isEmpty) Seq()
+      else Seq(fullOverlaps :+ zoneID)
+    }}
+    println(s"Merges for identical inputs: ${mergesToConsider.size}")
+    mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
+  }
+
   def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
     val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
