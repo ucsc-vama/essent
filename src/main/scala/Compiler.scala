@@ -417,9 +417,10 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = !sim_cached;"}).toSeq)
     writeLines(1, (inputRegs map { regName => s"bool ${genFlagName(regName)};"}).toSeq)
     println(s"Activity flags: ${inputsToZones.size}")
+    writeLines(1, yankRegResets(allRegUpdates))
 
     // emit update checks for registers
-    writeLines(1, "if (sim_cached && ! reset) {")
+    writeLines(1, "if (sim_cached) {")
     val regUpdateChecks = regNamesSet intersect inputsToZones map {
       regName => s"${genFlagName(regName)} = $regName != $regName$$next;"
       // regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
@@ -428,7 +429,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "} else {")
     writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = true;"})
     writeLines(1, "}")
-    writeLines(1, "sim_cached = true;")
+    writeLines(1, "sim_cached = !reset;")
 
     // emit reg updates
     if (!allRegUpdates.isEmpty || trackActivity) {
@@ -436,7 +437,6 @@ class EmitCpp(writer: Writer) extends Transform {
       if (trackActivity) {
         writeRegActivityTracking(regNames)
       }
-      writeLines(2, yankRegResets(allRegUpdates))
       writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
       // writeLines(2, allRegUpdates)
       writeLines(1, "}")
