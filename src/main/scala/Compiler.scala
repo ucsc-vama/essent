@@ -319,6 +319,22 @@ class EmitCpp(writer: Writer) extends Transform {
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
+  def yankRegResets(allRegUpdates: Seq[String]): Seq[String] = {
+    def grabRegName(regUpdate: String) = regUpdate.take(regUpdate.indexOf(" = "))
+    def grabReset(regUpdate: String) = "(?<== )(.*)(?= \\?)".r.findFirstIn(regUpdate).get
+    def grabInit(regUpdate: String) = "(?<=\\? )(.*)(?= :)".r.findFirstIn(regUpdate).get
+    val updatesWithResets = allRegUpdates filter { _.contains(" ? ") }
+    val resetGroups = updatesWithResets.groupBy(grabReset)
+    resetGroups.toSeq flatMap {
+      case (resetName, regUpdates) => {
+        val body = regUpdates map {
+          regUpdate => s"  ${grabRegName(regUpdate)}$$next = ${grabInit(regUpdate)};"
+        }
+        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+      }
+    }
+  }
+
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                            allRegUpdates: Seq[String], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
@@ -420,7 +436,9 @@ class EmitCpp(writer: Writer) extends Transform {
       if (trackActivity) {
         writeRegActivityTracking(regNames)
       }
-      writeLines(2, allRegUpdates)
+      writeLines(2, yankRegResets(allRegUpdates))
+      writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
+      // writeLines(2, allRegUpdates)
       writeLines(1, "}")
       if (trackActivity) {
         // writeZoneActivityTracking(zoneMap.keys.toSeq)
