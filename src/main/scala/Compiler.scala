@@ -414,38 +414,41 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare zone activity flags
     val nonRegActFlags = (inputsToZones diff regNamesSet) map genFlagName
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+    val otherRegs = (regNamesSet diff inputRegs.toSet).toSeq
+    println(s"Unzoned regs: ${otherRegs.size}")
     writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = !sim_cached;"}).toSeq)
     writeLines(1, (inputRegs map { regName => s"bool ${genFlagName(regName)};"}).toSeq)
     println(s"Activity flags: ${inputsToZones.size}")
     writeLines(1, yankRegResets(allRegUpdates))
 
-    // emit update checks for registers
-    writeLines(1, "if (sim_cached) {")
-    val regUpdateChecks = regNamesSet intersect inputsToZones map {
-      regName => s"${genFlagName(regName)} = $regName != $regName$$next;"
-      // regName => s"if ($regName != $regName$$next) ${genFlagName(regName)} = true;"
-    }
-    writeLines(2, regUpdateChecks.toSeq)
-    writeLines(1, "} else {")
-    writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = true;"})
-    writeLines(1, "}")
-    writeLines(1, "sim_cached = !reset;")
-
-    // emit reg updates
+    // emit reg updates (with update checks)
     if (!allRegUpdates.isEmpty || trackActivity) {
-      writeLines(1, "if (update_registers) {")
+      if (trackActivity) {
+        // writeZoneActivityTracking(zoneMap.keys.toSeq)
+        writeLines(1, s"const uint64_t num_zones = ${zoneMap.size};")
+        writeLines(1, s"uint64_t zones_active = 0;")
+      }
+      // intermixed
+      writeLines(1, "if (update_registers && sim_cached) {")
       if (trackActivity) {
         writeRegActivityTracking(regNames)
       }
-      writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
-      // writeLines(2, allRegUpdates)
-      writeLines(1, "}")
-      if (trackActivity) {
-        // writeZoneActivityTracking(zoneMap.keys.toSeq)
-        writeLines(2, s"const uint64_t num_zones = ${zoneMap.size};")
-        writeLines(2, s"uint64_t zones_active = 0;")
+      val checkAndUpdates = inputRegs flatMap {
+        regName => Seq(s"${genFlagName(regName)} = $regName != $regName$$next;",
+                       s"$regName = $regName$$next;")
       }
+      writeLines(2, checkAndUpdates)
+      writeLines(2, otherRegs map { regName => s"$regName = $regName$$next;"})
+      // writeLines(2, allRegUpdates)
+      writeLines(1, "} else if (update_registers) {")
+      writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
+      writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = true;"})
+      writeLines(1, "} else if (sim_cached) {")
+      // FUTURE: for safety, should this be regNames (instead of inputRegs)
+      writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = false;"})
+      writeLines(1, "}")
     }
+    writeLines(1, "sim_cached = !reset;")
 
     // set input flags to true for mem inputs
     val memEnablesAndMasks = (memUpdateEmits map findDependencesMemWrite map {
