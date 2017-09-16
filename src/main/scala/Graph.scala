@@ -718,6 +718,15 @@ class Graph {
     else findMFFCHelper(newMembers, mffc)
   }
 
+  def writeZoneInfo(filename: String, zoneMap: Map[String, Graph.ZoneInfo]) {
+    val fw = new FileWriter(new File(filename))
+    zoneMap foreach {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) =>
+      fw.write(s"$zoneName ${inputs.size} ${members.size} ${outputs.size}\n")
+    }
+    fw.close()
+  }
+
   // makes zones by evenly splitting output of topo sort
   def findZonesTopo(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val numParts = 1000

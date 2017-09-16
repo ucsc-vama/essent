@@ -353,6 +353,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // val zoneMapWithSources = g.findZonesML(regNames, doNotShadow)
     val zoneMapWithSources = g.findZonesMFFC(doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
+    // g.writeZoneInfo("mffcs.zones", zoneMapWithSources)
     g.analyzeZoningQuality(zoneMap)
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
