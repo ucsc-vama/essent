@@ -335,6 +335,35 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  def compressFlags(zoneToInputs: Map[String, Seq[String]]): Map[String,String] = {
+    val allInputZonePairs = zoneToInputs flatMap {
+      case (name, inputs) => inputs map { (_, name) }
+    }
+    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
+      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
+    }
+    val allInputs = zoneToInputs.values.flatten.toSet.toSeq
+    val numChecksOrig = zoneToInputs.values.flatten.size
+    println(s"There are ${allInputs.size} distinct zone inputs used in $numChecksOrig checks")
+    val sigToMaxIntersects = (allInputs map { sigName => {
+      val childZones = inputToConsumingZones(sigName)
+      val consistentCompanions = childZones map zoneToInputs map { _.toSet} reduceLeft { _.intersect(_) }
+      (sigName, consistentCompanions)
+    }}).toMap
+    val confirmedSubsets = (allInputs groupBy sigToMaxIntersects).values filter { _.size > 1 }
+    // FUTURE: think this is still leaving out a couple partial overlap subsets
+    println(s"Agreed on ${confirmedSubsets.size} subsets")
+    val renames = (confirmedSubsets flatMap {
+      subset => subset map { sigName => (sigName, subset.head) }
+    }).toMap
+    val flagsAfterCompression = (allInputs map { sigName => renames.getOrElse(sigName, sigName) }).distinct
+    val numInputsAfterCompression = (zoneToInputs.values map {
+      zoneInputs => (zoneInputs map { sigName => renames.getOrElse(sigName, sigName) }).distinct
+    }).flatten.size
+    println(s"Could be ${flagsAfterCompression.size} distinct zone flags used in $numInputsAfterCompression checks")
+    renames
+  }
+
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                            allRegUpdates: Seq[String], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
@@ -355,6 +384,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     // g.writeZoneInfo("mffcs.zones", zoneMapWithSources)
     g.analyzeZoningQuality(zoneMap)
+    val flagRenames = compressFlags(zoneMap.mapValues(_.inputs))
     val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet

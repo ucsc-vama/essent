@@ -656,38 +656,6 @@ class Graph {
     mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
   }
 
-  def compressFlags(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int,Int] = {
-    val zoneToInputs = zoneMap map {
-      case (name, members) => (name, zoneInputs(members filter validNodes))
-    }
-    val allInputZonePairs = zoneToInputs.toSeq flatMap {
-      case (name, inputs) => inputs map { (_, name) }
-    }
-    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
-      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
-    }
-    val allInputs = zoneToInputs.values.flatten.toSet.toSeq
-    val numChecksOrig = zoneToInputs.values.flatten.size
-    println(s"There are ${allInputs.size} distinct zone inputs used in $numChecksOrig checks")
-    val sigToMaxIntersects = (allInputs map { sigID => {
-      val childZones = inputToConsumingZones(sigID)
-      val consistentCompanions = childZones map zoneToInputs map { _.toSet} reduceLeft { _.intersect(_) }
-      (sigID, consistentCompanions)
-    }}).toMap
-    val confirmedSubsets = (allInputs groupBy sigToMaxIntersects).values filter { _.size > 1 }
-    // FUTURE: think this is still leaving out a couple partial overlap subsets
-    println(s"Agreed on ${confirmedSubsets.size} subsets")
-    val renames = (confirmedSubsets flatMap {
-      subset => subset map { sigID => (sigID, subset.head) }
-    }).toMap
-    val flagsAfterCompression = (allInputs map { sigID => renames.getOrElse(sigID, sigID) }).distinct
-    val numInputsAfterCompression = (zoneToInputs.values map {
-      zoneInputs => (zoneInputs map { sigID => renames.getOrElse(sigID, sigID) }).distinct
-    }).flatten.size
-    println(s"Could be ${flagsAfterCompression.size} distinct zone flags used in $numInputsAfterCompression checks")
-    renames
-  }
-
   def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
     val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
@@ -699,7 +667,6 @@ class Graph {
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, mffc)
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
-    val flagRenames = compressFlags(smallZonesMerged2, mffc)
     smallZonesMerged2 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
