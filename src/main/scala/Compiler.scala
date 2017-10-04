@@ -251,7 +251,11 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
-  def genFlagName(regName: String) = s"ZONE_$regName".replace('.','$')
+  def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
+
+  def genFlagName(regName: String, renames: Map[String, String]): String = {
+    genFlagName(renames.getOrElse(regName, regName))
+  }
 
   def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                          allRegUpdates: Seq[String], resetTree: Seq[String],
@@ -354,14 +358,20 @@ class EmitCpp(writer: Writer) extends Transform {
     // FUTURE: think this is still leaving out a couple partial overlap subsets
     println(s"Agreed on ${confirmedSubsets.size} subsets")
     val renames = (confirmedSubsets flatMap {
-      subset => subset map { sigName => (sigName, subset.head) }
+      subset => subset map { sigName => (sigName, subset.head + "$shared") }
     }).toMap
     val flagsAfterCompression = (allInputs map { sigName => renames.getOrElse(sigName, sigName) }).distinct
     val numInputsAfterCompression = (zoneToInputs.values map {
       zoneInputs => (zoneInputs map { sigName => renames.getOrElse(sigName, sigName) }).distinct
     }).flatten.size
     println(s"Could be ${flagsAfterCompression.size} distinct zone flags used in $numInputsAfterCompression checks")
+    // println(s"${confirmedSubsets.flatten.size} ${confirmedSubsets.flatten.toSet.size}")
     renames
+  }
+
+  def renameAndUnique(origList: Seq[String], renames: Map[String,String]) = {
+    val renamed = origList map { name => renames.getOrElse(name, name) }
+    renamed.distinct
   }
 
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
@@ -443,13 +453,18 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // predeclare zone activity flags
-    val nonRegActFlags = (inputsToZones diff regNamesSet) map genFlagName
+    val nonRegActSigs = (inputsToZones diff regNamesSet).toSeq
+    val nonRegActSigsCompressed = renameAndUnique(nonRegActSigs, flagRenames)
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+    val inputRegsCompressed = ((renameAndUnique(inputRegs, flagRenames)).toSet -- nonRegActSigsCompressed.toSet).toSeq
     val otherRegs = (regNamesSet diff inputRegs.toSet).toSeq
     println(s"Unzoned regs: ${otherRegs.size}")
-    writeLines(1, (nonRegActFlags map { flagName => s"bool $flagName = !sim_cached;"}).toSeq)
-    writeLines(1, (inputRegs map { regName => s"bool ${genFlagName(regName)};"}).toSeq)
-    println(s"Activity flags: ${inputsToZones.size}")
+    val nonRegActFlagDecs = nonRegActSigsCompressed map {
+      sigName => s"bool ${genFlagName(sigName)} = !sim_cached;"
+    }
+    writeLines(1, nonRegActFlagDecs)
+    writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)};" })
+    println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
     writeLines(1, yankRegResets(allRegUpdates))
 
     // emit reg updates (with update checks)
@@ -465,7 +480,7 @@ class EmitCpp(writer: Writer) extends Transform {
         writeRegActivityTracking(regNames)
       }
       val checkAndUpdates = inputRegs flatMap {
-        regName => Seq(s"${genFlagName(regName)} = $regName != $regName$$next;",
+        regName => Seq(s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;",
                        s"$regName = $regName$$next;")
       }
       writeLines(2, checkAndUpdates)
@@ -473,10 +488,10 @@ class EmitCpp(writer: Writer) extends Transform {
       // writeLines(2, allRegUpdates)
       writeLines(1, "} else if (update_registers) {")
       writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
-      writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = true;"})
+      writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} = true;"})
       writeLines(1, "} else if (sim_cached) {")
       // FUTURE: for safety, should this be regNames (instead of inputRegs)
-      writeLines(2, inputRegs map { regName => s"${genFlagName(regName)} = false;"})
+      writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} |= false;"})
       writeLines(1, "}")
     }
     writeLines(1, "sim_cached = !reset;")
@@ -486,18 +501,18 @@ class EmitCpp(writer: Writer) extends Transform {
       memDeps => (memDeps(2), Seq(memDeps(0), memDeps(1)))
     }).toMap
     val memFlagsTrue = memFlags map {
-      flagName => s"${genFlagName(flagName)} = true;"
+      flagName => s"${genFlagName(flagName, flagRenames)} = true;"
     }
     val memChangeDetects = memFlags map { flagName => {
       val trackerName = s"WTRACK_${flagName.replace('.','$')}"
-      s"${genFlagName(flagName)} |= $trackerName;"
+      s"${genFlagName(flagName, flagRenames)} |= $trackerName;"
     }}
     writeLines(1, memChangeDetects.toSeq)
 
     // do activity detection on other inputs (external IOs and resets)
     val nonMemChangeDetects = nonMemFlags map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
-      val flagName = genFlagName(sigName)
+      val flagName = genFlagName(sigName, flagRenames)
       s"if ($sigName != $oldVersion) $flagName = true;"
     }}
     writeLines(1, nonMemChangeDetects.toSeq)
@@ -546,7 +561,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
     zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
         case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
-      val sensitivityListStr = inputs map genFlagName mkString(" || ")
+      val sensitivityListStr = renameAndUnique(inputs, flagRenames) map genFlagName mkString(" || ")
       if (sensitivityListStr.isEmpty)
         writeLines(1, s"{")
       else
@@ -571,7 +586,7 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(2, outputsSilenced)
       }
       val outputChangeDetections = outputsCleaned map {
-        name => s"${genFlagName(name)} |= $name != $name$$old;"
+        name => s"${genFlagName(name, flagRenames)} |= $name != $name$$old;"
       }
       writeLines(2, outputChangeDetections)
       writeLines(1, "}")
