@@ -548,6 +548,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // reordered names
     val gTopLevel = buildGraph(topLevelHE.toSeq)
     val zonesReordered = gTopLevel.reorderNames
+    // gTopLevel.writeDotFile("zonegraph.dot")
 
     // emit zone of sources
     if (zoneMapWithSources.contains("ZONE_SOURCE")) {
