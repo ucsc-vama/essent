@@ -593,9 +593,7 @@ class Graph {
   }
 
   // attemps to merge small zones into neighbors, no matter the size
-  def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    val smallZoneCutoff = 20
-    val mergeThreshold = 0.5
+  def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int], smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5): Map[Int, Seq[Int]] = {
     val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
     println(s"Small zones remaining: ${smallZoneIDs.size}")
     val zoneToInputs = zoneMap map {
@@ -667,7 +665,8 @@ class Graph {
     val singlesMergedUp = mergeSingleInputMFFCsToParents(noDeadMFFCs, mffc)
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
-    smallZonesMerged2 map { case (zoneID, zoneMemberIDs) => {
+    val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
+    smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
       val memberNames = validMembers map idToName
