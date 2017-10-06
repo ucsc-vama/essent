@@ -498,6 +498,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, "sim_cached = !reset;")
 
     // set input flags to true for mem inputs
+    // FUTURE: if using mem name for hashing, what if multiple write ports?
     val memEnablesAndMasks = (memUpdateEmits map findDependencesMemWrite map {
       memDeps => (memDeps(2), Seq(memDeps(0), memDeps(1)))
     }).toMap
@@ -514,7 +515,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val nonMemChangeDetects = nonMemFlags map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
       val flagName = genFlagName(sigName, flagRenames)
-      s"if ($sigName != $oldVersion) $flagName = true;"
+      s"$flagName |= $sigName != $oldVersion;"
     }}
     writeLines(1, nonMemChangeDetects.toSeq)
     // cache old versions
