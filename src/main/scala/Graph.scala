@@ -909,6 +909,17 @@ class Graph {
     println(s"Number of 1 input zones: ${singleInputZones.size}")
   }
 
+  def printDeadRegisters(regNames: Seq[String], otherDeps: Seq[String]) {
+    val excludedRegs = regNames.filter(!nameToID.contains(_))
+    val dnsRegs = regNames.toSet.intersect(otherDeps.toSet)
+    val usedOnlyForPrintsAndAsserts = dnsRegs.intersect(excludedRegs.toSet)
+    val unusedRegs = excludedRegs.toSet -- usedOnlyForPrintsAndAsserts
+    println(s"${excludedRegs.size} registers are not consumed by graph")
+    println(s"${usedOnlyForPrintsAndAsserts.size} used for prints & asserts")
+    println(s"${unusedRegs.size} are never read or written")
+    // FUTURE: find registers part of disconnected parts of the graph
+  }
+
   def stepBFSZone(frontier: Set[Int], sources: ArrayBuffer[Set[Int]]): ArrayBuffer[Set[Int]] = {
     if (frontier.isEmpty) sources
     else {
