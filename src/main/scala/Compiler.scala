@@ -323,6 +323,13 @@ class EmitCpp(writer: Writer) extends Transform {
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
+
+  def printMuxSimilarity(bodyEdges: Seq[HyperedgeDep]) {
+    val allMuxExpr = findMuxExpr(bodyEdges) map { _._2 }
+    val allConds = allMuxExpr map { m: Mux => emitExpr(m.cond) }
+    println(s"There are ${allMuxExpr.size} muxes in the design, with ${allConds.distinct.size} distinct conditions")
+  }
+
   def yankRegResets(allRegUpdates: Seq[String]): Seq[String] = {
     def grabRegName(regUpdate: String) = regUpdate.take(regUpdate.indexOf(" = "))
     def grabReset(regUpdate: String) = "(?<== )(.*)(?= \\?)".r.findFirstIn(regUpdate).get
@@ -384,6 +391,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     val regNamesSet = regNames.toSet
+    // printMuxSimilarity(bodyEdges)
 
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
