@@ -15,6 +15,9 @@ import util.Random
 object Emitter {
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
+  case class MemUpdate(memName: String, wrEnName: String, wrMaskName: String,
+                       wrAddrName: String, wrDataName: String)
+
   // Declaration Methods
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
@@ -322,7 +325,7 @@ object Emitter {
         val wrAddrNameRep = renames.getOrElse(wrAddrName, wrAddrName)
         val wrDataNameRep = renames.getOrElse(wrDataName, wrDataName)
         val wrMaskNameRep = renames.getOrElse(wrMaskName, wrMaskName)
-        s"if ($wrEnNameRep && $wrMaskNameRep) $prefix${m.name}[${wrAddrNameRep}.as_single_word()] = $wrDataNameRep;"
+        MemUpdate(prefix + m.name, wrEnNameRep, wrMaskNameRep, wrAddrNameRep, wrDataNameRep)
       }}
     }}
     val readOutputs = memories flatMap {m: DefMemory => {
@@ -337,5 +340,9 @@ object Emitter {
     val readMappings = readOutputs.toMap
     val namesReplaced = replaceNamesStmt(readMappings ++ renames)(body)
     (regUpdates, namesReplaced, memWriteCommands)
+  }
+
+  def emitMemUpdate(mu: MemUpdate) = {
+    s"if (${mu.wrEnName} && ${mu.wrMaskName}) ${mu.memName}[${mu.wrAddrName}.as_single_word()] = ${mu.wrDataName};"
   }
 }

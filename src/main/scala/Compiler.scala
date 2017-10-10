@@ -70,6 +70,11 @@ class EmitCpp(writer: Writer) extends Transform {
     deps filter { name: String => !name.startsWith("UInt<1>(0x") }
   }
 
+  def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {
+    val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
+    deps filter { name => !name.startsWith("UInt<1>(0x") }
+  }
+
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
     val (printsAndStops, otherDeps) = deps.partition { dep => dep.stmt match {
       case p: Print => true
@@ -384,7 +389,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                            allRegUpdates: Seq[String], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
-                           doNotShadow: Seq[String], memUpdateEmits: Seq[String],
+                           doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
                            extIOtypes: Map[String, Type]) {
     val trackActivity = false
     val exportSparsity = false
@@ -440,7 +445,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // FUTURE: remove. should make change detection for these inputs so consuming
     //         zones have a chance to sleep
     val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
-    val memNames = memUpdateEmits map findDependencesMemWrite map { _(2) }
+    val memNames = memUpdates map { _.memName }
     val memFlags = otherFlags intersect memNames.toSet
     val memWriteTrackDecs = memFlags map {
       flagName => s"bool WTRACK_${flagName.replace('.','$')};"
@@ -507,8 +512,8 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // set input flags to true for mem inputs
     // FUTURE: if using mem name for hashing, what if multiple write ports?
-    val memEnablesAndMasks = (memUpdateEmits map findDependencesMemWrite map {
-      memDeps => (memDeps(2), Seq(memDeps(0), memDeps(1)))
+    val memEnablesAndMasks = (memUpdates map {
+      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
     }).toMap
     val memFlagsTrue = memFlags map {
       flagName => s"${genFlagName(flagName, flagRenames)} = true;"
@@ -752,7 +757,7 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
       writeLines(1, "}")
     }
-    writeLines(1, allMemUpdates.flatten)
+    writeLines(1, allMemUpdates.flatten map emitMemUpdate)
     writeLines(0, "}")
     writeLines(0, "")
     // printRegActivityTracking(regNames)
