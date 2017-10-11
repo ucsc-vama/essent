@@ -328,6 +328,12 @@ class EmitCpp(writer: Writer) extends Transform {
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
   }
 
+  def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
+    // FUTURE: does not handle multiple write ports to same mem
+    memUpdates foreach {
+      mu => g.addNodeWithDeps(mu.memName, findDependencesMemWrite(mu))
+    }
+  }
 
   def printMuxSimilarity(bodyEdges: Seq[HyperedgeDep]) {
     val allMuxExpr = findMuxExpr(bodyEdges) map { _._2 }
@@ -413,6 +419,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+
+    // addMemDepsToGraph(g, memUpdates)
 
     // sparsity output
     val zoneStmtOutputOrder = scala.collection.mutable.ArrayBuffer[String]()
