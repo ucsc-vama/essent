@@ -918,8 +918,13 @@ class Graph {
     startingFrontier foreach { id => stateDepths(id) = 0 }
     reachAll(startingFrontier, 0, stateDepths)
     traverseStateDepth(0, stateLoopbacks, stateDepths)
-    val totalUnreached = (stateDepths.filter { _ == -1}).size
-    println(s"State depth traversal couldn't reach $totalUnreached")
+    val unreachedNames = stateDepths.zipWithIndex flatMap {
+      case (depth, id) => if (depth == -1) Seq(idToName(id)) else Seq()
+    }
+    val unreachedState = unreachedNames.toSet.intersect(stateElemNames.toSet)
+    println(s"State depth traversal couldn't reach ${unreachedNames.size}")
+    println(s"${unreachedState.size}/${stateElemNames.size} state elements unreached")
+    println(unreachedState)
     stateDepths
   }
 
@@ -931,6 +936,7 @@ class Graph {
     val startingFrontier = (lastReachedStateElems map stateLoopbacks).toSet
     if (!startingFrontier.isEmpty) {
       println(s"starting depth ${lastDepth+1} with ${startingFrontier.size}")
+      startingFrontier foreach { id => regDepths(id) = lastDepth+1 }
       reachAll(startingFrontier, lastDepth+1, regDepths)
       traverseStateDepth(lastDepth+1, stateLoopbacks, regDepths)
     }
