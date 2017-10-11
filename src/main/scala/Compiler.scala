@@ -23,7 +23,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val result = e match {
       case w: WRef => {
         if (w.name.contains('[')) {
-          val deps = w.name.init.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)""",""))
+          val deps = w.name.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)\]""",""))
           deps filter { !_.contains("Int<") } // remove literals
         } else Seq(w.name)
       }
