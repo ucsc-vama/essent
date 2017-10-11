@@ -909,6 +909,45 @@ class Graph {
     println(s"Number of 1 input zones: ${singleInputZones.size}")
   }
 
+  def findStateDepths(stateElemNames: Seq[String], extIONames: Seq[String]): ArrayBuffer[Int] = {
+    val stateLoopbacks = (stateElemNames filter { name => nameToID.contains(name) } map {
+      name => (nameToID(name + "$next"), nameToID(name))
+    }).toMap
+    val stateDepths = ArrayBuffer.fill(numNodeRefs)(-1)
+    val startingFrontier = (extIONames filter nameToID.contains map nameToID).toSet
+    startingFrontier foreach { id => stateDepths(id) = 0 }
+    reachAll(startingFrontier, 0, stateDepths)
+    traverseStateDepth(0, stateLoopbacks, stateDepths)
+    val totalUnreached = (stateDepths.filter { _ == -1}).size
+    println(s"State depth traversal couldn't reach $totalUnreached")
+    stateDepths
+  }
+
+  def traverseStateDepth(lastDepth: Int, stateLoopbacks: Map[Int,Int], regDepths: ArrayBuffer[Int]) {
+    val lastReached = regDepths.zipWithIndex flatMap {
+      case (depth, id) => if (depth == lastDepth) Seq(id) else Seq()
+    }
+    val lastReachedStateElems = lastReached filter { stateLoopbacks.contains(_) }
+    val startingFrontier = (lastReachedStateElems map stateLoopbacks).toSet
+    if (!startingFrontier.isEmpty) {
+      println(s"starting depth ${lastDepth+1} with ${startingFrontier.size}")
+      reachAll(startingFrontier, lastDepth+1, regDepths)
+      traverseStateDepth(lastDepth+1, stateLoopbacks, regDepths)
+    }
+  }
+
+  def reachAll(frontier: Set[Int], depth: Int, regDepths: ArrayBuffer[Int]) {
+    if (!frontier.isEmpty) {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh =>
+        if (regDepths(neigh) == -1) {
+          regDepths(neigh) = depth
+          Seq(neigh)
+        } else Seq()
+      }}
+      reachAll(nextFrontier.toSet, depth, regDepths)
+    }
+  }
+
   def printDeadRegisters(regNames: Seq[String], otherDeps: Seq[String]) {
     val excludedRegs = regNames.filter(!nameToID.contains(_))
     val dnsRegs = regNames.toSet.intersect(otherDeps.toSet)

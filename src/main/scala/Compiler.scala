@@ -331,7 +331,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
     // FUTURE: does not handle multiple write ports to same mem
     memUpdates foreach {
-      mu => g.addNodeWithDeps(mu.memName, findDependencesMemWrite(mu))
+      mu => g.addNodeWithDeps(mu.memName + "$next", findDependencesMemWrite(mu))
     }
   }
 
@@ -419,8 +419,6 @@ class EmitCpp(writer: Writer) extends Transform {
     val nodesInZones = zoneMap.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
-
-    // addMemDepsToGraph(g, memUpdates)
 
     // sparsity output
     val zoneStmtOutputOrder = scala.collection.mutable.ArrayBuffer[String]()
@@ -580,6 +578,10 @@ class EmitCpp(writer: Writer) extends Transform {
       writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
       if (exportSparsity) zoneStmtOutputOrder ++= buildGraph(sourceZoneEdges.toSeq).reorderNames
     }
+
+    // stash of ability to do get register depths
+    // addMemDepsToGraph(g, memUpdates)
+    // val stateDepths = g.findStateDepths(regNames ++ memNames, extIOtypes.keys.toSeq)
 
     // emit each zone
     // zonesReordered map zoneMap foreach { case Graph.ZoneInfo(inputs, members, outputs) => {
