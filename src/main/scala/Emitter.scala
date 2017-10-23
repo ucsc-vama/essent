@@ -25,15 +25,6 @@ object Emitter {
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
-  def genMask(tpe: Type): String = tpe match {
-    case gt: GroundType => {
-      val width = bitWidth(tpe).toInt
-      val maskValue = (BigInt(1) << width) - 1
-      if (width > 64) s"""mpz_class("${maskValue.toString(16)}", 16)"""
-      else s"0x${maskValue.toString(16)}"
-    }
-  }
-
 
   // Replacement methods
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {

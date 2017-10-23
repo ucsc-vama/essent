@@ -88,23 +88,6 @@ class EmitCpp(writer: Writer) extends Transform {
     (otherDeps, prints, stops)
   }
 
-  def predeclareBigSigs(hyperEdges: Seq[HyperedgeDep]) = {
-    val bigSigs = hyperEdges filter { he: HyperedgeDep => { he.stmt match {
-      case d: DefNode =>  bitWidth(d.value.tpe) > 64
-      case c: Connect => {
-        if (bitWidth(c.loc.tpe) > 64) {
-          firrtl.Utils.kind(c.loc) match {
-            case firrtl.WireKind => true
-            case firrtl.PortKind => he.name.contains("$")
-            case firrtl.InstanceKind => !he.name.contains(".")
-            case _ => false
-          }
-        } else false
-      }
-    }}}
-    bigSigs map { he => s"mpz_class ${he.name};" }
-  }
-
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
     val g = new Graph
     hyperEdges foreach { he:HyperedgeDep =>
