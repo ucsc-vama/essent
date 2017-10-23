@@ -1,4 +1,4 @@
-package essent
+package essent.passes
 
 import firrtl._
 import firrtl.ir._

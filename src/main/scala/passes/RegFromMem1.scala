@@ -1,4 +1,4 @@
-package essent
+package essent.passes
 
 import essent.Emitter._
 import essent.Extract._
@@ -76,7 +76,7 @@ object RegFromMem1 extends Pass {
   }
 
   def memReplaceModule(m: Module): Module = {
-    val allMems = Extract.findMemory(m.body)
+    val allMems = essent.Extract.findMemory(m.body)
     // FUTURE: put in check to make sure latencies safe (& only 1 write port)
     // FUTURE: need to explicitly handle read enables?
     val singleElementMems = allMems filter { _.depth == 1}
