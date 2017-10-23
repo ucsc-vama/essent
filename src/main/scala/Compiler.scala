@@ -204,7 +204,6 @@ class EmitCpp(writer: Writer) extends Transform {
       // val muxOutputNames = findMuxOutputNames(bodyEdges)
       // name to mux expression
       val muxMap = findMuxExpr(bodyEdges).toMap
-      val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
       val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
       // map of muxName -> true shadows, map of muxName -> false shadows
       val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
@@ -216,42 +215,36 @@ class EmitCpp(writer: Writer) extends Transform {
       // map of name -> original hyperedge
       val heMap = (bodyEdges map { he => (he.name, he) }).toMap
       // top level edges (filter out shadows) & make muxes depend on shadow inputs
-      val topLevelHE = bodyEdges flatMap { he => {
-        if (shadowedSigs.contains(he.name)) Seq()
-        else {
-          val deps = if (!trueShadows.contains(he.name)) he.deps
-                     else he.deps ++ ((trueShadows(he.name) ++ falseShadows(he.name)) flatMap {
-            name => heMap(name).deps
-          })
-          // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
-          Seq(HyperedgeDep(he.name, deps.distinct, he.stmt))
-        }
+      val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
+      val topLevelHE = unshadowedHE map { he => {
+        val deps = if (!trueShadows.contains(he.name)) he.deps
+                   else {
+                     val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
+                     he.deps ++ shadowDeps
+                   }
+        // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+        HyperedgeDep(he.name, deps.distinct, he.stmt)
       }}
       // build graph on new hyperedges and run topo sort
       val reorderedNames = buildGraph(topLevelHE).reorderNames
-      reorderedNames map nameToStmt map { stmt => {
-        val emitted = emitStmt(doNotDec)(stmt)
-        if (emitted.head.contains("?")) {
-          val muxName = emitted.head.split("=").head.trim.split(" ").last
-          if ((trueShadows(muxName).isEmpty) && (falseShadows(muxName).isEmpty))
-            writeLines(indentLevel, emitted)
-          else {
-            val muxExpr = grabMux(stmt)
-            // declare output type
-            val resultTpe = findResultType(stmt)
-            if ((!muxName.endsWith("$next")) && (!doNotDec.contains(muxName)))
-              writeLines(indentLevel, s"${genCppType(resultTpe)} $muxName;")
-            writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
-            val trueHE = trueShadows(muxName) map { heMap(_) }
-            writeBody(indentLevel + 1, trueHE, doNotShadow, doNotDec)
-            writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.tval)};")
-            writeLines(indentLevel, "} else {")
-            val falseHE = falseShadows(muxName) map { heMap(_) }
-            writeBody(indentLevel + 1, falseHE, doNotShadow, doNotDec)
-            writeLines(indentLevel + 1, s"$muxName = ${emitExpr(muxExpr.fval)};")
-            writeLines(indentLevel, "}")
-          }
-        } else writeLines(indentLevel, emitted)
+      reorderedNames foreach { name => {
+        val stmt = heMap(name).stmt
+        if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
+          val muxExpr = muxMap(name)
+          // declare output type
+          val resultTpe = findResultType(stmt)
+          if ((!name.endsWith("$next")) && (!doNotDec.contains(name)))
+            writeLines(indentLevel, s"${genCppType(resultTpe)} $name;")
+          writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
+          val trueHE = trueShadows(name) map { heMap(_) }
+          writeBody(indentLevel + 1, trueHE, doNotShadow, doNotDec)
+          writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.tval)};")
+          writeLines(indentLevel, "} else {")
+          val falseHE = falseShadows(name) map { heMap(_) }
+          writeBody(indentLevel + 1, falseHE, doNotShadow, doNotDec)
+          writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.fval)};")
+          writeLines(indentLevel, "}")
+        } else writeLines(indentLevel, emitStmt(doNotDec)(stmt))
       }}
     }
   }
