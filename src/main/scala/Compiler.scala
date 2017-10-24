@@ -688,6 +688,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def emitEval(topName: String, circuit: Circuit) = {
+    val simpleOnly = false
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -707,7 +708,6 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val resetTree = buildResetTree(allInstances)
     val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
-    val allRegUpdates = allRegDefs.flatten map emitRegUpdate
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs.flatten map { _.name }
@@ -716,21 +716,23 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     // decRegActivityTracking(regNames)
     // writeLines(0, "")
-    // start emitting eval function
-    // writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    // writeLines(1, resetTree)
-    // // emit reg updates
-    // if (!allRegUpdates.flatten.isEmpty) {
-    //   writeLines(1, "if (update_registers) {")
-    //   // recRegActivityTracking(regNames)
-    //   writeLines(2, allRegUpdates.flatten)
-    //   writeLines(1, "}")
-    // }
-    writeBodyWithZonesML(otherDeps, regNames, allRegDefs.flatten, resetTree,
-                         topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
-                         allMemUpdates.flatten, extIOs.toMap)
-    // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
-    // writeBodySimple(1, otherDeps, regNames)
+    if (simpleOnly) {
+      writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+      writeLines(1, resetTree)
+      // emit reg updates
+      if (!allRegDefs.isEmpty) {
+        writeLines(1, "if (update_registers) {")
+        // recRegActivityTracking(regNames)
+        writeLines(2, allRegDefs.flatten map emitRegUpdate)
+        writeLines(1, "}")
+      }
+      writeBodySimple(1, otherDeps, regNames)
+      // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    } else {
+      writeBodyWithZonesML(otherDeps, regNames, allRegDefs.flatten, resetTree,
+                           topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
+                           allMemUpdates.flatten, extIOs.toMap)
+    }
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
