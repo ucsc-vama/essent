@@ -323,7 +323,7 @@ class EmitCpp(writer: Writer) extends Transform {
     resetGroups.toSeq flatMap {
       case (resetName, regDefs) => {
         val body = regDefs map {
-          r => s"  ${r.name}$$next = ${emitExpr(r.init)};"
+          r => s"$tabs${r.name}$$next = ${emitExpr(r.init)};"
         }
         Seq(s"if ($resetName) {") ++ body ++ Seq("}")
       }
