@@ -30,6 +30,7 @@ object Emitter {
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
     val replaced = s match {
       case n: DefNode => DefNode(n.info, prefix + n.name, n.value)
+      case r: DefRegister => r.copy(name = (prefix + r.name))
       case _ => s
     }
     replaced map addPrefixToNameStmt(prefix) map addPrefixToNameExpr(prefix)
@@ -130,6 +131,19 @@ object Emitter {
     case ClockType => Seq()
     case _ => if ((p.name != "reset") && !topLevel) Seq()
               else Seq(genCppType(p.tpe) + " " + p.name + ";")
+  }
+
+  def emitRegUpdate(r: DefRegister): String = {
+    val regName = r.name
+    val resetName = emitExpr(r.reset)
+    if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
+    else {
+      val resetVal = r.init match {
+        case l: Literal => emitExpr(r.init)
+        case _ => throw new Exception("register reset isn't a literal " + r.init)
+      }
+      s"$regName = $resetName ? $resetVal : $regName$$next;"
+    }
   }
 
   def chunkLitString(litStr: String, chunkWidth:Int = 16): Seq[String] = {
@@ -288,11 +302,9 @@ object Emitter {
 
   def emitBody(m: Module, circuit: Circuit, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(m.body)
-    val registers = findRegisters(body)
     val memories = findMemory(body)
     memories foreach {m =>
       if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
-    val regUpdates = registers map makeRegisterUpdate(prefix)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { prefix + _.name }
     // FUTURE: remove unneeded or identity renames
@@ -330,7 +342,7 @@ object Emitter {
     }}
     val readMappings = readOutputs.toMap
     val namesReplaced = replaceNamesStmt(readMappings ++ renames)(body)
-    (regUpdates, namesReplaced, memWriteCommands)
+    (findRegisters(body), namesReplaced, memWriteCommands)
   }
 
   def emitMemUpdate(mu: MemUpdate) = {

@@ -709,7 +709,8 @@ class EmitCpp(writer: Writer) extends Transform {
       }
     }
     val resetTree = buildResetTree(allInstances)
-    val (allRegUpdates, allBodies, allMemUpdates) = module_results.unzip3
+    val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
+    val allRegUpdates = allRegDefs map emitRegUpdate
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
