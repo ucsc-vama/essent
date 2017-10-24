@@ -317,16 +317,13 @@ class EmitCpp(writer: Writer) extends Transform {
     println(s"There are ${allMuxExpr.size} muxes in the design, with ${allConds.distinct.size} distinct conditions")
   }
 
-  def yankRegResets(allRegUpdates: Seq[String]): Seq[String] = {
-    def grabRegName(regUpdate: String) = regUpdate.take(regUpdate.indexOf(" = "))
-    def grabReset(regUpdate: String) = "(?<== )(.*)(?= \\?)".r.findFirstIn(regUpdate).get
-    def grabInit(regUpdate: String) = "(?<=\\? )(.*)(?= :)".r.findFirstIn(regUpdate).get
-    val updatesWithResets = allRegUpdates filter { _.contains(" ? ") }
-    val resetGroups = updatesWithResets.groupBy(grabReset)
+  def yankRegResets(allRegDefs: Seq[DefRegister]): Seq[String] = {
+    val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
     resetGroups.toSeq flatMap {
-      case (resetName, regUpdates) => {
-        val body = regUpdates map {
-          regUpdate => s"  ${grabRegName(regUpdate)}$$next = ${grabInit(regUpdate)};"
+      case (resetName, regDefs) => {
+        val body = regDefs map {
+          r => s"  ${r.name}$$next = ${emitExpr(r.init)};"
         }
         Seq(s"if ($resetName) {") ++ body ++ Seq("}")
       }
@@ -369,7 +366,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
-                           allRegUpdates: Seq[String], resetTree: Seq[String],
+                           regDefs: Seq[DefRegister], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
                            doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
                            extIOtypes: Map[String, Type]) {
@@ -461,10 +458,10 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, nonRegActFlagDecs)
     writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)};" })
     println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
-    writeLines(1, yankRegResets(allRegUpdates))
+    writeLines(1, yankRegResets(regDefs))
 
     // emit reg updates (with update checks)
-    if (!allRegUpdates.isEmpty || trackActivity) {
+    if (!regDefs.isEmpty || trackActivity) {
       if (trackActivity) {
         // writeZoneActivityTracking(zoneMap.keys.toSeq)
         writeLines(1, s"const uint64_t num_zones = ${zoneMap.size};")
@@ -481,7 +478,7 @@ class EmitCpp(writer: Writer) extends Transform {
       }
       writeLines(2, checkAndUpdates)
       writeLines(2, otherRegs map { regName => s"$regName = $regName$$next;"})
-      // writeLines(2, allRegUpdates)
+      // writeLines(2, regDefs map emitRegUpdate)
       writeLines(1, "} else if (update_registers) {")
       writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
       writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} = true;"})
@@ -710,10 +707,10 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     val resetTree = buildResetTree(allInstances)
     val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
-    val allRegUpdates = allRegDefs map emitRegUpdate
+    val allRegUpdates = allRegDefs.flatten map emitRegUpdate
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
-    val regNames = allRegUpdates.flatten map { _.split("=").head.trim }
+    val regNames = allRegDefs.flatten map { _.name }
     val memDeps = (allMemUpdates.flatten) flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     writeLines(0, "")
@@ -729,7 +726,7 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(2, allRegUpdates.flatten)
     //   writeLines(1, "}")
     // }
-    writeBodyWithZonesML(otherDeps, regNames, allRegUpdates.flatten, resetTree,
+    writeBodyWithZonesML(otherDeps, regNames, allRegDefs.flatten, resetTree,
                          topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
                          allMemUpdates.flatten, extIOs.toMap)
     // writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
