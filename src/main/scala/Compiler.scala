@@ -606,6 +606,8 @@ class EmitCpp(writer: Writer) extends Transform {
       g.writeCOOFile("rocketchip.zones.coo", Option(zoneStmtOutputOrder.toSeq))
     }
 
+    // printZoneStateAffinity(zoneMapWithSources, regNames, memUpdates)
+
     val memWriteTrackerUpdates = memFlags map { flagName => {
       val trackerName = s"WTRACK_${flagName.replace('.','$')}"
       val condition = memEnablesAndMasks(flagName).mkString(" && ");
@@ -621,6 +623,23 @@ class EmitCpp(writer: Writer) extends Transform {
     //   writeLines(2, zoneActCountsPrints.toSeq)
     //   writeLines(1, "}")
     // }
+  }
+
+  def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
+                             regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
+    val regNamesSet = regNames.toSet
+    val regNameZoneNamePairs = zoneMap.toSeqh flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        val regInputs = inputs.toSet.intersect(regNamesSet)
+        regInputs.toSeq map { regInput => (regInput, zoneName) }
+      }
+    }
+    val regToConsumingZones = regNameZoneNamePairs.groupBy(_._1)
+    val regToNumZones = regToConsumingZones map {
+      case (regName, zoneNamePairs) => (regName, zoneNamePairs.size)
+    }
+    println("Histogram of number of zones consume a register:")
+    println(regToNumZones.values.groupBy(identity).mapValues(_.size))
   }
 
   def findZoneDescendants(inSignals: Set[String], zoneMap: Map[String, Graph.ZoneInfo]): Seq[String] = {
