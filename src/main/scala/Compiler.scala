@@ -628,7 +628,7 @@ class EmitCpp(writer: Writer) extends Transform {
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
                              regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
     val regNamesSet = regNames.toSet
-    val regNameZoneNamePairs = zoneMap.toSeqh flatMap {
+    val regNameZoneNamePairs = zoneMap.toSeq flatMap {
       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
         val regInputs = inputs.toSet.intersect(regNamesSet)
         regInputs.toSeq map { regInput => (regInput, zoneName) }
@@ -640,6 +640,19 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     println("Histogram of number of zones consume a register:")
     println(regToNumZones.values.groupBy(identity).mapValues(_.size))
+    val sigNameZoneMap = (zoneMap.toSeq flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        members map { (_, zoneName) }
+      }
+    }).toMap
+    val numProducingZones = memUpdates map { mu => {
+      val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
+      val depsFromZones = deps filter {sigNameZoneMap.contains(_) }
+      val numProducingZones = (depsFromZones map sigNameZoneMap).distinct.size
+      numProducingZones
+    }}
+    println("Histogram of number of zones producing signals for mem write:")
+    println(numProducingZones.groupBy(identity).mapValues(_.size))
   }
 
   def findZoneDescendants(inSignals: Set[String], zoneMap: Map[String, Graph.ZoneInfo]): Seq[String] = {
