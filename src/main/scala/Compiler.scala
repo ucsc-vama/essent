@@ -653,6 +653,13 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     println("Histogram of number of zones producing signals for mem write:")
     println(numProducingZones.groupBy(identity).mapValues(_.size))
+    val includedRegWrites = regNames filter {regName => sigNameZoneMap.contains(regName + "$next") }
+    println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
+    val regsInLoopbackZones = includedRegWrites filter { regName => {
+      val writeZone = sigNameZoneMap(regName + "$next")
+      zoneMap(writeZone).inputs.contains(regName)
+    }}
+    println(s"${regsInLoopbackZones.size} registers have same zone input and output")
   }
 
   def findZoneDescendants(inSignals: Set[String], zoneMap: Map[String, Graph.ZoneInfo]): Seq[String] = {
