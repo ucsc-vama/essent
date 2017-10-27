@@ -417,9 +417,9 @@ class Graph {
         mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
       } else {
         val zoneGraph = buildZoneGraph(zoneMap, zones)
-        val allPairs = for (a <- zonesToMerge; b <- zonesToMerge) yield (a,b)
+        val allPairs = zonesToMerge.combinations(2).toSeq
         // val mergeOK = allPairs.forall{ case (zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
-        val mergeOK = allPairs.forall{ case (zoneA, zoneB) => zoneGraph.safeToMerge(idToName(zoneA), idToName(zoneB)) }
+        val mergeOK = allPairs.forall{ case Seq(zoneA, zoneB) => zoneGraph.safeToMerge(idToName(zoneA), idToName(zoneB)) }
         if (mergeOK) {
           val newZoneName = zones(zonesToMerge.head)
           val allMembers = zonesToMerge flatMap zoneMap
@@ -577,8 +577,8 @@ class Graph {
     val safeInputsToMerge = inputsToMerge filter { inputID => {
       val siblingsToMerge = inputToConsumingZones(inputID)
       if (siblingsToMerge.size > 1) {
-        val allPairs = for (a <- siblingsToMerge; b <- siblingsToMerge) yield (a,b)
-        allPairs.forall{ case (zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
+        val allPairs = siblingsToMerge.combinations(2).toSeq
+        allPairs.forall{ case Seq(zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
       } else false
     }}
     println(s"${safeInputsToMerge.size} inputs safe")
