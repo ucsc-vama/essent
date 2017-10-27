@@ -654,7 +654,7 @@ class Graph {
     mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
   }
 
-  def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+  def findZonesMFFC(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
     val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
@@ -666,6 +666,7 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
+    val loopbackRegs = findLoopbackRegs(regNames, smallZonesMerged3)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -702,6 +703,24 @@ class Graph {
       val mffc = findMFFCHelper(fringeSeed, priorMFFC)
       findMFFCLayer(mffc)
     }
+  }
+
+  def findLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]]): Seq[String] = {
+    val idToZone = (zoneMap.toSeq flatMap {
+      case (zoneID, members) => members map { (_, zoneID) }
+    }).toMap
+    val includedRegWrites = regNames filter {
+      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next") &&
+                 idToZone.contains(nameToID(regName + "$next"))
+    }
+    println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
+    val regsInLoopbackZones = includedRegWrites filter { regName => {
+      val writeZoneID = idToZone(nameToID(regName + "$next"))
+      val writeZoneInputs = zoneInputs(zoneMap(writeZoneID) filter { validNodes.contains(_) })
+      writeZoneInputs.contains(nameToID(regName))
+    }}
+    println(s"${regsInLoopbackZones.size} registers have same zone input and output")
+    regsInLoopbackZones
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
