@@ -689,7 +689,7 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
-    val loopbackRegs = findLoopbackRegs(regNames, smallZonesMerged3, mffc)
+    val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -740,6 +740,29 @@ class Graph {
     }}
     println(s"${regsInLoopbackZones.size} registers have same zone input and output")
     regsInLoopbackZones
+  }
+
+  // FUTURE: may be able to eliminate. safety condition possibly too pessimistic
+  def loopBackRegsSafeToMerge(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]): Seq[String] = {
+    val loopbackRegs = findLoopbackRegs(regNames, zoneMap, zones)
+    val loopbackIDs = (loopbackRegs map nameToID).toSet
+    val zoneGraph = buildZoneGraph(zoneMap, zones)
+    val regInputZoneNamePairs = zoneMap.toSeq flatMap { case (zoneID, members) => {
+      val inputs = zoneInputs(members filter { validNodes.contains(_) })
+      val regInputs = loopbackIDs.intersect(inputs.toSet)
+      regInputs.toSeq map { (_, zoneID) }
+    }}
+    val regIDtoConsumingZones = (regInputZoneNamePairs.groupBy(_._1).map {
+      case (regID, pairs) => (regID, pairs map { _._2 })
+    }).toMap
+    val safeToMergeRegs = loopbackRegs filter { regName => {
+      val regID = nameToID(regName)
+      val writeZoneID = zones(nameToID(regName + "$next"))
+      val siblingZones = regIDtoConsumingZones(regID) diff Seq(writeZoneID)
+      siblingZones forall { sibZoneID => !zoneGraph.extPathExists(Seq(sibZoneID), Seq(writeZoneID))}
+    }}
+    println(s"${safeToMergeRegs.size} registers can be safely merged into write zones")
+    safeToMergeRegs
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
