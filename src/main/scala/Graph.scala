@@ -372,6 +372,29 @@ class Graph {
     zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
   }
 
+  def mergeNodesMutably(nodesToMerge: Seq[String]) {
+    val idsToMerge = nodesToMerge map nameToID
+    val mergedID = idsToMerge.head
+    val idsToRemove = idsToMerge.tail
+    val combinedInNeigh = idsToMerge.flatMap(inNeigh(_)).filter{!idsToMerge.contains(_)}.distinct
+    val combinedOutNeigh = idsToMerge.flatMap(outNeigh(_)).filter{!idsToMerge.contains(_)}.distinct
+    combinedInNeigh foreach { inNeighID => {
+      outNeigh(inNeighID) = outNeigh(inNeighID) -- idsToRemove
+      if (!outNeigh(inNeighID).contains(mergedID)) outNeigh(inNeighID) += mergedID
+    }}
+    combinedOutNeigh foreach { outNeighID => {
+      inNeigh(outNeighID) = inNeigh(outNeighID) -- idsToRemove
+      if (!inNeigh(outNeighID).contains(mergedID)) inNeigh(outNeighID) += mergedID
+    }}
+    inNeigh(mergedID) = combinedInNeigh.to[ArrayBuffer]
+    outNeigh(mergedID) = combinedOutNeigh.to[ArrayBuffer]
+    idsToRemove foreach { deleteID => {
+      inNeigh(deleteID).clear()
+      outNeigh(deleteID).clear()
+    }}
+    validNodes --= idsToRemove
+  }
+
   def mergeZonesPar(mergeReqs: Seq[Seq[Int]], zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val newMergedZones = mergeReqs map { zonesToMerge => {
       val newZoneName = zones(zonesToMerge.head)
@@ -592,7 +615,7 @@ class Graph {
     // FUTURE: grow new merges up (fix cycle?)
   }
 
-  // attemps to merge small zones into neighbors, no matter the size
+  // attempts to merge small zones into neighbors, no matter the size
   def mergeSmallZones2(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int], smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5): Map[Int, Seq[Int]] = {
     val smallZoneIDs = (zoneMap filter { _._2.size < smallZoneCutoff }).keys.toSet
     println(s"Small zones remaining: ${smallZoneIDs.size}")
