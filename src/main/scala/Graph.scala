@@ -689,7 +689,7 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
-    val loopbackRegs = findLoopbackRegs(regNames, smallZonesMerged3)
+    val loopbackRegs = findLoopbackRegs(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -728,17 +728,13 @@ class Graph {
     }
   }
 
-  def findLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]]): Seq[String] = {
-    val idToZone = (zoneMap.toSeq flatMap {
-      case (zoneID, members) => members map { (_, zoneID) }
-    }).toMap
+  def findLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]): Seq[String] = {
     val includedRegWrites = regNames filter {
-      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next") &&
-                 idToZone.contains(nameToID(regName + "$next"))
+      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next")
     }
     println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
     val regsInLoopbackZones = includedRegWrites filter { regName => {
-      val writeZoneID = idToZone(nameToID(regName + "$next"))
+      val writeZoneID = zones(nameToID(regName + "$next"))
       val writeZoneInputs = zoneInputs(zoneMap(writeZoneID) filter { validNodes.contains(_) })
       writeZoneInputs.contains(nameToID(regName))
     }}
