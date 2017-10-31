@@ -497,7 +497,7 @@ class Graph {
     zoneMap foreach { case (zoneID, memberIDs) => {
       if (zoneID != -2) {
         val zoneName = idToName(zoneID)
-        val inputZones = validInputZones(memberIDs, zones)
+        val inputZones = validInputZones(memberIDs, zones) filter { _ != zoneID }
         val inputNames = inputZones map idToName
         zoneGraph.addNodeWithDeps(zoneName, inputNames)
       }
@@ -690,6 +690,7 @@ class Graph {
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
     val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
+    // loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -763,6 +764,20 @@ class Graph {
     }}
     println(s"${safeToMergeRegs.size} registers can be safely merged into write zones")
     safeToMergeRegs
+  }
+
+  // FUTURE: may be able to eliminate. safety condition possibly too pessimistic
+  def loopBackRegsCycleCheck(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]) {
+    val loopbackRegs = loopBackRegsSafeToMerge(regNames, zoneMap, zones)
+    loopbackRegs foreach { regName => {
+      val regID = nameToID(regName)
+      val writeZoneID = zones(nameToID(regName + "$next"))
+      zones(regID) = writeZoneID
+    }}
+    val zoneMapWithStateCycles = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
+    val zoneGraph = buildZoneGraph(zoneMapWithStateCycles, zones)
+    val zoneOrder = zoneGraph.reorderNames
+    println("Zone graph is acyclic and sucessfully ordered zones")
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
