@@ -64,7 +64,7 @@ class Graph {
     def visit(vertexID: Int) {
       if (temporaryMarks(vertexID)) {
         println(s"${idToName(vertexID)} $vertexID")
-        printCycle(temporaryMarks)
+        (0 until numNodeRefs) filter temporaryMarks foreach printNode
         throw new Exception("There is a cycle!")
       } else if (!finalMarks(vertexID)) {
         temporaryMarks(vertexID) = true
@@ -78,14 +78,42 @@ class Graph {
     finalOrdering
   }
 
-  def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
-    (0 until numNodeRefs) filter temporaryMarks foreach printNode
+  def topologicalSortWithTracking() = {
+    val finalOrdering = ArrayBuffer[Int]()
+    val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val callerIDs = ArrayBuffer.fill(nameToID.size)(-1)
+    def visit(vertexID: Int, callerID: Int) {
+      if (temporaryMarks(vertexID)) {
+        println(s"${idToName(vertexID)} $vertexID")
+        printCycle(callerID, callerIDs)
+        throw new Exception("There is a cycle!")
+      } else if (!finalMarks(vertexID)) {
+        if (vertexID != callerID)
+          callerIDs(vertexID) = callerID
+        temporaryMarks(vertexID) = true
+        inNeigh(vertexID) foreach { neighborID => visit(neighborID, vertexID) }
+        finalMarks(vertexID) = true
+        temporaryMarks(vertexID) = false
+        finalOrdering += vertexID
+      }
+    }
+    nameToID.values foreach { startingID => visit(startingID, startingID) }
+    finalOrdering
+  }
+
+  def printCycle(vertexID: Int, callerIDs: ArrayBuffer[Int], cycleSoFar: Set[Int] = Set[Int]()) {
+    if (callerIDs(vertexID) != -1) {
+      printNode(vertexID)
+      if (outNeigh(vertexID).forall(!cycleSoFar.contains(_)))
+        printCycle(callerIDs(vertexID), callerIDs, cycleSoFar + vertexID)
+    }
   }
 
   def printNode(nodeID: Int) {
     println(s"${idToName(nodeID)} ($nodeID)")
-    println(s"  ${inNeigh(nodeID)}")
-    println(s"  ${outNeigh(nodeID)}")
+    println(s"  ${inNeigh(nodeID).sorted.mkString(" ")}")
+    println(s"  ${outNeigh(nodeID).sorted.mkString(" ")}")
   }
 
   def reorderNames() = {
