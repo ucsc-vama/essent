@@ -397,14 +397,14 @@ class Graph {
     val idsToMerge = nodesToMerge map nameToID
     val mergedID = idsToMerge.head
     val idsToRemove = idsToMerge.tail
-    val combinedInNeigh = idsToMerge.flatMap(inNeigh(_)).filter{!idsToMerge.contains(_)}.distinct
-    val combinedOutNeigh = idsToMerge.flatMap(outNeigh(_)).filter{!idsToMerge.contains(_)}.distinct
+    val combinedInNeigh = idsToMerge.flatMap(inNeigh(_)).distinct diff idsToMerge
+    val combinedOutNeigh = idsToMerge.flatMap(outNeigh(_)).distinct diff idsToMerge
     combinedInNeigh foreach { inNeighID => {
-      outNeigh(inNeighID) = outNeigh(inNeighID) -- idsToRemove
+      outNeigh(inNeighID) --= idsToRemove
       if (!outNeigh(inNeighID).contains(mergedID)) outNeigh(inNeighID) += mergedID
     }}
     combinedOutNeigh foreach { outNeighID => {
-      inNeigh(outNeighID) = inNeigh(outNeighID) -- idsToRemove
+      inNeigh(outNeighID) --= idsToRemove
       if (!inNeigh(outNeighID).contains(mergedID)) inNeigh(outNeighID) += mergedID
     }}
     inNeigh(mergedID) = combinedInNeigh.to[ArrayBuffer]
