@@ -74,29 +74,22 @@ class Graph {
         finalOrdering += vertexID
       }
     }
-    nameToID.values foreach {startingID => visit(startingID)}
+    nameToID.values foreach { startingID => visit(startingID) }
     finalOrdering
   }
 
   def printCycle(temporaryMarks: ArrayBuffer[Boolean]) {
-    (0 until nameToID.size) foreach {id: Int =>
-      if (temporaryMarks(id)) {
-        println(s"${idToName(id)} $id")
-        println(s"  ${inNeigh(id)}")
-        println(s"  ${outNeigh(id)}")
-      }
-    }
+    (0 until numNodeRefs) filter temporaryMarks foreach printNode
   }
 
-  def printNode(nodeName: String) {
-    val nodeID = nameToID(nodeName)
-    println(s"$nodeName ($nodeID)")
+  def printNode(nodeID: Int) {
+    println(s"${idToName(nodeID)} ($nodeID)")
     println(s"  ${inNeigh(nodeID)}")
     println(s"  ${outNeigh(nodeID)}")
   }
 
   def reorderNames() = {
-    topologicalSort filter { validNodes.contains(_) } map idToName
+    topologicalSort filter validNodes map idToName
   }
 
   def numNodes() = validNodes.size
