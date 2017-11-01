@@ -427,7 +427,7 @@ class Graph {
     zonesToMergeRemoved ++ newMergedZones.toMap
   }
 
-  def mergeZonesSafe(mergeReqs: Seq[Seq[Int]], zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+  def mergeZonesSafe(mergeReqs: Seq[Seq[Int]], zoneGraph: Graph, zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     if (mergeReqs.isEmpty) zoneMap
     else {
       val zonesToMerge = mergeReqs.head
@@ -435,23 +435,22 @@ class Graph {
       val zonesStillExist = zonesToMerge.forall{ zoneMap.contains(_) }
       if (!zonesStillExist) {
         // println(s"zones missing ${zonesToMerge}")
-        mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
+        mergeZonesSafe(mergeReqs.tail, zoneGraph, zoneMap, zones)
       } else {
-        val zoneGraph = buildZoneGraph(zoneMap, zones)
         val allPairs = zonesToMerge.combinations(2).toSeq
-        // val mergeOK = allPairs.forall{ case (zoneA, zoneB) => safeToMergeZones(zoneA, zoneB, zoneMap) }
         val mergeOK = allPairs.forall{ case Seq(zoneA, zoneB) => zoneGraph.safeToMerge(idToName(zoneA), idToName(zoneB)) }
         if (mergeOK) {
+          zoneGraph.mergeNodesMutably(zonesToMerge map idToName)
           val newZoneName = zones(zonesToMerge.head)
           val allMembers = zonesToMerge flatMap zoneMap
           allMembers foreach { zones(_) = newZoneName }
           val zonesToMergeRemoved = removeZones(zonesToMerge.toSet, zoneMap)
           val newZoneMap = zonesToMergeRemoved ++ Seq((newZoneName, allMembers)).toMap
           // println(s"ok with ${zonesToMerge}")
-          mergeZonesSafe(mergeReqs.tail, newZoneMap, zones)
+          mergeZonesSafe(mergeReqs.tail, zoneGraph, newZoneMap, zones)
         } else {
           // println(s"dropped merge req ${zonesToMerge}")
-          mergeZonesSafe(mergeReqs.tail, zoneMap, zones)
+          mergeZonesSafe(mergeReqs.tail, zoneGraph, zoneMap, zones)
         }
       }
     }
@@ -630,8 +629,7 @@ class Graph {
     val totalZonesToMerge = takenInputPairs.map(_._2).map(inputToConsumingZones(_).size).sum
     println(s"will be merging $totalZonesToMerge zones")
     val mergeReqs = takenInputPairs map { case (score, inputID) => inputToConsumingZones(inputID) }
-    mergeZonesSafe(mergeReqs, zoneMap, zones)
-    // FUTURE: refactor so build one zoneGraph, then mutate it
+    mergeZonesSafe(mergeReqs, buildZoneGraph(zoneMap, zones), zoneMap, zones)
     // FUTURE: perform all safety filtering sequentially
     // FUTURE: grow new merges up (fix cycle?)
   }
@@ -669,7 +667,7 @@ class Graph {
     println(s"Worthwhile merges: ${mergesToConsider.size}")
     if (mergesToConsider.isEmpty) zoneMap
     else {
-      val newZoneMap = mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
+      val newZoneMap = mergeZonesSafe(mergesToConsider.toSeq, zoneGraph, zoneMap, zones)
       mergeSmallZones2(newZoneMap, zones)
     }
   }
@@ -695,7 +693,7 @@ class Graph {
       else Seq(fullOverlaps :+ zoneID)
     }}
     println(s"Merges for identical inputs: ${mergesToConsider.size}")
-    mergeZonesSafe(mergesToConsider.toSeq, zoneMap, zones)
+    mergeZonesSafe(mergesToConsider.toSeq, buildZoneGraph(zoneMap, zones), zoneMap, zones)
   }
 
   def findZonesMFFC(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
