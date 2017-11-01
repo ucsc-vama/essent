@@ -30,7 +30,7 @@ class EmitCpp(writer: Writer) extends Transform {
       case s: SIntLiteral => Seq()
       case _ => throw new Exception("unexpected expression type! " + e)
     }
-    result.distinct map grabMemAddr
+    result.distinct
   }
 
   def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
@@ -55,15 +55,6 @@ class EmitCpp(writer: Writer) extends Transform {
     case i: WDefInstance => Seq()
     case EmptyStmt => Seq()
     case _ => throw new Exception(s"unexpected statement type! $s")
-  }
-
-  def findDependencesMemWrite(emittedCmd: String): Seq[String] = {
-    val insideIf = "([(].*[)]) ".r.findAllIn(emittedCmd).toList.head.tail.init.init
-    val enAndMask = insideIf.split(" && ")
-    val memAndAddr = emittedCmd.split("=").head.trim.split(" ").last.init.split('[').map(_.replaceFirst(""".as_single_word\(\)""",""))
-    val dataName = emittedCmd.split("=").last.trim.init
-    val deps = enAndMask.toSeq ++ memAndAddr.toSeq ++ Seq(dataName)
-    deps filter { name: String => !name.startsWith("UInt<1>(0x") }
   }
 
   def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {

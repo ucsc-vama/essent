@@ -86,11 +86,6 @@ object Emitter {
     case _ => Seq()
   }
 
-  def grabMemAddr(str: String): String = {
-    if (str.contains('[')) str.slice(str.indexOf('[')+1, str.lastIndexOf(']'))
-    else str
-  }
-
   def memHasRightParams(m: DefMemory) = {
     (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
   }
