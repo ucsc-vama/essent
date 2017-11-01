@@ -187,6 +187,7 @@ object Emitter {
       s"$condName ? $tvalName : $fvalName"
     }
     case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
+    case w: WSubAccess => s"${emitExpr(w.exp)}[${emitExpr(w.index)}.as_single_word()]"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExpr mkString(" + ")
       case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})"
@@ -331,17 +332,7 @@ object Emitter {
         MemUpdate(prefix + m.name, wrEnNameRep, wrMaskNameRep, wrAddrNameRep, wrDataNameRep)
       }}
     }}
-    val readOutputs = memories flatMap {m: DefMemory => {
-      m.readers map { readPortName:String =>
-        val rdAddrName = memConnects(s"$prefix${m.name}.$readPortName.addr")
-        val rdDataName = s"$prefix${m.name}.$readPortName.data"
-        val rdAddrRep = renames.getOrElse(rdAddrName, rdAddrName)
-        val rdDataRep = renames.getOrElse(rdDataName, rdDataName)
-        (rdDataRep, s"$prefix${m.name}[${rdAddrRep}.as_single_word()]")
-      }
-    }}
-    val readMappings = readOutputs.toMap
-    val namesReplaced = replaceNamesStmt(readMappings ++ renames)(body)
+    val namesReplaced = replaceNamesStmt(renames)(body)
     (findRegisters(body), namesReplaced, memWriteCommands)
   }
 

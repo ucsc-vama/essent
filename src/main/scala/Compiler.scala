@@ -21,14 +21,10 @@ class EmitCpp(writer: Writer) extends Transform {
   // Graph Building
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
-      case w: WRef => {
-        if (w.name.contains('[')) {
-          val deps = w.name.split('[').toSeq.map(_.replaceFirst(""".as_single_word\(\)\]""",""))
-          deps filter { !_.contains("Int<") } // remove literals
-        } else Seq(w.name)
-      }
+      case w: WRef => Seq(w.name)
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField => Seq(emitExpr(w))
+      case w: WSubAccess => Seq(emitExpr(w.exp), emitExpr(w.index))
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
       case s: SIntLiteral => Seq()
@@ -840,7 +836,8 @@ class FinalCleanups extends Transform with SimpleRun {
     essent.passes.WireConstProp,
     essent.passes.RandInitInvalids,
     essent.passes.NoResetsOrClockConnects,
-    essent.passes.RegFromMem1)
+    essent.passes.RegFromMem1,
+    essent.passes.FactorMemReads)
     // passes.VerilogRename,
     // passes.VerilogPrep)
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
