@@ -78,6 +78,10 @@ class Graph {
     finalOrdering
   }
 
+  def reorderNames() = {
+    topologicalSort filter validNodes map idToName
+  }
+
   def topologicalSortWithTracking() = {
     val finalOrdering = ArrayBuffer[Int]()
     val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
@@ -116,8 +120,53 @@ class Graph {
     println(s"  ${outNeigh(nodeID).sorted.mkString(" ")}")
   }
 
-  def reorderNames() = {
-    topologicalSort filter validNodes map idToName
+  // Doesn't necessarily find all cycles
+  def topologicalSortFindCycles() = {
+    val cyclesFound = ArrayBuffer[Seq[Int]]()
+    val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val callerIDs = ArrayBuffer.fill(nameToID.size)(-1)
+    def visit(vertexID: Int, callerID: Int) {
+      if (temporaryMarks(vertexID)) {
+        val cycleFound = findCycle(callerID, callerIDs)
+        val minInCycle = cycleFound reduceLeft ( _ min _ )
+        if (vertexID == minInCycle) {
+          if (confirmCycle(cycleFound))
+            cyclesFound += cycleFound
+          else
+            println("unconfirmed")
+        }
+      } else if (!finalMarks(vertexID)) {
+        if (vertexID != callerID)
+          callerIDs(vertexID) = callerID
+        temporaryMarks(vertexID) = true
+        inNeigh(vertexID) foreach { neighborID => visit(neighborID, vertexID) }
+        finalMarks(vertexID) = true
+        temporaryMarks(vertexID) = false
+      }
+    }
+    nameToID.values foreach { startingID => visit(startingID, startingID) }
+    cyclesFound
+  }
+
+  def findCycle(vertexID: Int, callerIDs: ArrayBuffer[Int], cycleSoFar: Set[Int] = Set[Int]()): Seq[Int] = {
+    if (callerIDs(vertexID) != -1) {
+      if (outNeigh(vertexID).forall(!cycleSoFar.contains(_)))
+        Seq(vertexID) ++ findCycle(callerIDs(vertexID), callerIDs, cycleSoFar + vertexID)
+      else
+        Seq(vertexID)
+    } else Seq()
+  }
+
+  // for input, don't forget to append copy of head to tail to complete cycle
+  def confirmCycle(cycleIDs: Seq[Int]): Boolean = {
+    if (cycleIDs.isEmpty || cycleIDs.size == 1) true
+    else {
+      val currID = cycleIDs.head
+      val nextID = cycleIDs.tail.head
+      if (outNeigh(currID).contains(nextID)) confirmCycle(cycleIDs.tail)
+      else false
+    }
   }
 
   def numNodes() = validNodes.size
@@ -708,8 +757,8 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
-    val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
-    // loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
+    // val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
+    loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -795,8 +844,10 @@ class Graph {
     }}
     val zoneMapWithStateCycles = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
     val zoneGraph = buildZoneGraph(zoneMapWithStateCycles, zones)
-    val zoneOrder = zoneGraph.reorderNames
-    println("Zone graph is acyclic and sucessfully ordered zones")
+    val cyclesFound = zoneGraph.topologicalSortFindCycles
+    println(s"Found ${cyclesFound.size} cycles")
+    // val zoneOrder = zoneGraph.reorderNames
+    // println("Zone graph is acyclic and sucessfully ordered zones")
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
