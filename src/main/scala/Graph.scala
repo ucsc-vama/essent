@@ -846,8 +846,41 @@ class Graph {
     val zoneGraph = buildZoneGraph(zoneMapWithStateCycles, zones)
     val cyclesFound = zoneGraph.topologicalSortFindCycles
     println(s"Found ${cyclesFound.size} cycles")
+    // val cyclesFoundTranslated = cyclesFound map { _ map { zoneGraphID => nameToID(zoneGraph.idToName(zoneGraphID)) }}
+    val cyclesFoundTranslated = cyclesFound map { _ map { zoneGraphID => zoneGraph.idToName(zoneGraphID) }}
+    val regNamesInZone = loopbackRegs groupBy { regName => { zones(nameToID(regName)) }}
+    val regsInZone = regNamesInZone map { case (zoneID, regNames) => (zoneID, regNames map nameToID) }
+    val regsToDrop = cyclesFoundTranslated flatMap { cycleMembers => {
+      val impactfulRegs = regsToUnzone(cycleMembers :+ cycleMembers.head, regsInZone, zoneMapWithStateCycles)
+      // FUTURE: use heuristics to pick best to drop
+      if (impactfulRegs.isEmpty) Seq()
+      else Seq(impactfulRegs.head)
+    }}
+    println(s"found ${regsToDrop.size} regs to remove")
+    regsToDrop foreach { zones(_) = -2 }
+    val loopbackRegs2 = loopbackRegs diff regsToDrop
+    val zoneMapWithStateCycles2 = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
+    val zoneGraph2 = buildZoneGraph(zoneMapWithStateCycles2, zones)
+    val cyclesFound2 = zoneGraph2.topologicalSortFindCycles
+    println(s"Found ${cyclesFound2.size} cycles")
     // val zoneOrder = zoneGraph.reorderNames
     // println("Zone graph is acyclic and successfully ordered zones")
+  }
+
+  // don't forget to make input cyclic by appending copy of head
+  // want to use zoneMap with state added in
+  def regsToUnzone(cycleNames: Seq[String], regsInZone: Map[Int,Seq[Int]], zoneMap: Map[Int,Seq[Int]]): Seq[Int] = {
+    if (cycleNames.isEmpty || cycleNames.size == 1) Seq()
+    else {
+      val parentZoneID = nameToID(cycleNames.head)
+      val childZoneID = nameToID(cycleNames(1))
+      val childInputs = zoneInputs(zoneMap(childZoneID) filter { validNodes.contains(_) })
+      val childInputsFromParent = childInputs filter { zoneMap(parentZoneID).contains(_) }
+      val regDescendants = childInputsFromParent.intersect(regsInZone.getOrElse(parentZoneID,Seq()))
+      if (regDescendants.size == 1) Seq(regDescendants.head) ++ regsToUnzone(cycleNames.tail, regsInZone, zoneMap)
+      else regsToUnzone(cycleNames.tail, regsInZone, zoneMap)
+      // FUTURE: handle case when it takes more than one reg
+    }
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
