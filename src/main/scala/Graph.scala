@@ -131,7 +131,7 @@ class Graph {
         val cycleFound = findCycle(callerID, callerIDs)
         val minInCycle = cycleFound reduceLeft ( _ min _ )
         if (vertexID == minInCycle) {
-          if (confirmCycle(cycleFound))
+          if (confirmCycle(cycleFound :+ cycleFound.head))
             cyclesFound += cycleFound
           else
             println("unconfirmed")
@@ -847,7 +847,7 @@ class Graph {
     val cyclesFound = zoneGraph.topologicalSortFindCycles
     println(s"Found ${cyclesFound.size} cycles")
     // val zoneOrder = zoneGraph.reorderNames
-    // println("Zone graph is acyclic and sucessfully ordered zones")
+    // println("Zone graph is acyclic and successfully ordered zones")
   }
 
   def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
