@@ -757,8 +757,8 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
-    // val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
-    loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
+    val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
+    // loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -827,10 +827,15 @@ class Graph {
     val safeToMergeRegs = loopbackRegs filter { regName => {
       val regID = nameToID(regName)
       val writeZoneID = zones(nameToID(regName + "$next"))
+      val writeZoneName = idToName(writeZoneID)
       val siblingZones = regIDtoConsumingZones(regID) diff Seq(writeZoneID)
-      siblingZones forall { sibZoneID => !zoneGraph.extPathExists(Seq(sibZoneID), Seq(writeZoneID))}
+      siblingZones forall { sibZoneID => {
+        val sibZoneName = idToName(sibZoneID)
+        !zoneGraph.extPathExists(Seq(zoneGraph.nameToID(sibZoneName)), Seq(zoneGraph.nameToID(writeZoneName)))}
+      }
     }}
     println(s"${safeToMergeRegs.size} registers can be safely merged into write zones")
+    // NOTE: still an overestimate since testing safety individually'
     safeToMergeRegs
   }
 
