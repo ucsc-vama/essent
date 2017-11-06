@@ -759,6 +759,7 @@ class Graph {
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
     val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
     // loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
+    mergeInLoopbackRegs(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName
@@ -835,8 +836,32 @@ class Graph {
       }
     }}
     println(s"${safeToMergeRegs.size} registers can be safely merged into write zones")
-    // NOTE: still an overestimate since testing safety individually'
+    // NOTE: still an overestimate since testing safety individually
     safeToMergeRegs
+  }
+
+  def mergeInLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]) {
+    val loopbackRegs = loopBackRegsSafeToMerge(regNames, zoneMap, zones)
+    val loopbackRegIDs = loopbackRegs map nameToID
+    loopbackRegIDs foreach { regID => zones(regID) = regID }
+    val zoneMapWithRegs = zones.zipWithIndex.groupBy(_._1) mapValues { _ map {_._2} }
+    val zoneGraph = buildZoneGraph(zoneMapWithRegs, zones)
+    val cyclesFound = zoneGraph.topologicalSortFindCycles
+    println(s"Adding loopback regs to zone graphs creates ${cyclesFound.size} cycles")
+    val loopbackMerges = loopbackRegs map { regName => {
+      val regID = nameToID(regName)
+      val writeZoneID = zones(nameToID(regName + "$next"))
+      Seq(writeZoneID, regID)
+    }}
+    val newZoneMap = mergeZonesSafe(loopbackMerges, zoneGraph, zoneMapWithRegs, zones)
+    val zonesMerged = zoneMapWithRegs.size - newZoneMap.size
+    println(s"Was able to merge $zonesMerged/${loopbackRegs.size} loopback reg zones")
+    val (mergedRegs, unMergedRegs) = loopbackRegIDs partition { regID => zones(regID) != regID }
+    println(s"Merged: ${mergedRegs.size} Unmerged: ${unMergedRegs.size}")
+    // unMergedRegs foreach { id => println(idToName(id)) }
+    val zoneGraph2 = buildZoneGraph(newZoneMap, zones)
+    val cyclesFound2 = zoneGraph.topologicalSortFindCycles
+    println(s"Merging safe loopback regs creates ${cyclesFound.size} cycles")
   }
 
   // FUTURE: may be able to eliminate. safety condition possibly too pessimistic
