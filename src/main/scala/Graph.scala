@@ -812,7 +812,6 @@ class Graph {
     regsInLoopbackZones
   }
 
-  // FUTURE: may be able to eliminate. safety condition possibly too pessimistic
   def loopBackRegsSafeToMerge(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]): Seq[String] = {
     val loopbackRegs = findLoopbackRegs(regNames, zoneMap, zones)
     val loopbackIDs = (loopbackRegs map nameToID).toSet
@@ -830,9 +829,15 @@ class Graph {
       val writeZoneID = zones(nameToID(regName + "$next"))
       val writeZoneName = idToName(writeZoneID)
       val siblingZones = regIDtoConsumingZones(regID) diff Seq(writeZoneID)
+      // Checks that no path from reg consuming zone to reg writing zone
+      // siblingZones forall { sibZoneID => {
+      //   val sibZoneName = idToName(sibZoneID)
+      //   !zoneGraph.extPathExists(Seq(zoneGraph.nameToID(sibZoneName)), Seq(zoneGraph.nameToID(writeZoneName)))}
+      // }
+      // Checks that no path from reg writing zone to any reg reading zone
       siblingZones forall { sibZoneID => {
         val sibZoneName = idToName(sibZoneID)
-        !zoneGraph.extPathExists(Seq(zoneGraph.nameToID(sibZoneName)), Seq(zoneGraph.nameToID(writeZoneName)))}
+        !zoneGraph.extPathExists(Seq(zoneGraph.nameToID(writeZoneName)), Seq(zoneGraph.nameToID(sibZoneName)))}
       }
     }}
     println(s"${safeToMergeRegs.size} registers can be safely merged into write zones")
