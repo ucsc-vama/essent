@@ -829,7 +829,7 @@ class EmitCpp(writer: Writer) extends Transform {
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    writeLines(1, resetTree)
+    // writeLines(1, resetTree)
     // writeBodySimple(1, otherDeps, regNames)
     writeBodyTailMerged(1, otherDeps, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
