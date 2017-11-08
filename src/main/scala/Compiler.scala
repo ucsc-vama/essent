@@ -317,6 +317,20 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  // FUTURE: refactor/combine with above yankRegResets
+  def regResetOverrides(allRegDefs: Seq[DefRegister]): Seq[String] = {
+    val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
+    resetGroups.toSeq flatMap {
+      case (resetName, regDefs) => {
+        val body = regDefs map {
+          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
+        }
+        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+      }
+    }
+  }
+
   def compressFlags(zoneToInputs: Map[String, Seq[String]]): Map[String,String] = {
     val allInputZonePairs = zoneToInputs flatMap {
       case (name, inputs) => inputs map { (_, name) }
@@ -807,7 +821,9 @@ class EmitCpp(writer: Writer) extends Transform {
     if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
       writeLines(1, "if (update_registers) {")
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
-      writeLines(2, allRegDefs.flatten map emitRegUpdate)
+      // writeLines(2, allRegDefs.flatten map emitRegUpdate)
+      writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
     writeLines(0, "}")
