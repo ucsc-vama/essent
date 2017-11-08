@@ -59,7 +59,7 @@ class EmitCpp(writer: Writer) extends Transform {
 
   def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {
     val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
-    deps filter { name => !name.startsWith("UInt<1>(0x") }
+    (deps filter { name => !name.startsWith("UInt<1>(0x") }).distinct
   }
 
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
@@ -815,6 +815,10 @@ class EmitCpp(writer: Writer) extends Transform {
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs.flatten map { _.name }
+    val memDeps = allMemUpdates.flatten flatMap findDependencesMemWrite
+    val memDepRegs = regNames.intersect(memDeps)
+    val safeRegs = regNames diff memDepRegs
+    println(s"${memDepRegs.size} registers are deps for mems")
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
@@ -832,9 +836,11 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
       writeLines(1, "if (update_registers) {")
+      writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
-      writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+      // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, memDepRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
