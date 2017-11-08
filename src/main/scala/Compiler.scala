@@ -169,9 +169,11 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def writeBodyTailMerged(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
+    val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     val g = buildGraph(bodyEdges)
     val mergeableRegs = g.findMergeableRegs(regNames)
-    val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+    val mergedRegs = g.mergeRegsSafe(mergeableRegs)
+    println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
     g.reorderNames foreach {
       name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
     }

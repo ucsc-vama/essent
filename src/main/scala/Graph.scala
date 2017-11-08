@@ -864,6 +864,25 @@ class Graph {
     safeToMergeRegs
   }
 
+  // Returns successfully merged regs
+  def mergeRegsSafe(regsToMerge: Seq[String]): Seq[String] = {
+    if (regsToMerge.isEmpty) Seq()
+    else {
+      val regNameToMerge = regsToMerge.head
+      val regIDToMerge = nameToID(regNameToMerge)
+      if (safeToMergeReg(regNameToMerge)) {
+        val regID = nameToID(regNameToMerge)
+        val regWriteName = regNameToMerge + "$next"
+        val regReaders = outNeigh(regID) map idToName filter { _ != regWriteName }
+        regReaders foreach { readerName => addEdge(readerName, regWriteName) }
+        Seq(regNameToMerge) ++ mergeRegsSafe(regsToMerge.tail)
+      } else {
+        println(s"couldn't merge reg $regNameToMerge")
+        mergeRegsSafe(regsToMerge.tail)
+      }
+    }
+  }
+
   def mergeInLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]) {
     val loopbackRegs = loopBackRegsSafeToMerge(regNames, zoneMap, zones)
     val loopbackRegIDs = loopbackRegs map nameToID
