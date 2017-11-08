@@ -168,6 +168,15 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  def writeBodySimpleTail(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
+    val g = buildGraph(bodyEdges)
+    val mergeableRegs = g.findMergeableRegs(regNames)
+    val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+    g.reorderNames foreach {
+      name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
+    }
+  }
+
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String]) {
     if (!bodyEdges.isEmpty) {
@@ -807,7 +816,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
-    writeBodySimple(1, otherDeps, regNames)
+    writeBodySimpleTail(1, otherDeps, regNames)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {

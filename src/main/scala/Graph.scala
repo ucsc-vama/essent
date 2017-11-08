@@ -845,6 +845,23 @@ class Graph {
     safeToMergeRegs
   }
 
+  def findMergeableRegs(regNames: Seq[String]): Seq[String] = {
+    val includedRegWrites = regNames filter {
+      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next")
+    }
+    println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
+    val safeToMergeRegs = includedRegWrites filter { regName => {
+      val regID = nameToID(regName)
+      val regWriteID = nameToID(regName + "$next")
+      val regReaders = outNeigh(regID) filter { _ != regWriteID }
+      // Checks that no path from reg writer to any read of that reg
+      regReaders forall { readerID => !extPathExists(Seq(regWriteID), Seq(readerID)) }
+    }}
+    println(s"${safeToMergeRegs.size} registers pass individual merge tests")
+    // NOTE: still an overestimate since testing safety individually
+    safeToMergeRegs
+  }
+
   def mergeInLoopbackRegs(regNames: Seq[String], zoneMap: Map[Int,Seq[Int]], zones: ArrayBuffer[Int]) {
     val loopbackRegs = loopBackRegsSafeToMerge(regNames, zoneMap, zones)
     val loopbackRegIDs = loopbackRegs map nameToID
