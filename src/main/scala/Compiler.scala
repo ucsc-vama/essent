@@ -179,7 +179,7 @@ class EmitCpp(writer: Writer) extends Transform {
       if (mergedRegWrites.contains(name)) {
         val emitted = emitStmt(Set())(nameToStmt(name)).head
         val replaced = emitted.replaceAllLiterally("$next", "")
-        writeLines(indentLevel, replaced)
+        writeLines(indentLevel, "if (update_registers) " + replaced)
       } else {
         writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
       }
