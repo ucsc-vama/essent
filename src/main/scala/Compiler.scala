@@ -174,9 +174,14 @@ class EmitCpp(writer: Writer) extends Transform {
     val mergeableRegs = g.findMergeableRegs(regNames)
     val mergedRegs = g.mergeRegsSafe(mergeableRegs)
     println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
-    g.reorderNames foreach {
-      name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
-    }
+    val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
+    g.reorderNames foreach { name => {
+      writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
+      if (mergedRegWrites.contains(name)) {
+        val regName = name.split('$').head
+        writeLines(indentLevel, s"$regName = $regName$$next;")
+      }
+    }}
   }
 
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
@@ -816,14 +821,15 @@ class EmitCpp(writer: Writer) extends Transform {
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs.flatten map { _.name }
     val memDeps = allMemUpdates.flatten flatMap findDependencesMemWrite
-    val memDepRegs = regNames.intersect(memDeps)
-    val safeRegs = regNames diff memDepRegs
-    println(s"${memDepRegs.size} registers are deps for mems")
+    val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
+    val unsafeRegs = regNames.intersect(memDeps ++ pAndSDeps)
+    val safeRegs = regNames diff unsafeRegs
+    println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     writeLines(1, resetTree)
     // writeBodySimple(1, otherDeps, regNames)
-    writeBodyTailMerged(1, otherDeps, regNames)
+    writeBodyTailMerged(1, otherDeps, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -836,11 +842,11 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
       writeLines(1, "if (update_registers) {")
-      writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
+      // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
       // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, memDepRegs map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
