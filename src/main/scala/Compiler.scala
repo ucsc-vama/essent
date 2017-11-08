@@ -775,6 +775,44 @@ class EmitCpp(writer: Writer) extends Transform {
     // printRegActivityTracking(regNames)
   }
 
+  def emitEvalTail(topName: String, circuit: Circuit) = {
+    val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
+    val allInstances = Seq((topModule.name, "")) ++
+      findAllModuleInstances("", circuit)(topModule.body)
+    val module_results = allInstances map {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => emitBody(m, circuit, prefix)
+        case em: ExtModule => (Seq(), EmptyStmt, Seq())
+      }
+    }
+    val resetTree = buildResetTree(allInstances)
+    val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
+    val allDeps = allBodies flatMap findDependencesStmt
+    val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
+    val regNames = allRegDefs.flatten map { _.name }
+    writeLines(0, "")
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, resetTree)
+    writeBodySimple(1, otherDeps, regNames)
+    if (!prints.isEmpty || !stops.isEmpty) {
+      writeLines(1, "if (done_reset && update_registers) {")
+      if (!prints.isEmpty) {
+        writeLines(2, "if(verbose) {")
+        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(2, "}")
+      }
+      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+      writeLines(1, "}")
+    }
+    if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
+      writeLines(1, "if (update_registers) {")
+      writeLines(2, allMemUpdates.flatten map emitMemUpdate)
+      writeLines(2, allRegDefs.flatten map emitRegUpdate)
+      writeLines(1, "}")
+    }
+    writeLines(0, "}")
+    writeLines(0, "")
+  }
 
   def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
     val topName = circuit.main
@@ -798,7 +836,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, HarnessGenerator.harnessConnections(topModule))
     writeLines(0, "}")
     writeLines(0, "")
-    emitEval(topName, circuit)
+    emitEvalTail(topName, circuit)
     writeLines(0, s"#endif  // $headerGuardName")
     TransformResult(circuit)
   }
