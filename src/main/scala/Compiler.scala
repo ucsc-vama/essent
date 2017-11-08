@@ -176,10 +176,12 @@ class EmitCpp(writer: Writer) extends Transform {
     println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
     val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
     g.reorderNames foreach { name => {
-      writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
       if (mergedRegWrites.contains(name)) {
-        val regName = name.split('$').head
-        writeLines(indentLevel, s"$regName = $regName$$next;")
+        val emitted = emitStmt(Set())(nameToStmt(name)).head
+        val replaced = emitted.replaceAllLiterally("$next", "")
+        writeLines(indentLevel, replaced)
+      } else {
+        writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
       }
     }}
   }
