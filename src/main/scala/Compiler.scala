@@ -831,7 +831,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     // writeLines(1, resetTree)
     // writeBodySimple(1, otherDeps, regNames)
-    writeBodyTailMerged(1, otherDeps, safeRegs)
+    // writeBodyTailMerged(1, otherDeps, safeRegs)
+    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -847,8 +848,8 @@ class EmitCpp(writer: Writer) extends Transform {
       // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
-      // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+      // writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
