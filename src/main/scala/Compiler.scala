@@ -237,6 +237,70 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
+  def writeBodyTail(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
+      doNotDec: Set[String], regsToConsider: Seq[String]) {
+    if (!bodyEdges.isEmpty) {
+      // name to mux expression
+      val muxMap = findMuxExpr(bodyEdges).toMap
+      val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
+      // map of muxName -> true shadows, map of muxName -> false shadows
+      val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+      val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+      // set of signals in shadows
+      val shadowedSigs = (shadows flatMap {
+        case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
+      if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
+      // map of name -> original hyperedge
+      val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+      // top level edges (filter out shadows) & make muxes depend on shadow inputs
+      val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
+      val topLevelHE = unshadowedHE map { he => {
+        val deps = if (!trueShadows.contains(he.name)) he.deps
+                   else {
+                     val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
+                     he.deps ++ shadowDeps
+                   }
+        // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+        he.copy(deps = deps.distinct)
+      }}
+      // build graph on new hyperedges and run topo sort
+      val g = buildGraph(topLevelHE)
+      val mergeableRegs = g.findMergeableRegs(regsToConsider)
+      val mergedRegs = g.mergeRegsSafe(mergeableRegs)
+      val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
+      // Assuming if replacing, only one statement has name, otherwise extra if (upda..
+      def mergeRegUpdateIfPossible(name: String, toEmit: String): String = {
+        val removed = toEmit.replaceAllLiterally("$next", "")
+        if (mergedRegWrites.contains(name)) "if (update_registers) " + removed
+        else toEmit
+      }
+      g.reorderNames foreach { name => {
+        val stmt = heMap(name).stmt
+        if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
+          def writeShadow(members: Seq[String], muxValExpr: Expression) {
+            // NOTE: not calling writeBodyTail since regs can't be in shadows
+            writeBody(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
+            writeLines(indentLevel + 1, mergeRegUpdateIfPossible(name, s"$name = ${emitExpr(muxValExpr)};"))
+          }
+          val muxExpr = muxMap(name)
+          // declare output type
+          val resultTpe = findResultType(stmt)
+          // FUTURE: don't require finding $next in name, change caller to adjust doNotDec
+          if ((!name.endsWith("$next")) && (!doNotDec.contains(name)))
+            writeLines(indentLevel, s"${genCppType(resultTpe)} $name;")
+          writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
+          writeShadow(trueShadows(name), muxExpr.tval)
+          writeLines(indentLevel, "} else {")
+          writeShadow(falseShadows(name), muxExpr.fval)
+          writeLines(indentLevel, "}")
+        } else {
+          writeLines(indentLevel, emitStmt(doNotDec)(stmt) map {mergeRegUpdateIfPossible(name, _)})
+        }
+      }}
+    }
+  }
+
+
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
   def genFlagName(regName: String, renames: Map[String, String]): String = {
@@ -832,7 +896,7 @@ class EmitCpp(writer: Writer) extends Transform {
     // writeLines(1, resetTree)
     // writeBodySimple(1, otherDeps, regNames)
     // writeBodyTailMerged(1, otherDeps, safeRegs)
-    writeBody(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet)
+    writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -848,8 +912,8 @@ class EmitCpp(writer: Writer) extends Transform {
       // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
-      writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-      // writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
+      // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
