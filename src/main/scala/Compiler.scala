@@ -168,7 +168,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }
   }
 
-  def writeBodyTailMerged(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
+  def writeBodyTailMerged(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     val g = buildGraph(bodyEdges)
     val mergeableRegs = g.findMergeableRegs(regNames)
@@ -184,6 +184,7 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
       }
     }}
+    mergedRegs
   }
 
   def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
@@ -238,7 +239,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def writeBodyTail(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
-      doNotDec: Set[String], regsToConsider: Seq[String]) {
+      doNotDec: Set[String], regsToConsider: Seq[String]): Seq[String] = {
     if (!bodyEdges.isEmpty) {
       // name to mux expression
       val muxMap = findMuxExpr(bodyEdges).toMap
@@ -297,7 +298,8 @@ class EmitCpp(writer: Writer) extends Transform {
           writeLines(indentLevel, emitStmt(doNotDec)(stmt) map {mergeRegUpdateIfPossible(name, _)})
         }
       }}
-    }
+      mergedRegs
+    } else Seq()
   }
 
 
@@ -895,8 +897,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     // writeLines(1, resetTree)
     // writeBodySimple(1, otherDeps, regNames)
-    // writeBodyTailMerged(1, otherDeps, safeRegs)
-    writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
+    // val mergedRegs = writeBodyTailMerged(1, otherDeps, safeRegs)
+    val mergedRegs = writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -913,7 +915,7 @@ class EmitCpp(writer: Writer) extends Transform {
       writeLines(2, allMemUpdates.flatten map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
       // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, unsafeRegs map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))
       writeLines(1, "}")
     }
