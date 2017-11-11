@@ -710,6 +710,195 @@ class EmitCpp(writer: Writer) extends Transform {
     // }
   }
 
+  def writeBodyWithZonesMLTail(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
+                           regDefs: Seq[DefRegister], resetTree: Seq[String],
+                           topName: String, otherDeps: Seq[String],
+                           doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
+                           extIOtypes: Map[String, Type]): Seq[String] = {
+    // map of name -> original hyperedge
+    val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+    val regNamesSet = regNames.toSet
+    // calculate zones based on all edges
+    val g = buildGraph(bodyEdges)
+    // val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
+    val zoneMapWithSources = Map[String, Graph.ZoneInfo]()
+    val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
+    g.analyzeZoningQuality(zoneMap)
+    val flagRenames = compressFlags(zoneMap.mapValues(_.inputs))
+    val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
+    val nodesInZones = zoneMap.flatMap(_._2.members).toSet
+    val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
+    val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+
+    // predeclare output nodes
+    val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
+    val outputPairs = (outputTypes zip outputsFromZones).toSeq
+    val noPermSigs = outputPairs filter { !_._2.contains('.') }
+    val preDecs = noPermSigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
+    writeLines(0, preDecs)
+
+    val doNotDec = outputsFromZones.toSet
+    println(s"Output nodes: ${outputsFromZones.size}")
+
+    // set input flags to true for other inputs (resets, mems, or external IOs)
+    // FUTURE: remove. should make change detection for these inputs so consuming
+    //         zones have a chance to sleep
+    val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
+    val memNames = memUpdates map { _.memName }
+    val memFlags = otherFlags intersect memNames.toSet
+    val memWriteTrackDecs = memFlags map {
+      flagName => s"bool WTRACK_${flagName.replace('.','$')};"
+    }
+    writeLines(0, memWriteTrackDecs.toSeq)
+    val nonMemFlags = otherFlags diff memNames.toSet
+    // FUTURE: fix, can't be hacking for reset, but reset isn't in signal map table
+    val nonMemFlagTypes = nonMemFlags.toSeq map {
+      name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
+    }
+    val nonMemPreDecs = (nonMemFlagTypes zip nonMemFlags.toSeq) map {
+      case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    }
+    writeLines(0, nonMemPreDecs)
+
+    writeLines(0, s"bool sim_cached = false;")
+
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, resetTree)
+    // predeclare zone activity flags
+    val nonRegActSigs = (inputsToZones diff regNamesSet).toSeq
+    val nonRegActSigsCompressed = renameAndUnique(nonRegActSigs, flagRenames)
+    val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+    val inputRegsCompressed = ((renameAndUnique(inputRegs, flagRenames)).toSet -- nonRegActSigsCompressed.toSet).toSeq
+    val otherRegs = (regNamesSet diff inputRegs.toSet).toSeq
+    println(s"Unzoned regs: ${otherRegs.size}")
+    val nonRegActFlagDecs = nonRegActSigsCompressed map {
+      sigName => s"bool ${genFlagName(sigName)} = !sim_cached;"
+    }
+    writeLines(1, nonRegActFlagDecs)
+    writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)};" })
+    println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
+
+    // emit reg updates (with update checks)
+    if (!regDefs.isEmpty) {
+      // intermixed
+      // writeLines(1, "if (update_registers && sim_cached) {")
+      writeLines(1, "if (update_registers) {")
+      // val checkAndUpdates = inputRegs flatMap {
+      //   regName => Seq(s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;",
+      //                  s"$regName = $regName$$next;")
+      // }
+      // writeLines(2, checkAndUpdates)
+      // writeLines(2, otherRegs map { regName => s"$regName = $regName$$next;"})
+      // // writeLines(2, regDefs map emitRegUpdate)
+      // writeLines(1, "} else if (update_registers) {")
+      // writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
+      writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} = true;"})
+      // writeLines(1, "} else if (sim_cached) {")
+      // // FUTURE: for safety, should this be regNames (instead of inputRegs)
+      // writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} |= false;"})
+      writeLines(1, "}")
+    }
+    writeLines(1, "sim_cached = !reset;")
+
+    // set input flags to true for mem inputs
+    // FUTURE: if using mem name for hashing, what if multiple write ports?
+    val memEnablesAndMasks = (memUpdates map {
+      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
+    }).toMap
+    val memFlagsTrue = memFlags map {
+      flagName => s"${genFlagName(flagName, flagRenames)} = true;"
+    }
+    val memChangeDetects = memFlags map { flagName => {
+      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
+      s"${genFlagName(flagName, flagRenames)} |= $trackerName;"
+    }}
+    writeLines(1, memFlagsTrue.toSeq)
+
+    // do activity detection on other inputs (external IOs and resets)
+    val nonMemChangeDetects = nonMemFlags map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      val flagName = genFlagName(sigName, flagRenames)
+      s"$flagName |= $sigName != $oldVersion;"
+    }}
+    writeLines(1, nonMemChangeDetects.toSeq)
+    // cache old versions
+    val nonMemCaches = nonMemFlags map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      s"$oldVersion = $sigName;"
+    }}
+    writeLines(1, nonMemCaches.toSeq)
+
+    // compute zone order
+    // map of name -> zone name (if in zone)
+    val nameToZoneName = zoneMap flatMap {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        outputs map { portName => (portName, zoneName) }
+    }}
+    // list of super hyperedges for zones
+    val zoneSuperEdges = zoneMap map {
+      case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+        HyperedgeDep(zoneName, inputs, heMap(members.head).stmt)
+    }}
+    // list of non-zone hyperedges
+    val nonZoneEdges = bodyEdges filter { he => !nodesInZonesWithSources.contains(he.name) }
+    // list of hyperedges with zone members replaced with zone names
+    val topLevelHE = zoneSuperEdges map { he:HyperedgeDep => {
+      val depsRenamedForZones = (he.deps map {
+        depName => nameToZoneName.getOrElse(depName, depName)
+      }).distinct
+      HyperedgeDep(he.name, depsRenamedForZones, he.stmt)
+    }}
+    // reordered names
+    val gTopLevel = buildGraph(topLevelHE.toSeq)
+    val zonesReordered = gTopLevel.reorderNames
+    // gTopLevel.writeDotFile("zonegraph.dot")
+
+    // emit zone of sources
+    if (zoneMapWithSources.contains("ZONE_SOURCE")) {
+      val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
+      val sourceZoneEdges = sourceZoneInfo.members map heMap
+      // FUTURE: does this need to be made into tail?
+      writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
+    }
+
+    // emit each zone
+    zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
+        case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+      val sensitivityListStr = renameAndUnique(inputs, flagRenames) map genFlagName mkString(" || ")
+      if (sensitivityListStr.isEmpty)
+        writeLines(1, s"{")
+      else
+        writeLines(1, s"if ($sensitivityListStr) {")
+      val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
+      val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
+      val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
+        s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
+      }}
+      writeLines(2, oldOutputs)
+      val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
+      // FUTURE: shouldn't this be made into tail?
+      writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      val outputChangeDetections = outputsCleaned map {
+        name => s"${genFlagName(name, flagRenames)} |= $name != ${name.replace('.','$')}$$old;"
+      }
+      writeLines(2, outputChangeDetections)
+      writeLines(1, "}")
+    }}
+
+    // emit rest of body (without redeclaring)
+    // FUTURE: does this need to be made into tail?
+    writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
+
+    val memWriteTrackerUpdates = memFlags map { flagName => {
+      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
+      val condition = memEnablesAndMasks(flagName).mkString(" && ");
+      s"$trackerName = $condition;"
+    }}
+    writeLines(1, memWriteTrackerUpdates.toSeq)
+    Seq()
+  }
+
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
                              regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
     val regNamesSet = regNames.toSet
@@ -874,6 +1063,7 @@ class EmitCpp(writer: Writer) extends Transform {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
+    val simpleOnly = false
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -881,6 +1071,14 @@ class EmitCpp(writer: Writer) extends Transform {
       case (modName, prefix) => findModule(modName, circuit) match {
         case m: Module => emitBody(m, circuit, prefix)
         case em: ExtModule => (Seq(), EmptyStmt, Seq())
+      }
+    }
+    val extIOs = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => Seq()
+        case em: ExtModule => { em.ports map {
+          port => (s"$prefix${port.name}", port.tpe)
+        }}
       }
     }
     val resetTree = buildResetTree(allInstances)
@@ -894,30 +1092,53 @@ class EmitCpp(writer: Writer) extends Transform {
     val safeRegs = regNames diff unsafeRegs
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
-    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    // writeLines(1, resetTree)
-    // writeBodySimple(1, otherDeps, regNames)
-    // val mergedRegs = writeBodyTailMerged(1, otherDeps, safeRegs)
-    val mergedRegs = writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
-    if (!prints.isEmpty || !stops.isEmpty) {
-      writeLines(1, "if (done_reset && update_registers) {")
-      if (!prints.isEmpty) {
-        writeLines(2, "if(verbose) {")
-        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
-        writeLines(2, "}")
+    if (simpleOnly) {
+      writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+      // writeLines(1, resetTree)
+      // writeBodySimple(1, otherDeps, regNames)
+      // val mergedRegs = writeBodyTailMerged(1, otherDeps, safeRegs)
+      val mergedRegs = writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
+      if (!prints.isEmpty || !stops.isEmpty) {
+        writeLines(1, "if (done_reset && update_registers) {")
+        if (!prints.isEmpty) {
+          writeLines(2, "if(verbose) {")
+          writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+          writeLines(2, "}")
+        }
+        writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(1, "}")
       }
-      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
-      writeLines(1, "}")
-    }
-    if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
-      writeLines(1, "if (update_registers) {")
-      // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, allMemUpdates.flatten map emitMemUpdate)
-      // writeLines(2, allRegDefs.flatten map emitRegUpdate)
-      // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, regResetOverrides(allRegDefs.flatten))
-      writeLines(1, "}")
+      if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
+        writeLines(1, "if (update_registers) {")
+        // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
+        writeLines(2, allMemUpdates.flatten map emitMemUpdate)
+        // writeLines(2, allRegDefs.flatten map emitRegUpdate)
+        // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
+        writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
+        writeLines(2, regResetOverrides(allRegDefs.flatten))
+        writeLines(1, "}")
+      }
+    } else {
+      val mergedRegs = writeBodyWithZonesMLTail(otherDeps, regNames, allRegDefs.flatten, resetTree,
+                           topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
+                           allMemUpdates.flatten, extIOs.toMap)
+      if (!prints.isEmpty || !stops.isEmpty) {
+        writeLines(1, "if (done_reset && update_registers) {")
+        if (!prints.isEmpty) {
+          writeLines(2, "if(verbose) {")
+          writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+          writeLines(2, "}")
+        }
+        writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(1, "}")
+      }
+      if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
+        writeLines(1, "if (update_registers) {")
+        writeLines(2, allMemUpdates.flatten map emitMemUpdate)
+        writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
+        writeLines(2, regResetOverrides(allRegDefs.flatten))
+        writeLines(1, "}")
+      }
     }
     writeLines(0, "}")
     writeLines(0, "")

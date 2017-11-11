@@ -14,8 +14,8 @@ object NoResetsOrClockConnects extends Pass {
     val noConnects = s match {
       case c: Connect => c.loc match {
         case w: WSubField => {
-          // if (w.name == "clock" || w.name == "reset" || w.name == "clk") EmptyStmt
-          if (w.name == "clock" || w.name == "clk") EmptyStmt
+          if (w.name == "clock" || w.name == "reset" || w.name == "clk") EmptyStmt
+          // if (w.name == "clock" || w.name == "clk") EmptyStmt
           else c
         }
         case _ => c
