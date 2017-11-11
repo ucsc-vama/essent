@@ -720,8 +720,8 @@ class EmitCpp(writer: Writer) extends Transform {
     val regNamesSet = regNames.toSet
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
-    // val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
-    val zoneMapWithSources = Map[String, Graph.ZoneInfo]()
+    val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
+    // val zoneMapWithSources = Map[String, Graph.ZoneInfo]()
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     g.analyzeZoningQuality(zoneMap)
     val flagRenames = compressFlags(zoneMap.mapValues(_.inputs))
@@ -733,8 +733,8 @@ class EmitCpp(writer: Writer) extends Transform {
     // predeclare output nodes
     val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
     val outputPairs = (outputTypes zip outputsFromZones).toSeq
-    val noPermSigs = outputPairs filter { !_._2.contains('.') }
-    val preDecs = noPermSigs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
+    // val noPermSigs = outputPairs filter { !_._2.contains('.') }
+    val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
     writeLines(0, preDecs)
 
     val doNotDec = outputsFromZones.toSet
@@ -761,6 +761,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, nonMemPreDecs)
 
     writeLines(0, s"bool sim_cached = false;")
+    writeLines(0, s"bool regs_set = false;")
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
@@ -776,14 +777,14 @@ class EmitCpp(writer: Writer) extends Transform {
       sigName => s"bool ${genFlagName(sigName)} = !sim_cached;"
     }
     writeLines(1, nonRegActFlagDecs)
-    writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)};" })
+    writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)} = true;" })
     println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
 
     // emit reg updates (with update checks)
-    if (!regDefs.isEmpty) {
+    // if (!regDefs.isEmpty) {
       // intermixed
       // writeLines(1, "if (update_registers && sim_cached) {")
-      writeLines(1, "if (update_registers) {")
+      // writeLines(1, "if (update_registers) {")
       // val checkAndUpdates = inputRegs flatMap {
       //   regName => Seq(s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;",
       //                  s"$regName = $regName$$next;")
@@ -793,13 +794,13 @@ class EmitCpp(writer: Writer) extends Transform {
       // // writeLines(2, regDefs map emitRegUpdate)
       // writeLines(1, "} else if (update_registers) {")
       // writeLines(2, regNames map { regName => s"$regName = $regName$$next;"})
-      writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} = true;"})
+      // writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} = true;"})
       // writeLines(1, "} else if (sim_cached) {")
       // // FUTURE: for safety, should this be regNames (instead of inputRegs)
       // writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} |= false;"})
-      writeLines(1, "}")
-    }
-    writeLines(1, "sim_cached = !reset;")
+      // writeLines(1, "}")
+    // }
+    writeLines(1, "sim_cached = !regs_set;")
 
     // set input flags to true for mem inputs
     // FUTURE: if using mem name for hashing, what if multiple write ports?
@@ -873,14 +874,14 @@ class EmitCpp(writer: Writer) extends Transform {
       val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
       val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
       val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
-        s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
+        s"${genCppType(tpe)} $name$$old = $name;"
       }}
       writeLines(2, oldOutputs)
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       // FUTURE: shouldn't this be made into tail?
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
       val outputChangeDetections = outputsCleaned map {
-        name => s"${genFlagName(name, flagRenames)} |= $name != ${name.replace('.','$')}$$old;"
+        name => s"${genFlagName(name, flagRenames)} |= $name != $name$$old;"
       }
       writeLines(2, outputChangeDetections)
       writeLines(1, "}")
@@ -1137,6 +1138,7 @@ class EmitCpp(writer: Writer) extends Transform {
         writeLines(2, allMemUpdates.flatten map emitMemUpdate)
         writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
         writeLines(2, regResetOverrides(allRegDefs.flatten))
+        writeLines(1, "regs_set = true;")
         writeLines(1, "}")
       }
     }
