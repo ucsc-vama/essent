@@ -123,7 +123,7 @@ class EmitCpp(writer: Writer) extends Transform {
     if (modName == topName) {
       writeLines(0, "")
       writeLines(1, "void eval(bool update_registers, bool verbose, bool done_reset);")
-      writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+      // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     }
     writeLines(0, s"} $modName;")
   }
@@ -1164,9 +1164,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val topModule = findModule(topName, circuit) match {case m: Module => m}
     writeLines(0, "")
     writeLines(0, "")
-    writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
-    writeLines(1, HarnessGenerator.harnessConnections(topModule))
-    writeLines(0, "}")
+    // writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
+    // writeLines(1, HarnessGenerator.harnessConnections(topModule))
+    // writeLines(0, "}")
     writeLines(0, "")
     emitEvalTail(topName, circuit)
     writeLines(0, s"#endif  // $headerGuardName")
