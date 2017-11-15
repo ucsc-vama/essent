@@ -760,12 +760,6 @@ class EmitCpp(writer: Writer) extends Transform {
     }
     writeLines(0, nonMemPreDecs)
 
-    writeLines(0, s"bool sim_cached = false;")
-    writeLines(0, s"bool regs_set = false;")
-
-    // start emitting eval function
-    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    writeLines(1, resetTree)
     // predeclare zone activity flags
     val nonRegActSigs = (inputsToZones diff regNamesSet).toSeq
     val nonRegActSigsCompressed = renameAndUnique(nonRegActSigs, flagRenames)
@@ -773,11 +767,26 @@ class EmitCpp(writer: Writer) extends Transform {
     val inputRegsCompressed = ((renameAndUnique(inputRegs, flagRenames)).toSet -- nonRegActSigsCompressed.toSet).toSeq
     val otherRegs = (regNamesSet diff inputRegs.toSet).toSeq
     println(s"Unzoned regs: ${otherRegs.size}")
+    val allFlags = nonRegActSigsCompressed ++ inputRegsCompressed
+    writeLines(1, allFlags map { sigName => s"bool ${genFlagName(sigName)};" })
+
+    writeLines(0, s"bool sim_cached = false;")
+    writeLines(0, s"bool regs_set = false;")
+
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, resetTree)
+
+    writeLines(1, "if (!sim_cached) {")
+    writeLines(2, allFlags map { sigName => s"${genFlagName(sigName)} = true;" })
+    writeLines(1, "}")
+
     val nonRegActFlagDecs = nonRegActSigsCompressed map {
-      sigName => s"bool ${genFlagName(sigName)} = !sim_cached;"
+      sigName => s"${genFlagName(sigName)} = !sim_cached;"
     }
+
     writeLines(1, nonRegActFlagDecs)
-    writeLines(1, inputRegsCompressed map { regName => s"bool ${genFlagName(regName)} = true;" })
+    writeLines(1, inputRegsCompressed map { regName => s"${genFlagName(regName)} = true;" })
     println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
 
     // emit reg updates (with update checks)
