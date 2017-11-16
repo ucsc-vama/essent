@@ -781,12 +781,11 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, allFlags map { sigName => s"${genFlagName(sigName)} = true;" })
     writeLines(1, "}")
 
-    val nonRegActFlagDecs = nonRegActSigsCompressed map {
-      sigName => s"${genFlagName(sigName)} = !sim_cached;"
-    }
-
-    writeLines(1, nonRegActFlagDecs)
-    writeLines(1, inputRegsCompressed map { regName => s"${genFlagName(regName)} = true;" })
+    // val nonRegActFlagDecs = nonRegActSigsCompressed map {
+    //   sigName => s"${genFlagName(sigName)} = !sim_cached;"
+    // }
+    // writeLines(1, nonRegActFlagDecs)
+    // writeLines(1, inputRegsCompressed map { regName => s"${genFlagName(regName)} = true;" })
     println(s"Activity flags: ${renameAndUnique(inputsToZones.toSeq, flagRenames).size}")
 
     // emit reg updates (with update checks)
@@ -906,6 +905,13 @@ class EmitCpp(writer: Writer) extends Transform {
       s"$trackerName = $condition;"
     }}
     writeLines(1, memWriteTrackerUpdates.toSeq)
+
+    // init flags (and then start filling)
+    writeLines(1, allFlags map { sigName => s"${genFlagName(sigName)} = false;" })
+    val checkAndUpdates = inputRegs map {
+      regName => s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;"
+    }
+    writeLines(1, checkAndUpdates)
     Seq()
   }
 
