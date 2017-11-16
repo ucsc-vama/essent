@@ -808,7 +808,7 @@ class EmitCpp(writer: Writer) extends Transform {
       // writeLines(2, inputRegsCompressed map { regName => s"${genFlagName(regName, flagRenames)} |= false;"})
       // writeLines(1, "}")
     // }
-    writeLines(1, "sim_cached = !regs_set;")
+    writeLines(1, "sim_cached = regs_set;")
 
     // set input flags to true for mem inputs
     // FUTURE: if using mem name for hashing, what if multiple write ports?
