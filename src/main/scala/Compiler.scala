@@ -861,7 +861,18 @@ class EmitCpp(writer: Writer) extends Transform {
     // reordered names
     val gTopLevel = buildGraph(topLevelHE.toSeq)
     val zonesReordered = gTopLevel.reorderNames
-    // gTopLevel.writeDotFile("zonegraph.dot")
+
+    // determine last use of flags
+    val flagNameZoneNameTuples = zonesReordered flatMap { zoneName => {
+      val rawInputs = zoneMap(zoneName).inputs
+      val flagsUsed = renameAndUnique(rawInputs, flagRenames)
+      flagsUsed map { (_, zoneName) }
+    }}
+    val flagToConsumingZones = flagNameZoneNameTuples groupBy { _._1 } mapValues { _ map {_._2} }
+    val flagToLastZone = flagToConsumingZones map {
+      case (flagName, consumingZones) => (flagName, consumingZones.last)
+    }
+    val zoneToLastFlags = flagToLastZone.keys groupBy { flagToLastZone(_) }
 
     // emit zone of sources
     if (zoneMapWithSources.contains("ZONE_SOURCE")) {
@@ -888,6 +899,10 @@ class EmitCpp(writer: Writer) extends Transform {
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       // FUTURE: shouldn't this be made into tail?
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      val flagOffs = (zoneToLastFlags.getOrElse(zoneName, Seq()) map {
+        flagName => s"${genFlagName(flagName, flagRenames)} = false;"
+      }).toSeq
+      writeLines(2, flagOffs)
       val outputChangeDetections = outputsCleaned map {
         name => s"${genFlagName(name, flagRenames)} |= $name != $name$$old;"
       }
@@ -907,7 +922,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(1, memWriteTrackerUpdates.toSeq)
 
     // init flags (and then start filling)
-    writeLines(1, allFlags map { sigName => s"${genFlagName(sigName)} = false;" })
+    // writeLines(1, allFlags map { sigName => s"${genFlagName(sigName)} = false;" })
     val checkAndUpdates = inputRegs map {
       regName => s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;"
     }
