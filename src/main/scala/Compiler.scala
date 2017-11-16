@@ -768,7 +768,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val otherRegs = (regNamesSet diff inputRegs.toSet).toSeq
     println(s"Unzoned regs: ${otherRegs.size}")
     val allFlags = nonRegActSigsCompressed ++ inputRegsCompressed
-    writeLines(1, allFlags map { sigName => s"bool ${genFlagName(sigName)};" })
+    writeLines(0, allFlags map { sigName => s"bool ${genFlagName(sigName)};" })
 
     writeLines(0, s"bool sim_cached = false;")
     writeLines(0, s"bool regs_set = false;")
@@ -822,7 +822,7 @@ class EmitCpp(writer: Writer) extends Transform {
       val trackerName = s"WTRACK_${flagName.replace('.','$')}"
       s"${genFlagName(flagName, flagRenames)} |= $trackerName;"
     }}
-    writeLines(1, memFlagsTrue.toSeq)
+    writeLines(1, memChangeDetects.toSeq)
 
     // do activity detection on other inputs (external IOs and resets)
     val nonMemChangeDetects = nonMemFlags map { sigName => {
