@@ -885,9 +885,6 @@ class EmitCpp(writer: Writer) extends Transform {
       writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
     }
 
-    // regs that don't feed into zones don't need flags
-    val regNextNames = (inputRegs map { _ + "$next"}).toSet
-
     // emit each zone
     zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
         case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
@@ -909,11 +906,6 @@ class EmitCpp(writer: Writer) extends Transform {
         flagName => s"${genFlagName(flagName, flagRenames)} = false;"
       }).toSeq
       writeLines(2, flagOffs)
-      val regsInZone = members filter regNextNames map { _.replaceAllLiterally("$next","") }
-      val regsInZoneChecks = regsInZone map {
-        regName => s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;"
-      }
-      writeLines(1, regsInZoneChecks)
       val outputChangeDetections = outputsCleaned map {
         name => s"${genFlagName(name, flagRenames)} |= $name != $name$$old;"
       }
@@ -934,10 +926,10 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // init flags (and then start filling)
     // writeLines(1, allFlags map { sigName => s"${genFlagName(sigName)} = false;" })
-    val otherRegChecks = (inputRegs diff regsSetInZones) map {
+    val regChecks = inputRegs map {
       regName => s"${genFlagName(regName, flagRenames)} |= $regName != $regName$$next;"
     }
-    writeLines(1, otherRegChecks)
+    writeLines(1, regChecks)
     Seq()
   }
 
