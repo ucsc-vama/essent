@@ -982,10 +982,6 @@ class EmitCpp(writer: Writer) extends Transform {
     val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
     val memNames = memUpdates map { _.memName }
     val memFlags = otherFlags intersect memNames.toSet
-    val memWriteTrackDecs = memFlags map {
-      flagName => s"bool WTRACK_${flagName.replace('.','$')};"
-    }
-    writeLines(0, memWriteTrackDecs.toSeq)
     val nonMemFlags = otherFlags diff memNames.toSet
     // FUTURE: fix, can't be hacking for reset, but reset isn't in signal map table
     val nonMemFlagTypes = nonMemFlags.toSeq map {
@@ -1012,18 +1008,6 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
     writeLines(1, "}")
     writeLines(1, "sim_cached = regs_set;")
-
-    // set input flags to true for mem inputs
-    // FUTURE: if using mem name for hashing, what if multiple write ports?
-    val memEnablesAndMasks = (memUpdates map {
-      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
-    }).toMap
-    val memChangeDetects = memFlags flatMap { flagName => {
-      // FIXME: turn on consuming zones
-      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
-      genDepZoneTriggers(outputConsumers(flagName), trackerName)
-    }}
-    writeLines(1, memChangeDetects.toSeq)
 
     // do activity detection on other inputs (external IOs and resets)
     val nonMemChangeDetects = nonMemFlags flatMap { sigName => {
@@ -1095,12 +1079,16 @@ class EmitCpp(writer: Writer) extends Transform {
     // FUTURE: does this need to be made into tail?
     writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
 
-    val memWriteTrackerUpdates = memFlags map { flagName => {
-      val trackerName = s"WTRACK_${flagName.replace('.','$')}"
+    // trigger zones based on mem writes
+    // NOTE: if mem has multiple write ports, either can trigger wakeups
+    val memEnablesAndMasks = (memUpdates map {
+      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
+    }).toMap
+    val memWriteTriggerZones = memFlags.toSeq flatMap { flagName => {
       val condition = memEnablesAndMasks(flagName).mkString(" && ");
-      s"$trackerName = $condition;"
+      genDepZoneTriggers(outputConsumers(flagName), condition)
     }}
-    writeLines(1, memWriteTrackerUpdates.toSeq)
+    writeLines(1, memWriteTriggerZones)
 
     val regsTriggerZones = inputRegs flatMap {
       regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
