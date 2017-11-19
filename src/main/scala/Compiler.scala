@@ -952,12 +952,15 @@ class EmitCpp(writer: Writer) extends Transform {
                            regDefs: Seq[DefRegister], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
                            doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
-                           extIOtypes: Map[String, Type]): Seq[String] = {
+                           extIOtypes: Map[String, Type], regsToConsider: Seq[String]): Seq[String] = {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
     val regNamesSet = regNames.toSet
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
+    val mergeableRegs = g.findMergeableRegs(regsToConsider)
+    val mergedRegs = g.mergeRegsSafe(mergeableRegs)
+    println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
     val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
     val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     g.analyzeZoningQuality(zoneMap)
@@ -967,6 +970,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
     val outputConsumers = outputConsumerZones(zoneMap)
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+    val mergedInRegs = (mergedRegs intersect inputRegs filter { outputConsumers.contains(_) })
+    val shouldCheckInZone = (mergedInRegs map { _ + "$next"}).toSet
+    val regsUncheckedByZones = inputRegs diff mergedInRegs
 
     // predeclare output nodes
     val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
@@ -1002,6 +1008,10 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, "if (reset || !done_reset) {")
+    writeLines(2, "sim_cached = false;")
+    writeLines(2, "regs_set = false;")
+    writeLines(1, "}")
     writeLines(1, resetTree)
 
     writeLines(1, "if (!sim_cached) {")
@@ -1068,6 +1078,11 @@ class EmitCpp(writer: Writer) extends Transform {
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       // FUTURE: shouldn't this be made into tail?
       writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      val regsInZone = members filter shouldCheckInZone map { _.replaceAllLiterally("$next","") }
+      val regsTriggerZones = regsInZone flatMap {
+        regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+      }
+      writeLines(2, regsTriggerZones)
       val outputTriggers = outputsCleaned flatMap {
         name => genDepZoneTriggers(outputConsumers(name), s"$name != $name$$old")
       }
@@ -1090,9 +1105,11 @@ class EmitCpp(writer: Writer) extends Transform {
     }}
     writeLines(1, memWriteTriggerZones)
 
-    val regsTriggerZones = inputRegs flatMap {
-      regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
-    }
+    val regsTriggerZones = regsUncheckedByZones.toSeq flatMap { regName => {
+      if (outputConsumers.contains(regName))
+        genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+      else Seq()
+    }}
     writeLines(1, regsTriggerZones)
     Seq()
   }
@@ -1319,7 +1336,7 @@ class EmitCpp(writer: Writer) extends Transform {
     } else {
       val mergedRegs = writeBodyWithZonesMLTailPush(otherDeps, regNames, allRegDefs.flatten, resetTree,
                            topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
-                           allMemUpdates.flatten, extIOs.toMap)
+                           allMemUpdates.flatten, extIOs.toMap, safeRegs)
       if (!prints.isEmpty || !stops.isEmpty) {
         writeLines(1, "if (done_reset && update_registers) {")
         if (!prints.isEmpty) {
