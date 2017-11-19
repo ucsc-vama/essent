@@ -971,8 +971,9 @@ class EmitCpp(writer: Writer) extends Transform {
     val outputConsumers = outputConsumerZones(zoneMap)
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
     val mergedInRegs = (mergedRegs intersect inputRegs filter { outputConsumers.contains(_) })
-    val shouldCheckInZone = (mergedInRegs map { _ + "$next"}).toSet
     val regsUncheckedByZones = inputRegs diff mergedInRegs
+    val shouldCheckInZone = (mergedInRegs map { _ + "$next"}).toSet
+    val shouldSetInZone = (mergedRegs map { _ + "$next"}).toSet
 
     // predeclare output nodes
     val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
@@ -1087,6 +1088,8 @@ class EmitCpp(writer: Writer) extends Transform {
         name => genDepZoneTriggers(outputConsumers(name), s"$name != $name$$old")
       }
       writeLines(2, outputTriggers)
+      val regsToUpdate = members filter shouldSetInZone map { _.replaceAllLiterally("$next","") }
+      writeLines(2, regsToUpdate map { regName => s"$regName = $regName$$next;" })
       writeLines(1, "}")
     }}
 
@@ -1111,7 +1114,7 @@ class EmitCpp(writer: Writer) extends Transform {
       else Seq()
     }}
     writeLines(1, regsTriggerZones)
-    Seq()
+    mergedRegs
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
