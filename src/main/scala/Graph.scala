@@ -770,6 +770,18 @@ class Graph {
     }}
   }
 
+  def remakeZoneMap(zoneMap: Map[String, Graph.ZoneInfo], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+    val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
+    zoneMap map { case (zoneName, Graph.ZoneInfo(_, givenMembers, _)) => {
+      val zoneMemberIDs = givenMembers map nameToID
+      val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
+      val inputNames = zoneInputs(validMembers) map idToName
+      val memberNames = validMembers map idToName
+      val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
+      (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
+    }}
+  }
+
   def findMFFCs(): ArrayBuffer[Int] = {
     val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
     val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }

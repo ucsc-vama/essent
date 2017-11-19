@@ -962,13 +962,15 @@ class EmitCpp(writer: Writer) extends Transform {
     val mergedRegs = g.mergeRegsSafe(mergeableRegs)
     println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
     val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
-    val zoneMap = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
-    g.analyzeZoningQuality(zoneMap)
-    val inputsToZones = zoneMap.flatMap(_._2.inputs).toSet
-    val nodesInZones = zoneMap.flatMap(_._2.members).toSet
+    val zoneMapCF = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
+    val gDF = buildGraph(bodyEdges)
+    val zoneMapDF = gDF.remakeZoneMap(zoneMapCF, doNotShadow)
+    gDF.analyzeZoningQuality(zoneMapDF)
+    val inputsToZones = zoneMapDF.flatMap(_._2.inputs).toSet
+    val nodesInZones = zoneMapDF.flatMap(_._2.members).toSet
     val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
-    val outputsFromZones = zoneMap.flatMap(_._2.outputs).toSet.diff(regNamesSet)
-    val outputConsumers = outputConsumerZones(zoneMap)
+    val outputsFromZones = zoneMapDF.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+    val outputConsumers = outputConsumerZones(zoneMapDF)
     val inputRegs = (regNamesSet intersect inputsToZones).toSeq
     val mergedInRegs = (mergedRegs intersect inputRegs filter { outputConsumers.contains(_) })
     val regsUncheckedByZones = inputRegs diff mergedInRegs
@@ -1000,7 +1002,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, nonMemPreDecs)
 
     // predeclare zone activity flags
-    val zoneNames = zoneMap.keys.toSeq
+    val zoneNames = zoneMapCF.keys.toSeq
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     println(s"Activity flags: ${zoneNames.size}")
 
@@ -1035,12 +1037,12 @@ class EmitCpp(writer: Writer) extends Transform {
 
     // compute zone order
     // map of name -> zone name (if in zone)
-    val nameToZoneName = zoneMap flatMap {
+    val nameToZoneName = zoneMapCF flatMap {
       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
         outputs map { portName => (portName, zoneName) }
     }}
     // list of super hyperedges for zones
-    val zoneSuperEdges = zoneMap map {
+    val zoneSuperEdges = zoneMapCF map {
       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
         HyperedgeDep(zoneName, inputs, heMap(members.head).stmt)
     }}
@@ -1066,7 +1068,7 @@ class EmitCpp(writer: Writer) extends Transform {
     }
 
     // emit each zone
-    zonesReordered map { zoneName => (zoneName, zoneMap(zoneName)) } foreach {
+    zonesReordered map { zoneName => (zoneName, zoneMapDF(zoneName)) } foreach {
         case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
       writeLines(1, s"if (${genFlagName(zoneName)}) {")
       writeLines(2, s"${genFlagName(zoneName)} = false;")
