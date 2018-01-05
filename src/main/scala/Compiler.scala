@@ -958,6 +958,7 @@ class EmitCpp(writer: Writer) extends Transform {
     val regNamesSet = regNames.toSet
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
+    g.printTopologyStats
     val mergeableRegs = g.findMergeableRegs(regsToConsider)
     val mergedRegs = g.mergeRegsSafe(mergeableRegs)
     println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
@@ -1314,7 +1315,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     if (simpleOnly) {
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-      // writeLines(1, resetTree)
+      writeLines(1, resetTree)
       // writeBodySimple(1, otherDeps, regNames)
       // val mergedRegs = writeBodyTailMerged(1, otherDeps, safeRegs)
       val mergedRegs = writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
