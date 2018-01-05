@@ -192,6 +192,7 @@ object Emitter {
         val argNames = p.args map emitExpr
         val mulStr = argNames mkString(" * ")
         if (bitWidth(p.tpe) != (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe))) {
+          // FUTURE: is this a bug in firrtl width inference?
           val delta = (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe)) - bitWidth(p.tpe)
           s"($mulStr).tail<$delta>()"
         } else mulStr
