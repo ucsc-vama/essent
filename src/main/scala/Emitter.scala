@@ -146,6 +146,17 @@ object Emitter {
     else chunkLitString(litStr.dropRight(chunkWidth)) ++ Seq(litStr.takeRight(chunkWidth))
   }
 
+  // NOTE: assuming no large UIntLiteral is negative
+  def splatLargeLiteralIntoRawArray(value: BigInt, width: BigInt): String = {
+    val rawHexStr = value.toString(16)
+    val isNeg = value < 0
+    val asHexStr = if (isNeg) rawHexStr.tail else rawHexStr
+    val arrStr = chunkLitString(asHexStr) map { "0x" + _} mkString(",")
+    val leadingNegStr = if (isNeg) "(uint64_t) -" else ""
+    val numWords = (width + 63) / 64
+    s"std::array<uint64_t,$numWords>({$leadingNegStr$arrStr})"
+  }
+
   def emitExpr(e: Expression): String = e match {
     case w: WRef => w.name
     case u: UIntLiteral => {
@@ -153,24 +164,12 @@ object Emitter {
       val width = bitWidth(u.tpe)
       val asHexStr = u.value.toString(16)
       if ((width <= 64) || (u.value <= maxIn64Bits)) s"UInt<$width>(0x$asHexStr)"
-      else {
-        val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
-        val numWords = (width + 63) / 64
-        s"UInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))"
-      }
+      else s"UInt<$width>(${splatLargeLiteralIntoRawArray(u.value, width)})"
     }
     case u: SIntLiteral => {
       val width = bitWidth(u.tpe)
       if (width <= 64) s"SInt<$width>(${u.value.toString(10)})"
-      else {
-        val numWords = (width + 63) / 64
-        val rawHexStr = u.value.toString(16)
-        val isNeg = u.value < 0
-        val asHexStr = if (isNeg) rawHexStr.tail else rawHexStr
-        val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
-        val leadingNegStr = if (isNeg) "(uint64_t) -" else ""
-        s"SInt<$width>(std::array<uint64_t,$numWords>({$leadingNegStr$arrStr}))"
-      }
+      else s"SInt<$width>(${splatLargeLiteralIntoRawArray(u.value, width)})"
     }
     case m: Mux => {
       val condName = emitExpr(m.cond)
