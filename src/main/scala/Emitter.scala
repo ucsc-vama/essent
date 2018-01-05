@@ -142,7 +142,7 @@ object Emitter {
   }
 
   def chunkLitString(litStr: String, chunkWidth:Int = 16): Seq[String] = {
-    if (litStr.size < chunkWidth) Seq(litStr.takeRight(chunkWidth))
+    if (litStr.size < chunkWidth) Seq(litStr)
     else chunkLitString(litStr.dropRight(chunkWidth)) ++ Seq(litStr.takeRight(chunkWidth))
   }
 
@@ -164,15 +164,12 @@ object Emitter {
       if (width <= 64) s"SInt<$width>(${u.value.toString(10)})"
       else {
         val numWords = (width + 63) / 64
-        if (u.value >= 0) {
-          val asHexStr = u.value.toString(16)
-          val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
-          s"SInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))"
-        } else {
-          val asNegHexStr = (-u.value).toString(16)
-          val arrStr = (chunkLitString(asNegHexStr) map { "0x" + _}).mkString(",")
-          s"""(-SInt<$width>(std::array<uint64_t,$numWords>({$arrStr}))).tail<1>()"""
-        }
+        val rawHexStr = u.value.toString(16)
+        val isNeg = u.value < 0
+        val asHexStr = if (isNeg) rawHexStr.tail else rawHexStr
+        val arrStr = (chunkLitString(asHexStr) map { "0x" + _}).mkString(",")
+        val leadingNegStr = if (isNeg) "(uint64_t) -" else ""
+        s"SInt<$width>(std::array<uint64_t,$numWords>({$leadingNegStr$arrStr}))"
       }
     }
     case m: Mux => {
