@@ -209,10 +209,10 @@ object Emitter {
       case AsSInt => s"${emitExpr(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>()"
-      case Shlw => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>().bits<${bitWidth(p.tpe)}-1,0>()"
+      case Shlw => s"${emitExpr(p.args.head)}.shlw<${p.consts.head.toInt}>()"
       case Shr => s"${emitExpr(p.args.head)}.shr<${p.consts.head.toInt}>()"
       case Dshl => p.args map emitExpr mkString(" << ")
-      case Dshlw => s"(${emitExpr(p.args(0))} << ${emitExpr(p.args(1))}).bits<${bitWidth(p.tpe)}-1,0>()"
+      case Dshlw => s"${emitExpr(p.args(0))}.dshlw(${emitExpr(p.args(1))})"
       case Dshr => p.args map emitExpr mkString(" >> ")
       case Cvt => s"${emitExpr(p.args.head)}.cvt()"
       case Neg => s"-${emitExpr(p.args.head)}"
