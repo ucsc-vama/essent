@@ -15,7 +15,7 @@ import firrtl.PrimOps._
 import firrtl.Utils._
 
 
-class EmitCpp(writer: Writer) extends Transform {
+class EmitCpp(writer: Writer) {
   val tabs = "  "
 
   // Graph Building
@@ -1366,8 +1366,7 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
   }
 
-  def execute(state: CircuitState): CircuitState = {
-    val circuit = state.circuit
+  def emit(circuit: Circuit) {
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -1391,19 +1390,16 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     emitEvalTail(topName, circuit)
     writeLines(0, s"#endif  // $headerGuardName")
-    // dummy return since desired emission is side effect
-    state
   }
-  def inputForm = LowForm
-  def outputForm = LowForm
 }
 
-class DoNothingEmitter extends firrtl.Emitter {
-  def emit(state: CircuitState, writer: Writer): Unit = {}
+class CCEmitter extends firrtl.Emitter {
+  def emit(state: CircuitState, writer: Writer): Unit = {
+    val emitter = new essent.EmitCpp(writer)
+    emitter.emit(state.circuit)
+  }
 }
 
-
-// Copied from firrtl.EmitVerilogFromLowFirrtl
 class FinalCleanups extends PassBasedTransform {
   def inputForm = MidForm
   def outputForm = LowForm
@@ -1431,8 +1427,8 @@ class PrintCircuit extends Transform with SimpleRun {
   }
 }
 
-class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
-  def emitter = new DoNothingEmitter
+class CCCompiler(verbose: Boolean) extends Compiler {
+  def emitter = new CCEmitter
   def transforms: Seq[Transform] = Seq(
     new firrtl.ChirrtlToHighFirrtl,
     new firrtl.IRToWorkingIR,
@@ -1443,7 +1439,6 @@ class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
     new firrtl.MiddleFirrtlToLowFirrtl,
     // new firrtl.passes.InlineInstances,
     new firrtl.LowFirrtlOptimization,
-    new FinalCleanups,
-    new EmitCpp(writer)
+    new FinalCleanups
   ) ++ (if (verbose) Seq(new PrintCircuit) else Seq())
 }
