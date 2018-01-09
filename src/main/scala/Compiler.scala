@@ -1408,19 +1408,8 @@ class FinalCleanups extends PassBasedTransform {
   def inputForm = MidForm
   def outputForm = LowForm
   val passSeq = Seq(
-    firrtl.passes.RemoveValidIf,
-    firrtl.passes.ConstProp,
-    firrtl.passes.PadWidths,
-    firrtl.passes.ConstProp,
-    firrtl.passes.Legalize,
     firrtl.passes.VerilogWrap,
-    firrtl.passes.memlib.VerilogMemDelays,
-    firrtl.passes.ConstProp,
-    firrtl.passes.SplitExpressions,
-    firrtl.passes.CommonSubexpressionElimination,
-    firrtl.passes.DeadCodeElimination,
-    firrtl.passes.RemoveEmpty,
-    essent.passes.InferAddw,
+    // essent.passes.InferAddw,
     essent.passes.WireConstProp,
     essent.passes.ZeroFromBits,
     essent.passes.WireConstProp,
@@ -1452,7 +1441,8 @@ class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
     new firrtl.passes.memlib.InferReadWrite,
     new firrtl.passes.memlib.ReplSeqMem,
     new firrtl.MiddleFirrtlToLowFirrtl,
-    new firrtl.passes.InlineInstances,
+    // new firrtl.passes.InlineInstances,
+    new firrtl.LowFirrtlOptimization,
     new FinalCleanups,
     new EmitCpp(writer)
   ) ++ (if (verbose) Seq(new PrintCircuit) else Seq())
