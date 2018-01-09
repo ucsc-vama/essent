@@ -135,15 +135,20 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $modName;")
   }
 
-  def buildResetTree(allInstances: Seq[(String, String)]): Seq[String] = {
-    val allInstanceNames = allInstances.tail map { _._2 }
-    val resetConnects = allInstanceNames map { modName: String => {
-      val trailingDotRemoved = if (modName.contains(".")) modName.init
-                               else modName
+  def buildResetTree(allInstances: Seq[(String, String)], circuit: Circuit): Seq[String] = {
+    val instancesWithResets = allInstances filter { case (modName, prefix) => {
+      findModule(modName, circuit).ports.exists{ _.name == "reset" }
+    }}
+    println(s"${instancesWithResets.size}/${allInstances.size} instances have resets")
+    // TODO: is this correct? should map be { _._1 + _._2 }?
+    val allInstanceNames = instancesWithResets.tail map { _._2 }
+    val resetConnects = allInstanceNames map { fullModName: String => {
+      val trailingDotRemoved = if (fullModName.contains(".")) fullModName.init
+                               else fullModName
       val parentName = if (trailingDotRemoved.contains("."))
           trailingDotRemoved.substring(0, trailingDotRemoved.lastIndexOf(".")) + "."
         else ""
-      Connect(NoInfo, WRef(s"${modName}reset", UIntType(IntWidth(1)), PortKind, FEMALE),
+      Connect(NoInfo, WRef(s"${fullModName}reset", UIntType(IntWidth(1)), PortKind, FEMALE),
               WRef(s"${parentName}reset", UIntType(IntWidth(1)), PortKind, MALE))
     }}
     val allDeps = resetConnects flatMap findDependencesStmt
@@ -1239,7 +1244,7 @@ class EmitCpp(writer: Writer) {
         }}
       }
     }
-    val resetTree = buildResetTree(allInstances)
+    val resetTree = buildResetTree(allInstances, circuit)
     val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
@@ -1301,7 +1306,7 @@ class EmitCpp(writer: Writer) {
         }}
       }
     }
-    val resetTree = buildResetTree(allInstances)
+    val resetTree = buildResetTree(allInstances, circuit)
     val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
