@@ -18,7 +18,7 @@ import firrtl.passes._
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
 
 object FactorMemReads extends Pass {
-  def name = "Transforms mem read ports into SubAccesses for easier emission"
+  def desc = "Transforms mem read ports into SubAccesses for easier emission"
 
   def findReadPortAddrs(readPorts: Set[String])(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findReadPortAddrs(readPorts)

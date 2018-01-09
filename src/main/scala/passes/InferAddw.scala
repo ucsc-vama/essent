@@ -17,7 +17,7 @@ import firrtl.Utils._
 
 
 object InferAddw extends Pass {
-  def name = "Replace tail on add results with addw (or sub with subw)"
+  def desc = "Replace tail on add results with addw (or sub with subw)"
 
   val WRefCounts = HashMap[String, Int]()
 

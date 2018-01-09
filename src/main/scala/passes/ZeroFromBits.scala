@@ -8,7 +8,7 @@ import firrtl.PrimOps._
 
 
 object ZeroFromBits extends Pass {
-  def name = "Replaces bit extracts on literal zeros with zeros"
+  def desc = "Replaces bit extracts on literal zeros with zeros"
 
   def simpBitsExpr(e: Expression): Expression = {
     val bigZero = BigInt(0)

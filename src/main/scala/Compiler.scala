@@ -1408,10 +1408,10 @@ class CCEmitter(writer: Writer) extends firrtl.Emitter {
   }
 }
 
-class FinalCleanups extends PassBasedTransform {
+class FinalCleanups extends SeqTransform {
   def inputForm = MidForm
   def outputForm = LowForm
-  val passSeq = Seq(
+  val transforms = Seq(
     firrtl.passes.VerilogWrap,
     // essent.passes.InferAddw,
     essent.passes.WireConstProp,
@@ -1426,7 +1426,7 @@ class FinalCleanups extends PassBasedTransform {
 }
 
 // TODO: use functionality within newer firrtl
-class PrintCircuit extends Transform with SimpleRun {
+class PrintCircuit extends Transform {
   def inputForm = MidForm
   def outputForm = LowForm
   def execute(state: CircuitState): CircuitState = {

@@ -11,7 +11,7 @@ import scala.util.Random
 
 
 object RandInitInvalids extends Pass {
-  def name = "Randomly initialize invalid signals"
+  def desc = "Randomly initialize invalid signals"
 
   def genRandomLiteral(width: Int): BigInt = BigInt(width, Random)
 

@@ -8,7 +8,7 @@ import firrtl.Utils._
 
 
 object NoResetsOrClockConnects extends Pass {
-  def name = "Removes connects to .clock or .reset"
+  def desc = "Removes connects to .clock or .reset"
 
   def cutConnectsStmt(s: Statement): Statement = {
     val noConnects = s match {

@@ -8,7 +8,7 @@ import firrtl.Utils._
 
 
 object WireConstProp extends Pass {
-  def name = "Constant Propagation (replace constant wires or nodes)"
+  def desc = "Constant Propagation (replace constant wires or nodes)"
 
   def findLiteralWires(s: Statement): Seq[(String,Literal)] = s match {
     case b: Block => b.stmts flatMap findLiteralWires

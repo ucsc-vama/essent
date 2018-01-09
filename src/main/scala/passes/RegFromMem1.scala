@@ -10,7 +10,7 @@ import firrtl.passes._
 import firrtl.Utils._
 
 object RegFromMem1 extends Pass {
-  def name = "Replaces single-element mems with a register"
+  def desc = "Replaces single-element mems with a register"
 
   // FUTURE: reduce redundancy with Emitter.grabMemInfo
   def grabMemConnects(s: Statement): Seq[(String, Expression)] = s match {
