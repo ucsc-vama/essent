@@ -7,7 +7,7 @@ import essent.Emitter._
 import essent.Extract._
 
 import firrtl._
-import firrtl.Annotations._
+import firrtl.annotations._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.passes.bitWidth
@@ -1366,7 +1366,8 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
   }
 
-  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
+  def execute(state: CircuitState): CircuitState = {
+    val circuit = state.circuit
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -1390,14 +1391,22 @@ class EmitCpp(writer: Writer) extends Transform {
     writeLines(0, "")
     emitEvalTail(topName, circuit)
     writeLines(0, s"#endif  // $headerGuardName")
-    TransformResult(circuit)
+    // dummy return since desired emission is side effect
+    state
   }
+  def inputForm = LowForm
+  def outputForm = LowForm
+}
+
+class DoNothingEmitter extends firrtl.Emitter {
+  def emit(state: CircuitState, writer: Writer): Unit = {}
 }
 
 
-
 // Copied from firrtl.EmitVerilogFromLowFirrtl
-class FinalCleanups extends Transform with SimpleRun {
+class FinalCleanups extends PassBasedTransform {
+  def inputForm = MidForm
+  def outputForm = LowForm
   val passSeq = Seq(
     firrtl.passes.RemoveValidIf,
     firrtl.passes.ConstProp,
@@ -1421,30 +1430,29 @@ class FinalCleanups extends Transform with SimpleRun {
     essent.passes.FactorMemReads)
     // passes.VerilogRename,
     // passes.VerilogPrep)
-  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
-    run(circuit, passSeq)
-  }
 }
 
+// TODO: use functionality within newer firrtl
 class PrintCircuit extends Transform with SimpleRun {
-  def execute(circuit: Circuit, annotationMap: AnnotationMap): TransformResult = {
-    println(circuit.serialize)
-    TransformResult(circuit)
+  def inputForm = MidForm
+  def outputForm = LowForm
+  def execute(state: CircuitState): CircuitState = {
+    println(state.circuit.serialize)
+    state
   }
 }
 
-
-
-class CCCompiler(verbose: Boolean) extends Compiler {
-  def transforms(writer: Writer): Seq[Transform] = Seq(
-    new firrtl.Chisel3ToHighFirrtl,
+class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
+  def emitter = new DoNothingEmitter
+  def transforms: Seq[Transform] = Seq(
+    new firrtl.ChirrtlToHighFirrtl,
     new firrtl.IRToWorkingIR,
     new firrtl.ResolveAndCheck,
     new firrtl.HighFirrtlToMiddleFirrtl,
-    new firrtl.passes.memlib.InferReadWrite(TransID(-1)),
-    new firrtl.passes.memlib.ReplSeqMem(TransID(-2)),
+    new firrtl.passes.memlib.InferReadWrite,
+    new firrtl.passes.memlib.ReplSeqMem,
     new firrtl.MiddleFirrtlToLowFirrtl,
-    new firrtl.passes.InlineInstances(TransID(0)),
+    new firrtl.passes.InlineInstances,
     new FinalCleanups,
     new EmitCpp(writer)
   ) ++ (if (verbose) Seq(new PrintCircuit) else Seq())

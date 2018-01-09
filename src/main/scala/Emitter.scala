@@ -3,14 +3,14 @@ package essent
 import essent.Extract._
 
 import firrtl._
-import firrtl.Annotations._
+import firrtl.annotations._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.passes.bitWidth
 import firrtl.PrimOps._
 import firrtl.Utils._
 
-import util.Random
+import scala.util.Random
 
 object Emitter {
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)

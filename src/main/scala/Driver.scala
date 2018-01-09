@@ -31,9 +31,8 @@ object Driver {
     harnessWriter.close()
 
     val dutWriter = new FileWriter(new File(outputDir, s"$topName.h"))
-    val annotations = new firrtl.Annotations.AnnotationMap(Seq.empty)
-    val compiler = new CCCompiler(verbose)
-    compiler.compile(circuit, annotations, dutWriter)
+    val compiler = new CCCompiler(verbose, dutWriter)
+    compiler.compile(CircuitState(circuit, firrtl.ChirrtlForm), dutWriter)
     dutWriter.close()
   }
 
