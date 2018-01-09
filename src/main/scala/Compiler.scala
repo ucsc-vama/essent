@@ -10,7 +10,6 @@ import firrtl._
 import firrtl.annotations._
 import firrtl.ir._
 import firrtl.Mappers._
-import firrtl.passes.bitWidth
 import firrtl.PrimOps._
 import firrtl.Utils._
 
@@ -1393,10 +1392,19 @@ class EmitCpp(writer: Writer) {
   }
 }
 
-class CCEmitter extends firrtl.Emitter {
-  def emit(state: CircuitState, writer: Writer): Unit = {
+class CCEmitter(writer: Writer) extends firrtl.Emitter {
+  def inputForm = LowForm
+  def outputForm = LowForm
+
+  def emit(state: CircuitState, lwriter: Writer): Unit = {
+    val emitter = new essent.EmitCpp(lwriter)
+    emitter.emit(state.circuit)
+  }
+
+  def execute(state: CircuitState): CircuitState = {
     val emitter = new essent.EmitCpp(writer)
     emitter.emit(state.circuit)
+    state
   }
 }
 
@@ -1427,8 +1435,8 @@ class PrintCircuit extends Transform with SimpleRun {
   }
 }
 
-class CCCompiler(verbose: Boolean) extends Compiler {
-  def emitter = new CCEmitter
+class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
+  def emitter = new CCEmitter(writer)
   def transforms: Seq[Transform] = Seq(
     new firrtl.ChirrtlToHighFirrtl,
     new firrtl.IRToWorkingIR,

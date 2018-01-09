@@ -1,7 +1,7 @@
 package essent
 
+import firrtl._
 import firrtl.ir._
-import firrtl.passes.bitWidth
 
 import java.io.Writer
 

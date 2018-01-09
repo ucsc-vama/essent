@@ -6,7 +6,6 @@ import firrtl._
 import firrtl.annotations._
 import firrtl.ir._
 import firrtl.Mappers._
-import firrtl.passes.bitWidth
 import firrtl.PrimOps._
 import firrtl.Utils._
 
