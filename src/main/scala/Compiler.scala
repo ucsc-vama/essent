@@ -23,7 +23,7 @@ class EmitCpp(writer: Writer) {
       case w: WRef => Seq(w.name)
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField => Seq(emitExpr(w))
-      case w: WSubAccess => Seq(emitExpr(w.exp), emitExpr(w.index))
+      case w: WSubAccess => Seq(emitExpr(w.expr), emitExpr(w.index))
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
       case s: SIntLiteral => Seq()

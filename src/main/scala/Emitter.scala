@@ -45,7 +45,7 @@ object Emitter {
 
   def findRootKind(e: Expression): Kind = e match {
     case w: WRef => w.kind
-    case w: WSubField => findRootKind(w.exp)
+    case w: WSubField => findRootKind(w.expr)
   }
 
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
@@ -176,8 +176,8 @@ object Emitter {
       val fvalName = emitExpr(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
-    case w: WSubField => s"${emitExpr(w.exp)}.${w.name}"
-    case w: WSubAccess => s"${emitExpr(w.exp)}[${emitExpr(w.index)}.as_single_word()]"
+    case w: WSubField => s"${emitExpr(w.expr)}.${w.name}"
+    case w: WSubAccess => s"${emitExpr(w.expr)}[${emitExpr(w.index)}.as_single_word()]"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExpr mkString(" + ")
       case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})"
