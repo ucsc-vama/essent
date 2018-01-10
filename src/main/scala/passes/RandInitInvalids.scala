@@ -1,5 +1,7 @@
 package essent.passes
 
+import essent.Emitter._
+
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
@@ -15,22 +17,26 @@ object RandInitInvalids extends Pass {
 
   def genRandomLiteral(width: Int): BigInt = BigInt(width, Random)
 
-  def randInitStmt(s: Statement): Statement = {
+  def randInitStmt(portNames: Set[String])(s: Statement): Statement = {
     val replaced = s match {
       case i: IsInvalid => {
         val randLit = i.expr.tpe match {
           case UIntType(IntWidth(w)) => UIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
           case SIntType(IntWidth(w)) => SIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
         }
-        Connect(i.info, i.expr, randLit)
+        if (portNames.contains(emitExpr(i.expr)))
+          Connect(i.info, i.expr, randLit)
+        else
+          DefNode(i.info, emitExpr(i.expr), randLit)
       }
       case _ => s
     }
-    replaced map randInitStmt
+    replaced map randInitStmt(portNames)
   }
 
   def randInitModule(m: Module): Module = {
-    Module(m.info, m.name, m.ports, squashEmpty(randInitStmt(m.body)))
+    val portNames = (m.ports map { _.name }).toSet
+    Module(m.info, m.name, m.ports, squashEmpty(randInitStmt(portNames)(m.body)))
   }
 
   def run(c: Circuit): Circuit = {
