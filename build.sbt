@@ -4,7 +4,7 @@ version := "0.1"
 
 name := "essent"
 
-scalaVersion := "2.11.11"
+scalaVersion := "2.11.12"
 
 scalacOptions ++= Seq("-deprecation", "-unchecked")
 
