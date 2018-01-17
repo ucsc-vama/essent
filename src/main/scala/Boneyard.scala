@@ -687,6 +687,62 @@
 
 
 
+// def growZones(frontier: Seq[Int], zones: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+//   // println(s"${(zones filter {_ == -1}).size} / ${zones.size}")
+//   if (frontier.isEmpty) zones
+//   else {
+//     val nextFrontier = frontier flatMap { id =>
+//       outNeigh(id) flatMap { neigh => {
+//         if ((zones(neigh) == -1) && (inNeigh(neigh) forall { nneigh =>
+//                 (zones(nneigh) == zones(id)) || (zones(nneigh) == -2)})) {
+//           // inNeigh(neigh) foreach {
+//           //   nneigh => if (zones(nneigh) == -2) zones(nneigh) = zones(id)}
+//           zones(neigh) = zones(id)
+//           Seq(neigh)
+//         } else Seq()
+//     }}}
+//     growZones(nextFrontier, zones)
+//   }
+// }
+
+
+
+// def mergeZones(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
+//   val cutoff = 10
+//   // warning, cutoff set manually in Compiler.scala
+//   val fringe = (0 until zones.size) filter { id => (zones(id) == -1) &&
+//                   (inNeigh(id).forall {
+//                     neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
+//   }
+//   // FUTURE: maybe want to allow fringe to be -2 descendants
+//   println(fringe.size)
+//   val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
+//   val mergesCleaned = mergesWanted filter { !_.isEmpty }
+//   val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
+//     regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
+//   if (!mergesCleaned.isEmpty) {
+//     def mergedSize(mergeReq: Seq[Int]) = (mergeReq map numRegsInZones).sum
+//     val zonesToMerge = mergesCleaned.reduceLeft{ (p1,p2) =>
+//       if (mergedSize(p1) < mergedSize(p2)) p1 else p2
+//     }
+//     val newSize = zonesToMerge.map{numRegsInZones(_)}.sum
+//     if (newSize < cutoff) {
+//       println(s"Zone sizes ${(zonesToMerge map numRegsInZones).mkString("+")}")
+//       zonesToMerge foreach {zone => println(idToName(zone)) }
+//       val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
+//       (0 until zones.size) foreach { id =>
+//         if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
+//       val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
+//       growZones(newFront, zones)
+//       val numZones = zones.groupBy(i => i).values.filter(_.size > cutoff).size
+//       println(s"distinct: $numZones")
+//       mergeZones(zones, regIDsSet)
+//     }
+//   }
+// }
+
+
+
 // def mergeZonesML(zones: ArrayBuffer[Int], regIDsSet: Set[Int], frozenZones: Set[Int]) {
 //   val cutoff = 16
 //   val fringe = (0 until zones.size) filter { id =>
@@ -1248,6 +1304,20 @@
 //   val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
 //   val useNames = zoneMap map { case (k,v) => (idToName(k), v map idToName) }
 //   useNames
+// }
+
+
+
+// def findNumKids(regSet: Set[Int], grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+//   grouped.filter{
+//     case (k,v) => k.intersect(regSet).size == regSet.size
+//   }.values.map(_.size).sum
+// }
+
+
+
+// def findCoParents(regId: Int, grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
+//   grouped.keys.filter(_.contains(regId)).reduceLeft(_ ++ _)
 // }
 
 

@@ -15,6 +15,9 @@ import java.io.{File, FileWriter}
 
 
 class Graph {
+
+  // Internal data structures
+  //----------------------------------------------------------------------------
   // Vertex name (string of destination variable) -> numeric ID
   val nameToID = HashMap[String,Int]()
   // Numeric vertex ID -> name (string destination variable)
@@ -27,6 +30,8 @@ class Graph {
   val validNodes = HashSet[Int]()
 
 
+  // Graph building
+  //----------------------------------------------------------------------------
   def getID(vertexName: String) = {
     if (nameToID contains vertexName) nameToID(vertexName)
     else {
@@ -51,12 +56,84 @@ class Graph {
     deps foreach {dep : String => addEdge(dep, result)}
   }
 
+
+  // Stats
+  //----------------------------------------------------------------------------
+  def numNodes() = validNodes.size
+
+  def numNodeRefs() = idToName.size
+
+  def allOutDegrees() = outNeigh map { _.size }
+
+  def numEdges() = allOutDegrees() reduceLeft { _+_ }
+
+  def printTopologyStats() {
+    println(s"Nodes: ${numNodes()}")
+    println(s"Referenced Nodes: ${numNodeRefs()}")
+    println(s"Total References: ${numEdges()}")
+    val allDegrees = allOutDegrees()
+    val maxDegree = allDegrees reduceLeft { math.max(_,_) }
+    val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
+    println(s"Max Degree: $maxDegree ($maxDegreeName)")
+    println(s"Approximate Diameter: ${approxDiameter()}")
+  }
+
+  def printSinks(extSignals: Seq[String]) {
+    val extSet = extSignals.toSet
+    val sinkSignals = nameToID filter
+      { case (name, id) => !name.endsWith("$next") && !extSet.contains(name)} filter {
+        case (name, id) => outNeigh(id).size == 0 }
+    println(sinkSignals.size)
+  }
+
+  def approxDiameter(numTrials: Int = 64) = {
+    val numNodes = nameToID.size
+    val maxPaths = (0 until numTrials) map { trialNumber =>
+      val source = Random.nextInt(numNodes)
+      val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
+      startingDepths(source) = 0
+      val depths = stepBFS(Seq(source), startingDepths)
+      val maxDepth = depths reduceLeft { math.max(_,_) }
+      (maxDepth, s"${idToName(source)} -> ${idToName(depths.indexOf(maxDepth))}")
+    }
+    val longestPath = maxPaths.sortWith {_._1 < _._1 }.last
+    println(s"Longest Path Found: ${longestPath._2}")
+    longestPath._1
+  }
+
+  def stepBFS(frontier: Seq[Int], depths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    if (frontier.isEmpty) depths
+    else {
+      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
+        if (depths(neigh) == -1) {
+          depths(neigh) = depths(id) + 1
+          Seq(neigh)
+        } else Seq()
+      }}}
+      stepBFS(nextFrontier, depths)
+    }
+  }
+
+
+  // Output
+  //----------------------------------------------------------------------------
+  // Prints whole graph topology
   override def toString: String = {
     nameToID map {case (longName: String, id: Int) =>
       longName + ": " + inNeigh(id).map{n:Int => idToName(n)}.toSeq.mkString(" ")
     } mkString("\n")
   }
 
+  def printNode(nodeID: Int) {
+    println(s"${idToName(nodeID)} ($nodeID)")
+    println(s"  ${inNeigh(nodeID).sorted.mkString(" ")}")
+    println(s"  ${outNeigh(nodeID).sorted.mkString(" ")}")
+  }
+
+
+
+  // Topo sort
+  //----------------------------------------------------------------------------
   def topologicalSort() = {
     val finalOrdering = ArrayBuffer[Int]()
     val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
@@ -114,67 +191,10 @@ class Graph {
     }
   }
 
-  def printNode(nodeID: Int) {
-    println(s"${idToName(nodeID)} ($nodeID)")
-    println(s"  ${inNeigh(nodeID).sorted.mkString(" ")}")
-    println(s"  ${outNeigh(nodeID).sorted.mkString(" ")}")
-  }
 
-  def numNodes() = validNodes.size
 
-  def numNodeRefs() = idToName.size
-
-  def allOutDegrees() = outNeigh map { _.size }
-
-  def numEdges() = allOutDegrees() reduceLeft { _+_ }
-
-  def printTopologyStats() {
-    println(s"Nodes: ${numNodes()}")
-    println(s"Referenced Nodes: ${numNodeRefs()}")
-    println(s"Total References: ${numEdges()}")
-    val allDegrees = allOutDegrees()
-    val maxDegree = allDegrees reduceLeft { math.max(_,_) }
-    val maxDegreeName = idToName(allDegrees.indexOf(maxDegree))
-    println(s"Max Degree: $maxDegree ($maxDegreeName)")
-    println(s"Approximate Diameter: ${approxDiameter()}")
-  }
-
-  def printSinks(extSignals: Seq[String]) {
-    val extSet = extSignals.toSet
-    val sinkSignals = nameToID filter
-      { case (name, id) => !name.endsWith("$next") && !extSet.contains(name)} filter {
-        case (name, id) => outNeigh(id).size == 0 }
-    println(sinkSignals.size)
-  }
-
-  def approxDiameter(numTrials: Int = 64) = {
-    val numNodes = nameToID.size
-    val maxPaths = (0 until numTrials) map { trialNumber =>
-      val source = Random.nextInt(numNodes)
-      val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
-      startingDepths(source) = 0
-      val depths = stepBFS(Seq(source), startingDepths)
-      val maxDepth = depths reduceLeft { math.max(_,_) }
-      (maxDepth, s"${idToName(source)} -> ${idToName(depths.indexOf(maxDepth))}")
-    }
-    val longestPath = maxPaths.sortWith {_._1 < _._1 }.last
-    println(s"Longest Path Found: ${longestPath._2}")
-    longestPath._1
-  }
-
-  def stepBFS(frontier: Seq[Int], depths: ArrayBuffer[Int]): ArrayBuffer[Int] = {
-    if (frontier.isEmpty) depths
-    else {
-      val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh => {
-        if (depths(neigh) == -1) {
-          depths(neigh) = depths(id) + 1
-          Seq(neigh)
-        } else Seq()
-      }}}
-      stepBFS(nextFrontier, depths)
-    }
-  }
-
+  // Mux shadowing
+  //----------------------------------------------------------------------------
   def crawlBack(ids: Seq[Int], dontPass: ArrayBuffer[Boolean], muxNameID: Int) = {
     val q = new scala.collection.mutable.Queue[Int]
     val result = new scala.collection.mutable.ArrayBuffer[Int]
@@ -224,58 +244,169 @@ class Graph {
     shadows
   }
 
-  def growZones(frontier: Seq[Int], zones: ArrayBuffer[Int]): ArrayBuffer[Int] = {
-    // println(s"${(zones filter {_ == -1}).size} / ${zones.size}")
-    if (frontier.isEmpty) zones
+
+  // Partitioning (for zoning)
+  //----------------------------------------------------------------------------
+  def findMFFCs(): ArrayBuffer[Int] = {
+    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
+    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
+    sinks foreach { id => mffcInit(id) = id }
+    val mffc = findMFFCHelper(sinks, mffcInit)
+    findMFFCLayer(mffc)
+  }
+
+  def findMFFCLayer(priorMFFC: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    // print MFFC stats
+    val skipUnreached = priorMFFC.zipWithIndex filter { p => p._1 != -1 }
+    val mffcGrouped = skipUnreached groupBy { _._1 }
+    println(s"# nodes reached: ${skipUnreached.size}")
+    println(s"# MFFC's: ${mffcGrouped.size}")
+    val biggestSize = mffcGrouped map { _._2} map { _.size } reduceLeft { _ max _}
+    println(s"biggest MFFC: $biggestSize")
+    // compute new layer
+    val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
+    val fringeSeed = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
+    // FUTURE: exclude source nodes?
+    if (fringeSeed.isEmpty) priorMFFC
     else {
-      val nextFrontier = frontier flatMap { id =>
-        outNeigh(id) flatMap { neigh => {
-          if ((zones(neigh) == -1) && (inNeigh(neigh) forall { nneigh =>
-                  (zones(nneigh) == zones(id)) || (zones(nneigh) == -2)})) {
-            // inNeigh(neigh) foreach {
-            //   nneigh => if (zones(nneigh) == -2) zones(nneigh) = zones(id)}
-            zones(neigh) = zones(id)
-            Seq(neigh)
-          } else Seq()
-      }}}
-      growZones(nextFrontier, zones)
+      fringeSeed foreach { id => priorMFFC(id) = id }
+      val mffc = findMFFCHelper(fringeSeed, priorMFFC)
+      findMFFCLayer(mffc)
     }
   }
 
-  def mergeZones(zones: ArrayBuffer[Int], regIDsSet: Set[Int]) {
-    val cutoff = 10
-    // warning, cutoff set manually in Compiler.scala
-    val fringe = (0 until zones.size) filter { id => (zones(id) == -1) &&
-                    (inNeigh(id).forall {
-                      neigh => (zones(neigh) != -1) && (zones(neigh) != -2)})
+  def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+    val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
+    val newMembers = fringeAncestors flatMap { id => {
+      val childMFFCs = (outNeigh(id) map mffc).distinct
+      if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
+        mffc(id) = childMFFCs.head
+        Seq(id)
+      } else Seq()
+    }}
+    if (newMembers.isEmpty) mffc
+    else findMFFCHelper(newMembers, mffc)
+  }
+
+
+  // Cleanups (for zoning)
+  //----------------------------------------------------------------------------
+  def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
+    println(s"${sourceZones.size} source MFFCs merged")
+    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
+    sourceZoneMembers foreach { mffc(_) = -2 }
+    removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
+  }
+
+  def removeDeadZones(zoneMap: Map[Int, Seq[Int]], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
+    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
+    val unshadowedSinks = sinks filter {
+      sinkID => (!doNotShadow.contains(sinkID)) &&
+                (!zoneMap.contains(sinkID) || !zoneMap(sinkID).exists(doNotShadow.contains(_)))
     }
-    // FUTURE: maybe want to allow fringe to be -2 descendants
-    println(fringe.size)
-    val mergesWanted = fringe map {id => inNeigh(id).map(zones(_)).distinct}
-    val mergesCleaned = mergesWanted filter { !_.isEmpty }
-    val numRegsInZones = (zones.zipWithIndex filter { p: (Int, Int) =>
-      regIDsSet.contains(p._2) }).groupBy(_._1).mapValues{_.size}
-    if (!mergesCleaned.isEmpty) {
-      def mergedSize(mergeReq: Seq[Int]) = (mergeReq map numRegsInZones).sum
-      val zonesToMerge = mergesCleaned.reduceLeft{ (p1,p2) =>
-        if (mergedSize(p1) < mergedSize(p2)) p1 else p2
+    val deadSinks = (unshadowedSinks filter { !idToName(_).endsWith("$next") }).toSet
+    println(s"${deadSinks.size} dead sink MFFCs removed")
+    val deadSinkMembers = zoneMap flatMap { case (zoneName, members) => {
+      if (deadSinks.contains(zoneName)) members
+      else Seq()
+    }}
+    // FUTURE: set deleted mffc array entries to -1?
+    // FUTURE: actually remove dead sinks rather than just unzoning them
+    removeZones(deadSinks, zoneMap)
+  }
+
+  def validInputZones(memberIDs: Seq[Int], zones: ArrayBuffer[Int]) = {
+    val inputs = zoneInputs(memberIDs filter validNodes)
+    (inputs map zones).distinct filter { _ != -2 }
+  }
+
+  def mergeSingleInputMFFCsToParents(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+    val singleInputZoneMFFCs = zoneMap filter {
+      case (name, members) => validInputZones(members, mffc).size == 1
+    }
+    val singleInputZoneMFFCids = singleInputZoneMFFCs.keys.toSet
+    val availSingleInputMFFCs = singleInputZoneMFFCs filter {case (oldZoneID,members) => {
+      val newZoneID = validInputZones(members, mffc).head
+      !singleInputZoneMFFCids.contains(newZoneID)
+    }}
+    if (availSingleInputMFFCs.isEmpty) zoneMap
+    else {
+      println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
+      val mergeReqsConsolidated = availSingleInputMFFCs.keys groupBy {
+        oldZoneID => {
+          val zoneToMergeInto = validInputZones(zoneMap(oldZoneID), mffc).head
+          zoneToMergeInto
+        }
       }
-      val newSize = zonesToMerge.map{numRegsInZones(_)}.sum
-      if (newSize < cutoff) {
-        println(s"Zone sizes ${(zonesToMerge map numRegsInZones).mkString("+")}")
-        zonesToMerge foreach {zone => println(idToName(zone)) }
-        val renameMap = (zonesToMerge.tail map { (_, zonesToMerge.head) }).toMap
-        (0 until zones.size) foreach { id =>
-          if (renameMap.contains(zones(id))) zones(id) = renameMap(zones(id))}
-        val newFront = (0 until zones.size) filter { id => (zones(id) != -1) && (zones(id) != -2) }
-        growZones(newFront, zones)
-        val numZones = zones.groupBy(i => i).values.filter(_.size > cutoff).size
-        println(s"distinct: $numZones")
-        mergeZones(zones, regIDsSet)
+      val mergeReqs = mergeReqsConsolidated.toSeq map {
+        case (parentZone, childZones) => Seq(parentZone) ++ childZones
       }
+      val zonesMerged = mergeZonesPar(mergeReqs, zoneMap, mffc)
+      mergeSingleInputMFFCsToParents(zonesMerged, mffc)
     }
   }
 
+
+
+
+
+  // Merging Checks & Stats (for zoning)
+  //----------------------------------------------------------------------------
+  def safeToMerge(nameA: String, nameB: String): Boolean = {
+    val idA = nameToID(nameA)
+    val idB = nameToID(nameB)
+    !extPathExists(Seq(idA), Seq(idB)) && !extPathExists(Seq(idB), Seq(idA))
+  }
+
+  def safeToMergeZones(zoneA: Int, zoneB: Int, zoneMap: Map[Int, Seq[Int]]): Boolean = {
+    !extPathExists(zoneMap(zoneA), zoneMap(zoneB)) &&
+      !extPathExists(zoneMap(zoneB), zoneMap(zoneA))
+  }
+
+  def extPathExists(sourceNodes: Seq[Int], destNodes: Seq[Int]): Boolean = {
+    val destNodesSet = destNodes.toSet
+    val fringe = zoneOutputs(sourceNodes filter validNodes)
+    val exposedFringe = fringe.flatMap(outNeigh).distinct.filter{ !destNodesSet.contains(_) }
+    extPathExistsHelper(exposedFringe, BitSet() ++ sourceNodes ++ exposedFringe, destNodesSet)
+  }
+
+  def extPathExistsHelper(fringe: Seq[Int], reached: BitSet, destNodes: Set[Int]): Boolean = {
+    if (fringe.isEmpty) false
+    else {
+      val newFringe = fringe flatMap outNeigh filter { !reached(_) }
+      if (newFringe exists { destNodes.contains(_)}) true
+      else extPathExistsHelper(newFringe.distinct, reached ++ newFringe, destNodes)
+    }
+  }
+
+  def considerBiggestOverlaps(zoneMap: Map[Int, Seq[Int]]) {
+    val zoneToInputs = zoneMap map {
+      case (name, members) => (name, zoneInputs(members filter validNodes))
+    }
+    val allInputZonePairs = zoneToInputs.toSeq flatMap {
+      case (name, inputs) => inputs map { (_, name) }
+    }
+    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
+      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
+    }
+    val overlaps = inputToConsumingZones.toSeq map { case (input, consumingZones) => {
+      def overlapSize(zoneA: Int, zoneB: Int): Int = {
+        zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
+      }
+      val allCombinations = for (a <- consumingZones; b <- consumingZones) yield (a,b)
+      val overlapSizes = allCombinations map { case(a,b) => overlapSize(a,b) }
+      // println(s"${idToName(input)} ${overlapSizes.max}")
+      (overlapSizes.max, input)
+    }}
+    val overlapsSorted = overlaps.sorted.reverse
+    overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
+  }
+
+
+
+  // Merging mutations (for zoning)
+  //----------------------------------------------------------------------------
   def removeZones(zonesToRemove: Set[Int], zoneMap: Map[Int, Seq[Int]]): Map[Int, Seq[Int]] = {
     zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
   }
@@ -343,103 +474,7 @@ class Graph {
     }
   }
 
-  def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
-    println(s"${sourceZones.size} source MFFCs merged")
-    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
-    sourceZoneMembers foreach { mffc(_) = -2 }
-    removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
-  }
-
-  def removeDeadZones(zoneMap: Map[Int, Seq[Int]], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
-    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
-    val unshadowedSinks = sinks filter {
-      sinkID => (!doNotShadow.contains(sinkID)) &&
-                (!zoneMap.contains(sinkID) || !zoneMap(sinkID).exists(doNotShadow.contains(_)))
-    }
-    val deadSinks = (unshadowedSinks filter { !idToName(_).endsWith("$next") }).toSet
-    println(s"${deadSinks.size} dead sink MFFCs removed")
-    val deadSinkMembers = zoneMap flatMap { case (zoneName, members) => {
-      if (deadSinks.contains(zoneName)) members
-      else Seq()
-    }}
-    // FUTURE: set deleted mffc array entries to -1?
-    // FUTURE: actually remove dead sinks rather than just unzoning them
-    removeZones(deadSinks, zoneMap)
-  }
-
-  def validInputZones(memberIDs: Seq[Int], zones: ArrayBuffer[Int]) = {
-    val inputs = zoneInputs(memberIDs filter validNodes)
-    (inputs map zones).distinct filter { _ != -2 }
-  }
-
-  def mergeSingleInputMFFCsToParents(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    val singleInputZoneMFFCs = zoneMap filter {
-      case (name, members) => validInputZones(members, mffc).size == 1
-    }
-    val singleInputZoneMFFCids = singleInputZoneMFFCs.keys.toSet
-    val availSingleInputMFFCs = singleInputZoneMFFCs filter {case (oldZoneID,members) => {
-      val newZoneID = validInputZones(members, mffc).head
-      !singleInputZoneMFFCids.contains(newZoneID)
-    }}
-    if (availSingleInputMFFCs.isEmpty) zoneMap
-    else {
-      println(s"merging in ${availSingleInputMFFCs.size} single-input zones")
-      val mergeReqsConsolidated = availSingleInputMFFCs.keys groupBy {
-        oldZoneID => {
-          val zoneToMergeInto = validInputZones(zoneMap(oldZoneID), mffc).head
-          zoneToMergeInto
-        }
-      }
-      val mergeReqs = mergeReqsConsolidated.toSeq map {
-        case (parentZone, childZones) => Seq(parentZone) ++ childZones
-      }
-      val zonesMerged = mergeZonesPar(mergeReqs, zoneMap, mffc)
-      mergeSingleInputMFFCsToParents(zonesMerged, mffc)
-    }
-  }
-
-  def buildZoneGraph(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]) = {
-    val zoneGraph = new Graph
-    zoneMap foreach { case (zoneID, memberIDs) => {
-      if (zoneID != -2) {
-        val zoneName = idToName(zoneID)
-        val inputZones = validInputZones(memberIDs, zones) filter { _ != zoneID }
-        val inputNames = inputZones map idToName
-        zoneGraph.addNodeWithDeps(zoneName, inputNames)
-      }
-    }}
-    zoneGraph
-  }
-
-  def safeToMerge(nameA: String, nameB: String): Boolean = {
-    val idA = nameToID(nameA)
-    val idB = nameToID(nameB)
-    !extPathExists(Seq(idA), Seq(idB)) && !extPathExists(Seq(idB), Seq(idA))
-  }
-
-  def safeToMergeZones(zoneA: Int, zoneB: Int, zoneMap: Map[Int, Seq[Int]]): Boolean = {
-    !extPathExists(zoneMap(zoneA), zoneMap(zoneB)) &&
-      !extPathExists(zoneMap(zoneB), zoneMap(zoneA))
-  }
-
-  def extPathExists(sourceNodes: Seq[Int], destNodes: Seq[Int]): Boolean = {
-    val destNodesSet = destNodes.toSet
-    val fringe = zoneOutputs(sourceNodes filter validNodes)
-    val exposedFringe = fringe.flatMap(outNeigh).distinct.filter{ !destNodesSet.contains(_) }
-    extPathExistsHelper(exposedFringe, BitSet() ++ sourceNodes ++ exposedFringe, destNodesSet)
-  }
-
-  def extPathExistsHelper(fringe: Seq[Int], reached: BitSet, destNodes: Set[Int]): Boolean = {
-    if (fringe.isEmpty) false
-    else {
-      val newFringe = fringe flatMap outNeigh filter { !reached(_) }
-      if (newFringe exists { destNodes.contains(_)}) true
-      else extPathExistsHelper(newFringe.distinct, reached ++ newFringe, destNodes)
-    }
-  }
-
-  def considerBiggestOverlaps(zoneMap: Map[Int, Seq[Int]]) {
+  def mergeIndentInps(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val zoneToInputs = zoneMap map {
       case (name, members) => (name, zoneInputs(members filter validNodes))
     }
@@ -449,17 +484,18 @@ class Graph {
     val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
       case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
     }
-    val overlaps = inputToConsumingZones.toSeq map { case (input, consumingZones) => {
-      def overlapSize(zoneA: Int, zoneB: Int): Int = {
-        zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
-      }
-      val allCombinations = for (a <- consumingZones; b <- consumingZones) yield (a,b)
-      val overlapSizes = allCombinations map { case(a,b) => overlapSize(a,b) }
-      // println(s"${idToName(input)} ${overlapSizes.max}")
-      (overlapSizes.max, input)
+    def overlapSize(zoneA: Int, zoneB: Int): Int = {
+      zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
+    }
+    val mergesToConsider = zoneMap.keys flatMap { zoneID => {
+      val numInputs = zoneToInputs(zoneID).size.toDouble
+      val siblings = (zoneToInputs(zoneID) flatMap inputToConsumingZones filter { _ != zoneID}).distinct
+      val fullOverlaps = siblings filter { sibID => overlapSize(zoneID, sibID) == numInputs}
+      if (fullOverlaps.isEmpty) Seq()
+      else Seq(fullOverlaps :+ zoneID)
     }}
-    val overlapsSorted = overlaps.sorted.reverse
-    overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
+    println(s"Merges for identical inputs: ${mergesToConsider.size}")
+    mergeZonesSafe(mergesToConsider.toSeq, buildZoneGraph(zoneMap, zones), zoneMap, zones)
   }
 
   // merges small zones (<10 members) with other small zones if they share inputs
@@ -559,30 +595,9 @@ class Graph {
     }
   }
 
-  def mergeIndentInps(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
-    val zoneToInputs = zoneMap map {
-      case (name, members) => (name, zoneInputs(members filter validNodes))
-    }
-    val allInputZonePairs = zoneToInputs.toSeq flatMap {
-      case (name, inputs) => inputs map { (_, name) }
-    }
-    val inputToConsumingZones = allInputZonePairs.groupBy(_._1).map {
-      case (input, inputZonePairs) => (input, inputZonePairs.map(_._2))
-    }
-    def overlapSize(zoneA: Int, zoneB: Int): Int = {
-      zoneToInputs(zoneA).intersect(zoneToInputs(zoneB)).size
-    }
-    val mergesToConsider = zoneMap.keys flatMap { zoneID => {
-      val numInputs = zoneToInputs(zoneID).size.toDouble
-      val siblings = (zoneToInputs(zoneID) flatMap inputToConsumingZones filter { _ != zoneID}).distinct
-      val fullOverlaps = siblings filter { sibID => overlapSize(zoneID, sibID) == numInputs}
-      if (fullOverlaps.isEmpty) Seq()
-      else Seq(fullOverlaps :+ zoneID)
-    }}
-    println(s"Merges for identical inputs: ${mergesToConsider.size}")
-    mergeZonesSafe(mergesToConsider.toSeq, buildZoneGraph(zoneMap, zones), zoneMap, zones)
-  }
 
+  // Zoning (MFFC based)
+  //----------------------------------------------------------------------------
   def findZonesMFFC(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
     val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
@@ -608,6 +623,19 @@ class Graph {
     }}
   }
 
+  def buildZoneGraph(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]) = {
+    val zoneGraph = new Graph
+    zoneMap foreach { case (zoneID, memberIDs) => {
+      if (zoneID != -2) {
+        val zoneName = idToName(zoneID)
+        val inputZones = validInputZones(memberIDs, zones) filter { _ != zoneID }
+        val inputNames = inputZones map idToName
+        zoneGraph.addNodeWithDeps(zoneName, inputNames)
+      }
+    }}
+    zoneGraph
+  }
+
   def remakeZoneMap(zoneMap: Map[String, Graph.ZoneInfo], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     zoneMap map { case (zoneName, Graph.ZoneInfo(_, givenMembers, _)) => {
@@ -618,85 +646,6 @@ class Graph {
       val outputNames = (zoneOutputs(validMembers) ++ (doNotShadowSet.intersect(validMembers.toSet))).distinct map idToName
       (zoneName, Graph.ZoneInfo(inputNames, memberNames, outputNames))
     }}
-  }
-
-  def findMFFCs(): ArrayBuffer[Int] = {
-    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
-    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
-    sinks foreach { id => mffcInit(id) = id }
-    val mffc = findMFFCHelper(sinks, mffcInit)
-    findMFFCLayer(mffc)
-  }
-
-  def findMFFCLayer(priorMFFC: ArrayBuffer[Int]): ArrayBuffer[Int] = {
-    // print MFFC stats
-    val skipUnreached = priorMFFC.zipWithIndex filter { p => p._1 != -1 }
-    val mffcGrouped = skipUnreached groupBy { _._1 }
-    println(s"# nodes reached: ${skipUnreached.size}")
-    println(s"# MFFC's: ${mffcGrouped.size}")
-    val biggestSize = mffcGrouped map { _._2} map { _.size } reduceLeft { _ max _}
-    println(s"biggest MFFC: $biggestSize")
-    // compute new layer
-    val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
-    val fringeSeed = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
-    // FUTURE: exclude source nodes?
-    if (fringeSeed.isEmpty) priorMFFC
-    else {
-      fringeSeed foreach { id => priorMFFC(id) = id }
-      val mffc = findMFFCHelper(fringeSeed, priorMFFC)
-      findMFFCLayer(mffc)
-    }
-  }
-
-  // Checks that no path from reg writer to any read of that reg
-  def safeToMergeReg(regName: String): Boolean = {
-    val regID = nameToID(regName)
-    val regWriteID = nameToID(regName + "$next")
-    val regReaders = outNeigh(regID) filter { _ != regWriteID }
-    regReaders forall { readerID => !extPathExists(Seq(regWriteID), Seq(readerID)) }
-  }
-
-  def findMergeableRegs(regNames: Seq[String]): Seq[String] = {
-    val includedRegWrites = regNames filter {
-      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next")
-    }
-    println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
-    val safeToMergeRegs = includedRegWrites filter safeToMergeReg
-    println(s"${safeToMergeRegs.size} registers pass individual merge tests")
-    // NOTE: still an overestimate since testing safety individually
-    safeToMergeRegs
-  }
-
-  // Returns successfully merged regs
-  def mergeRegsSafe(regsToMerge: Seq[String]): Seq[String] = {
-    if (regsToMerge.isEmpty) Seq()
-    else {
-      val regNameToMerge = regsToMerge.head
-      val regIDToMerge = nameToID(regNameToMerge)
-      if (safeToMergeReg(regNameToMerge)) {
-        val regID = nameToID(regNameToMerge)
-        val regWriteName = regNameToMerge + "$next"
-        val regReaders = outNeigh(regID) map idToName filter { _ != regWriteName }
-        regReaders foreach { readerName => addEdge(readerName, regWriteName) }
-        Seq(regNameToMerge) ++ mergeRegsSafe(regsToMerge.tail)
-      } else {
-        println(s"couldn't merge reg $regNameToMerge")
-        mergeRegsSafe(regsToMerge.tail)
-      }
-    }
-  }
-
-  def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
-    val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
-    val newMembers = fringeAncestors flatMap { id => {
-      val childMFFCs = (outNeigh(id) map mffc).distinct
-      if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
-        mffc(id) = childMFFCs.head
-        Seq(id)
-      } else Seq()
-    }}
-    if (newMembers.isEmpty) mffc
-    else findMFFCHelper(newMembers, mffc)
   }
 
   def writeZoneInfo(filename: String, zoneMap: Map[String, Graph.ZoneInfo]) {
@@ -739,6 +688,69 @@ class Graph {
     println(s"Number of 1 input zones: ${singleInputZones.size}")
   }
 
+  def zoneConsumers(nodesInZone: Seq[Int]): Seq[Int] = {
+    nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
+  }
+
+  def zoneInputs(nodesInZone: Seq[Int]): Seq[Int] = {
+    nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
+  }
+
+  def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
+    val nodesInZoneSet = nodesInZone.toSet
+    nodesInZone filter { nodeID => outNeigh(nodeID) exists {
+      neigh => !nodesInZoneSet.contains(neigh)
+    }}
+  }
+
+  def findZoneMembers(zoneID: Int, zones: ArrayBuffer[Int]) = {
+    zones.zipWithIndex.filter(_._1 == zoneID).map(_._2).toSeq
+  }
+
+
+  // Register merging
+  //----------------------------------------------------------------------------
+  // Checks that no path from reg writer to any read of that reg
+  def safeToMergeReg(regName: String): Boolean = {
+    val regID = nameToID(regName)
+    val regWriteID = nameToID(regName + "$next")
+    val regReaders = outNeigh(regID) filter { _ != regWriteID }
+    regReaders forall { readerID => !extPathExists(Seq(regWriteID), Seq(readerID)) }
+  }
+
+  def findMergeableRegs(regNames: Seq[String]): Seq[String] = {
+    val includedRegWrites = regNames filter {
+      regName => nameToID.contains(regName) && nameToID.contains(regName + "$next")
+    }
+    println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
+    val safeToMergeRegs = includedRegWrites filter safeToMergeReg
+    println(s"${safeToMergeRegs.size} registers pass individual merge tests")
+    // NOTE: still an overestimate since testing safety individually
+    safeToMergeRegs
+  }
+
+  // Returns successfully merged regs
+  def mergeRegsSafe(regsToMerge: Seq[String]): Seq[String] = {
+    if (regsToMerge.isEmpty) Seq()
+    else {
+      val regNameToMerge = regsToMerge.head
+      val regIDToMerge = nameToID(regNameToMerge)
+      if (safeToMergeReg(regNameToMerge)) {
+        val regID = nameToID(regNameToMerge)
+        val regWriteName = regNameToMerge + "$next"
+        val regReaders = outNeigh(regID) map idToName filter { _ != regWriteName }
+        regReaders foreach { readerName => addEdge(readerName, regWriteName) }
+        Seq(regNameToMerge) ++ mergeRegsSafe(regsToMerge.tail)
+      } else {
+        println(s"couldn't merge reg $regNameToMerge")
+        mergeRegsSafe(regsToMerge.tail)
+      }
+    }
+  }
+
+
+  // Unused traversals and scans
+  //----------------------------------------------------------------------------
   def findStateDepths(stateElemNames: Seq[String], extIONames: Seq[String]): ArrayBuffer[Int] = {
     val stateLoopbacks = (stateElemNames filter { name => nameToID.contains(name) } map {
       name => (nameToID(name + "$next"), nameToID(name))
@@ -848,35 +860,9 @@ class Graph {
     }
   }
 
-  def zoneConsumers(nodesInZone: Seq[Int]): Seq[Int] = {
-    nodesInZone.flatMap(outNeigh(_)).distinct diff nodesInZone
-  }
 
-  def zoneInputs(nodesInZone: Seq[Int]): Seq[Int] = {
-    nodesInZone.flatMap(inNeigh(_)).distinct diff nodesInZone
-  }
-
-  def zoneOutputs(nodesInZone: Seq[Int]): Seq[Int] = {
-    val nodesInZoneSet = nodesInZone.toSet
-    nodesInZone filter { nodeID => outNeigh(nodeID) exists {
-      neigh => !nodesInZoneSet.contains(neigh)
-    }}
-  }
-
-  def findZoneMembers(zoneID: Int, zones: ArrayBuffer[Int]) = {
-    zones.zipWithIndex.filter(_._1 == zoneID).map(_._2).toSeq
-  }
-
-  def findCoParents(regId: Int, grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
-    grouped.keys.filter(_.contains(regId)).reduceLeft(_ ++ _)
-  }
-
-  def findNumKids(regSet: Set[Int], grouped: Map[Set[Int],ArrayBuffer[Int]]) = {
-    grouped.filter{
-      case (k,v) => k.intersect(regSet).size == regSet.size
-    }.values.map(_.size).sum
-  }
-
+  // Obscure Output & Stats
+  //----------------------------------------------------------------------------
   def writeCOOFile(filename: String, order: Option[Seq[String]] = None) {
     val intOrder = if (order.isEmpty) List.range(0, outNeigh.size)
                    else (order.get map nameToID)
