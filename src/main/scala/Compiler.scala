@@ -157,7 +157,8 @@ class EmitCpp(writer: Writer) {
     reorderedConnectNames map nameToStmt flatMap emitStmt(Set())
   }
 
-  def writeBodySimple(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
+  // Vanilla emitter with no optimizations
+  def writeBodyUnopt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
     // Simplified body, no mux shadowing
     val g = buildGraph(bodyEdges)
     // g.countChains()
@@ -172,7 +173,8 @@ class EmitCpp(writer: Writer) {
     }
   }
 
-  def writeBodyTailMerged(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
+  // Emitter that performs single-phase reg updates (merges) when possible, and returns merged regs
+  def writeBodyRegTailOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     val g = buildGraph(bodyEdges)
     val mergeableRegs = g.findMergeableRegs(regNames)
@@ -191,7 +193,8 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyTail(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
+  // Emitter that shadows muxes in addition to single-phase reg updates
+  def writeBodyMuxOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
     if (!bodyEdges.isEmpty) {
       // name to mux expression
@@ -232,8 +235,8 @@ class EmitCpp(writer: Writer) {
         val stmt = heMap(name).stmt
         if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
           def writeShadow(members: Seq[String], muxValExpr: Expression) {
-            // NOTE: not calling writeBodyTail since regs can't be in shadows
-            writeBodyTail(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
+            // NOTE: not calling writeBodyMuxOpt since regs can't be in shadows
+            writeBodyMuxOpt(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
             writeLines(indentLevel + 1, mergeRegUpdateIfPossible(name, s"$name = ${emitExpr(muxValExpr)};"))
           }
           val muxExpr = muxMap(name)
@@ -317,7 +320,8 @@ class EmitCpp(writer: Writer) {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
   }
 
-  def writeBodyWithZonesMLTailPush(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
+  // Emitter that zones design in addition to shadowing muxes and merging reg updates
+  def writeBodyZoneOpt(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
                            regDefs: Seq[DefRegister], resetTree: Seq[String],
                            topName: String, otherDeps: Seq[String],
                            doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
@@ -434,7 +438,7 @@ class EmitCpp(writer: Writer) {
       val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
       val sourceZoneEdges = sourceZoneInfo.members map heMap
       // FUTURE: does this need to be made into tail?
-      writeBodyTail(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
+      writeBodyMuxOpt(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
     }
 
     // emit each zone
@@ -450,7 +454,7 @@ class EmitCpp(writer: Writer) {
       writeLines(2, oldOutputs)
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       // FUTURE: shouldn't this be made into tail?
-      writeBodyTail(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      writeBodyMuxOpt(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
       val regsInZone = members filter shouldCheckInZone map { _.replaceAllLiterally("$next","") }
       val regsTriggerZones = regsInZone flatMap {
         regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
@@ -467,7 +471,7 @@ class EmitCpp(writer: Writer) {
 
     // emit rest of body (without redeclaring)
     // FUTURE: does this need to be made into tail?
-    writeBodyTail(1, nonZoneEdges, doNotShadow, doNotDec)
+    writeBodyMuxOpt(1, nonZoneEdges, doNotShadow, doNotDec)
 
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups
@@ -623,9 +627,9 @@ class EmitCpp(writer: Writer) {
     if (simpleOnly) {
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
       writeLines(1, resetTree)
-      // writeBodySimple(1, otherDeps, regNames)
-      // val mergedRegs = writeBodyTailMerged(1, otherDeps, safeRegs)
-      val mergedRegs = writeBodyTail(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
+      // writeBodyUnopt(1, otherDeps, regNames)
+      // val mergedRegs = writeBodyRegTailOpt(1, otherDeps, safeRegs)
+      val mergedRegs = writeBodyMuxOpt(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
       if (!prints.isEmpty || !stops.isEmpty) {
         writeLines(1, "if (done_reset && update_registers) {")
         if (!prints.isEmpty) {
@@ -647,7 +651,7 @@ class EmitCpp(writer: Writer) {
         writeLines(1, "}")
       }
     } else {
-      val mergedRegs = writeBodyWithZonesMLTailPush(otherDeps, regNames, allRegDefs.flatten, resetTree,
+      val mergedRegs = writeBodyZoneOpt(otherDeps, regNames, allRegDefs.flatten, resetTree,
                            topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
                            allMemUpdates.flatten, extIOs.toMap, safeRegs)
       if (!prints.isEmpty || !stops.isEmpty) {
