@@ -184,9 +184,7 @@ class EmitCpp(writer: Writer) {
   def writeBodyRegTailOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
     val g = buildGraph(bodyEdges)
-    val mergeableRegs = g.findMergeableRegs(regNames)
-    val mergedRegs = g.mergeRegsSafe(mergeableRegs)
-    println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
+    val mergedRegs = g.mergeRegsSafe(regNames)
     val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
     g.reorderNames foreach { name => {
       if (mergedRegWrites.contains(name)) {
@@ -229,8 +227,7 @@ class EmitCpp(writer: Writer) {
       }}
       // build graph on new hyperedges and run topo sort
       val g = buildGraph(topLevelHE)
-      val mergeableRegs = g.findMergeableRegs(regsToConsider)
-      val mergedRegs = g.mergeRegsSafe(mergeableRegs)
+      val mergedRegs = g.mergeRegsSafe(regsToConsider)
       val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
       // Assuming if replacing, only one statement has name, otherwise extra if (upda..
       def mergeRegUpdateIfPossible(name: String, toEmit: String): String = {
@@ -308,9 +305,7 @@ class EmitCpp(writer: Writer) {
     // calculate zones based on all edges
     val g = buildGraph(bodyEdges)
     g.printTopologyStats
-    val mergeableRegs = g.findMergeableRegs(regsToConsider)
-    val mergedRegs = g.mergeRegsSafe(mergeableRegs)
-    println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
+    val mergedRegs = g.mergeRegsSafe(regsToConsider)
     val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
     val zoneMapCF = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     val gDF = buildGraph(bodyEdges)

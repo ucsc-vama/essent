@@ -131,7 +131,6 @@ class Graph {
   }
 
 
-
   // Topo sort
   //----------------------------------------------------------------------------
   def topologicalSort() = {
@@ -190,7 +189,6 @@ class Graph {
         printCycle(callerIDs(vertexID), callerIDs, cycleSoFar + vertexID)
     }
   }
-
 
 
   // Mux shadowing
@@ -348,9 +346,6 @@ class Graph {
   }
 
 
-
-
-
   // Merging Checks & Stats (for zoning)
   //----------------------------------------------------------------------------
   def safeToMerge(nameA: String, nameB: String): Boolean = {
@@ -402,7 +397,6 @@ class Graph {
     val overlapsSorted = overlaps.sorted.reverse
     overlapsSorted foreach { case (size, sigID) => println(s"${idToName(sigID)} $size") }
   }
-
 
 
   // Merging mutations (for zoning)
@@ -730,22 +724,24 @@ class Graph {
   }
 
   // Returns successfully merged regs
-  def mergeRegsSafe(regsToMerge: Seq[String]): Seq[String] = {
-    if (regsToMerge.isEmpty) Seq()
-    else {
-      val regNameToMerge = regsToMerge.head
-      val regIDToMerge = nameToID(regNameToMerge)
-      if (safeToMergeReg(regNameToMerge)) {
-        val regID = nameToID(regNameToMerge)
-        val regWriteName = regNameToMerge + "$next"
-        val regReaders = outNeigh(regID) map idToName filter { _ != regWriteName }
-        regReaders foreach { readerName => addEdge(readerName, regWriteName) }
-        Seq(regNameToMerge) ++ mergeRegsSafe(regsToMerge.tail)
-      } else {
-        println(s"couldn't merge reg $regNameToMerge")
-        mergeRegsSafe(regsToMerge.tail)
-      }
-    }
+  def mergeRegsSafe(regNames: Seq[String]): Seq[String] = {
+    if (!regNames.isEmpty) {
+      val mergeableRegs = findMergeableRegs(regNames)
+      val mergedRegs = mergeableRegs flatMap { regNameToMerge => {
+        val regIDToMerge = nameToID(regNameToMerge)
+        if (safeToMergeReg(regNameToMerge)) {
+          val regWriteName = regNameToMerge + "$next"
+          val regReaders = outNeigh(regIDToMerge) map idToName filter { _ != regWriteName }
+          regReaders foreach { readerName => addEdge(readerName, regWriteName) }
+          Seq(regNameToMerge)
+        } else {
+          println(s"couldn't merge reg $regNameToMerge")
+          Seq()
+        }
+      }}
+      println(s"Was able to merge ${mergedRegs.size}/${mergeableRegs.size} of mergeable regs")
+      mergedRegs
+    } else Seq()
   }
 
 
