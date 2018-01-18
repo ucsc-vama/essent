@@ -82,6 +82,13 @@ class EmitCpp(writer: Writer) {
     g
   }
 
+  def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
+    // FUTURE: does not handle multiple write ports to same mem
+    memUpdates foreach {
+      mu => g.addNodeWithDeps(mu.memName + "$next", findDependencesMemWrite(mu))
+    }
+  }
+
 
   // Writing methods
   def writeLines(indentLevel: Int, lines: String) {
@@ -258,38 +265,7 @@ class EmitCpp(writer: Writer) {
     } else Seq()
   }
 
-
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
-
-  def genFlagName(regName: String, renames: Map[String, String]): String = {
-    genFlagName(renames.getOrElse(regName, regName))
-  }
-
-  def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
-    // FUTURE: does not handle multiple write ports to same mem
-    memUpdates foreach {
-      mu => g.addNodeWithDeps(mu.memName + "$next", findDependencesMemWrite(mu))
-    }
-  }
-
-  def printMuxSimilarity(bodyEdges: Seq[HyperedgeDep]) {
-    val allMuxExpr = findMuxExpr(bodyEdges) map { _._2 }
-    val allConds = allMuxExpr map { m: Mux => emitExpr(m.cond) }
-    println(s"There are ${allMuxExpr.size} muxes in the design, with ${allConds.distinct.size} distinct conditions")
-  }
-
-  def yankRegResets(allRegDefs: Seq[DefRegister]): Seq[String] = {
-    val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
-    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
-    resetGroups.toSeq flatMap {
-      case (resetName, regDefs) => {
-        val body = regDefs map {
-          r => s"$tabs${r.name}$$next = ${emitExpr(r.init)};"
-        }
-        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
-      }
-    }
-  }
 
   // FUTURE: refactor/combine with above yankRegResets
   def regResetOverrides(allRegDefs: Seq[DefRegister]): Seq[String] = {

@@ -161,6 +161,35 @@
 
 
 
+// def printMuxSimilarity(bodyEdges: Seq[HyperedgeDep]) {
+//   val allMuxExpr = findMuxExpr(bodyEdges) map { _._2 }
+//   val allConds = allMuxExpr map { m: Mux => emitExpr(m.cond) }
+//   println(s"There are ${allMuxExpr.size} muxes in the design, with ${allConds.distinct.size} distinct conditions")
+// }
+
+
+
+// def genFlagName(regName: String, renames: Map[String, String]): String = {
+//   genFlagName(renames.getOrElse(regName, regName))
+// }
+
+
+
+// def yankRegResets(allRegDefs: Seq[DefRegister]): Seq[String] = {
+//   val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+//   val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
+//   resetGroups.toSeq flatMap {
+//     case (resetName, regDefs) => {
+//       val body = regDefs map {
+//         r => s"$tabs${r.name}$$next = ${emitExpr(r.init)};"
+//       }
+//       Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+//     }
+//   }
+// }
+
+
+
 // def writeBodyWithZonesML(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
 //                          regDefs: Seq[DefRegister], resetTree: Seq[String],
 //                          topName: String, otherDeps: Seq[String],
