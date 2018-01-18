@@ -212,6 +212,9 @@ class EmitCpp(writer: Writer) {
       val shadowedSigs = (shadows flatMap {
         case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
       if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
+      val shadowedMuxes = (muxMap.keys filter {
+        muxName => !(trueShadows(muxName).isEmpty && falseShadows(muxName).isEmpty)
+      }).toSet
       // map of name -> original hyperedge
       val heMap = (bodyEdges map { he => (he.name, he) }).toMap
       // top level edges (filter out shadows) & make muxes depend on shadow inputs
@@ -237,7 +240,7 @@ class EmitCpp(writer: Writer) {
       }
       g.reorderNames foreach { name => {
         val stmt = heMap(name).stmt
-        if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
+        if (shadowedMuxes.contains(name)) {
           def writeShadow(members: Seq[String], muxValExpr: Expression) {
             // NOTE: not calling writeBodyMuxOpt since regs can't be in shadows
             writeBodyMuxOpt(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
@@ -262,9 +265,6 @@ class EmitCpp(writer: Writer) {
     } else Seq()
   }
 
-  def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
-
-  // FUTURE: refactor/combine with above yankRegResets
   def regResetOverrides(allRegDefs: Seq[DefRegister]): Seq[String] = {
     val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
@@ -288,6 +288,8 @@ class EmitCpp(writer: Writer) {
       pairs => pairs map { _._2 }
     }
   }
+
+  def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
   def genDepZoneTriggers(consumers: Seq[String], condition: String) = {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
