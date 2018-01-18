@@ -191,59 +191,8 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
-      doNotDec: Set[String]) {
-    if (!bodyEdges.isEmpty) {
-      // val muxOutputNames = findMuxOutputNames(bodyEdges)
-      // name to mux expression
-      val muxMap = findMuxExpr(bodyEdges).toMap
-      val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
-      // map of muxName -> true shadows, map of muxName -> false shadows
-      val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
-      val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
-      // set of signals in shadows
-      val shadowedSigs = (shadows flatMap {
-        case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
-      if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
-      // map of name -> original hyperedge
-      val heMap = (bodyEdges map { he => (he.name, he) }).toMap
-      // top level edges (filter out shadows) & make muxes depend on shadow inputs
-      val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
-      val topLevelHE = unshadowedHE map { he => {
-        val deps = if (!trueShadows.contains(he.name)) he.deps
-                   else {
-                     val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
-                     he.deps ++ shadowDeps
-                   }
-        // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
-        HyperedgeDep(he.name, deps.distinct, he.stmt)
-      }}
-      // build graph on new hyperedges and run topo sort
-      val reorderedNames = buildGraph(topLevelHE).reorderNames
-      reorderedNames foreach { name => {
-        val stmt = heMap(name).stmt
-        if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
-          val muxExpr = muxMap(name)
-          // declare output type
-          val resultTpe = findResultType(stmt)
-          if ((!name.endsWith("$next")) && (!doNotDec.contains(name)))
-            writeLines(indentLevel, s"${genCppType(resultTpe)} $name;")
-          writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
-          val trueHE = trueShadows(name) map { heMap(_) }
-          writeBody(indentLevel + 1, trueHE, doNotShadow, doNotDec)
-          writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.tval)};")
-          writeLines(indentLevel, "} else {")
-          val falseHE = falseShadows(name) map { heMap(_) }
-          writeBody(indentLevel + 1, falseHE, doNotShadow, doNotDec)
-          writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.fval)};")
-          writeLines(indentLevel, "}")
-        } else writeLines(indentLevel, emitStmt(doNotDec)(stmt))
-      }}
-    }
-  }
-
   def writeBodyTail(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
-      doNotDec: Set[String], regsToConsider: Seq[String]): Seq[String] = {
+      doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
     if (!bodyEdges.isEmpty) {
       // name to mux expression
       val muxMap = findMuxExpr(bodyEdges).toMap
@@ -284,7 +233,7 @@ class EmitCpp(writer: Writer) {
         if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
           def writeShadow(members: Seq[String], muxValExpr: Expression) {
             // NOTE: not calling writeBodyTail since regs can't be in shadows
-            writeBody(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
+            writeBodyTail(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
             writeLines(indentLevel + 1, mergeRegUpdateIfPossible(name, s"$name = ${emitExpr(muxValExpr)};"))
           }
           val muxExpr = muxMap(name)
@@ -485,7 +434,7 @@ class EmitCpp(writer: Writer) {
       val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
       val sourceZoneEdges = sourceZoneInfo.members map heMap
       // FUTURE: does this need to be made into tail?
-      writeBody(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
+      writeBodyTail(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
     }
 
     // emit each zone
@@ -501,7 +450,7 @@ class EmitCpp(writer: Writer) {
       writeLines(2, oldOutputs)
       val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
       // FUTURE: shouldn't this be made into tail?
-      writeBody(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+      writeBodyTail(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
       val regsInZone = members filter shouldCheckInZone map { _.replaceAllLiterally("$next","") }
       val regsTriggerZones = regsInZone flatMap {
         regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
@@ -518,7 +467,7 @@ class EmitCpp(writer: Writer) {
 
     // emit rest of body (without redeclaring)
     // FUTURE: does this need to be made into tail?
-    writeBody(1, nonZoneEdges, doNotShadow, doNotDec)
+    writeBodyTail(1, nonZoneEdges, doNotShadow, doNotDec)
 
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups

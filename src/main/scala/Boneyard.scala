@@ -3,6 +3,57 @@
 
 // from Compiler.scala
 
+// def writeBody(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
+//     doNotDec: Set[String]) {
+//   if (!bodyEdges.isEmpty) {
+//     // val muxOutputNames = findMuxOutputNames(bodyEdges)
+//     // name to mux expression
+//     val muxMap = findMuxExpr(bodyEdges).toMap
+//     val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
+//     // map of muxName -> true shadows, map of muxName -> false shadows
+//     val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+//     val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+//     // set of signals in shadows
+//     val shadowedSigs = (shadows flatMap {
+//       case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
+//     if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
+//     // map of name -> original hyperedge
+//     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+//     // top level edges (filter out shadows) & make muxes depend on shadow inputs
+//     val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
+//     val topLevelHE = unshadowedHE map { he => {
+//       val deps = if (!trueShadows.contains(he.name)) he.deps
+//                  else {
+//                    val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
+//                    he.deps ++ shadowDeps
+//                  }
+//       // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+//       HyperedgeDep(he.name, deps.distinct, he.stmt)
+//     }}
+//     // build graph on new hyperedges and run topo sort
+//     val reorderedNames = buildGraph(topLevelHE).reorderNames
+//     reorderedNames foreach { name => {
+//       val stmt = heMap(name).stmt
+//       if ((trueShadows.contains(name)) && ((!trueShadows(name).isEmpty) || (!falseShadows(name).isEmpty))) {
+//         val muxExpr = muxMap(name)
+//         // declare output type
+//         val resultTpe = findResultType(stmt)
+//         if ((!name.endsWith("$next")) && (!doNotDec.contains(name)))
+//           writeLines(indentLevel, s"${genCppType(resultTpe)} $name;")
+//         writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
+//         val trueHE = trueShadows(name) map { heMap(_) }
+//         writeBody(indentLevel + 1, trueHE, doNotShadow, doNotDec)
+//         writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.tval)};")
+//         writeLines(indentLevel, "} else {")
+//         val falseHE = falseShadows(name) map { heMap(_) }
+//         writeBody(indentLevel + 1, falseHE, doNotShadow, doNotDec)
+//         writeLines(indentLevel + 1, s"$name = ${emitExpr(muxExpr.fval)};")
+//         writeLines(indentLevel, "}")
+//       } else writeLines(indentLevel, emitStmt(doNotDec)(stmt))
+//     }}
+//   }
+// }
+
 // def writeBodyWithZones(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
 //                        allRegUpdates: Seq[String], resetTree: Seq[String],
 //                        topName: String, otherDeps: Seq[String],
