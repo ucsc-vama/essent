@@ -375,6 +375,20 @@ class Graph {
     }
   }
 
+  // FUTURE: could probably combine helpers
+  def pathExists(sourceID: Int, destID: Int): Boolean = {
+    pathExistsHelper(Seq(sourceID), BitSet() + sourceID, destID)
+  }
+
+  def pathExistsHelper(fringe: Seq[Int], reached: BitSet, destID: Int): Boolean = {
+    if (fringe.isEmpty) false
+    else {
+      val newFringe = (fringe flatMap outNeigh filter { !reached(_) }).distinct
+      if (newFringe.contains(destID)) true
+      else pathExistsHelper(newFringe, reached ++ newFringe, destID)
+    }
+  }
+
   def considerBiggestOverlaps(zoneMap: Map[Int, Seq[Int]]) {
     val zoneToInputs = zoneMap map {
       case (name, members) => (name, zoneInputs(members filter validNodes))
@@ -709,7 +723,7 @@ class Graph {
     val regID = nameToID(regName)
     val regWriteID = nameToID(regName + "$next")
     val regReaders = outNeigh(regID) filter { _ != regWriteID }
-    regReaders forall { readerID => !extPathExists(Seq(regWriteID), Seq(readerID)) }
+    regReaders forall { readerID => !pathExists(regWriteID, readerID) }
   }
 
   def findMergeableRegs(regNames: Seq[String]): Seq[String] = {
