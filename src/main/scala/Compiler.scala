@@ -208,19 +208,22 @@ class EmitCpp(writer: Writer) {
       // map of muxName -> true shadows, map of muxName -> false shadows
       val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
       val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
-      // set of signals in shadows
-      val shadowedSigs = (shadows flatMap {
-        case (muxName, tShadow, fShadow) => (tShadow ++ fShadow) }).toSet
-      if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
+      // only shadow mux if stuff on at least one side
       val shadowedMuxes = (muxMap.keys filter {
         muxName => !(trueShadows(muxName).isEmpty && falseShadows(muxName).isEmpty)
       }).toSet
+      // set of signals in shadows
+      val shadowedSigs = (shadows flatMap { case (muxName, tShadow, fShadow) => {
+        if (shadowedMuxes.contains(muxName)) tShadow ++ fShadow
+        else Seq()
+      }}).toSet
+      if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
       // map of name -> original hyperedge
       val heMap = (bodyEdges map { he => (he.name, he) }).toMap
       // top level edges (filter out shadows) & make muxes depend on shadow inputs
       val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
       val topLevelHE = unshadowedHE map { he => {
-        val deps = if (!trueShadows.contains(he.name)) he.deps
+        val deps = if (!shadowedMuxes.contains(he.name)) he.deps
                    else {
                      val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
                      he.deps ++ shadowDeps
