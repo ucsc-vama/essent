@@ -135,18 +135,18 @@ class Graph {
   //----------------------------------------------------------------------------
   def topologicalSort() = {
     val finalOrdering = ArrayBuffer[Int]()
-    val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
-    val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val inStack = BitSet()
+    val finished = BitSet()
     def visit(vertexID: Int) {
-      if (temporaryMarks(vertexID)) {
+      if (inStack(vertexID)) {
         println(s"${idToName(vertexID)} $vertexID")
-        (0 until numNodeRefs) filter temporaryMarks foreach printNode
+        (0 until numNodeRefs) filter inStack foreach printNode
         throw new Exception("There is a cycle!")
-      } else if (!finalMarks(vertexID)) {
-        temporaryMarks(vertexID) = true
+      } else if (!finished(vertexID)) {
+        inStack.add(vertexID)
         inNeigh(vertexID) foreach { neighborID => visit(neighborID) }
-        finalMarks(vertexID) = true
-        temporaryMarks(vertexID) = false
+        finished.add(vertexID)
+        inStack.remove(vertexID)
         finalOrdering += vertexID
       }
     }
@@ -160,21 +160,21 @@ class Graph {
 
   def topologicalSortWithTracking() = {
     val finalOrdering = ArrayBuffer[Int]()
-    val temporaryMarks = ArrayBuffer.fill(nameToID.size)(false)
-    val finalMarks = ArrayBuffer.fill(nameToID.size)(false)
+    val inStack = BitSet()
+    val finished = BitSet()
     val callerIDs = ArrayBuffer.fill(nameToID.size)(-1)
     def visit(vertexID: Int, callerID: Int) {
-      if (temporaryMarks(vertexID)) {
+      if (inStack(vertexID)) {
         println(s"${idToName(vertexID)} $vertexID")
         printCycle(callerID, callerIDs)
         throw new Exception("There is a cycle!")
-      } else if (!finalMarks(vertexID)) {
+      } else if (!finished(vertexID)) {
         if (vertexID != callerID)
           callerIDs(vertexID) = callerID
-        temporaryMarks(vertexID) = true
+        inStack.add(vertexID)
         inNeigh(vertexID) foreach { neighborID => visit(neighborID, vertexID) }
-        finalMarks(vertexID) = true
-        temporaryMarks(vertexID) = false
+        finished.add(vertexID)
+        inStack.remove(vertexID)
         finalOrdering += vertexID
       }
     }
@@ -193,7 +193,7 @@ class Graph {
 
   // Mux shadowing
   //----------------------------------------------------------------------------
-  def crawlBack(ids: Seq[Int], dontPass: ArrayBuffer[Boolean], muxNameID: Int) = {
+  def crawlBack(ids: Seq[Int], dontPass: BitSet, muxNameID: Int) = {
     val q = new scala.collection.mutable.Queue[Int]
     val result = new scala.collection.mutable.ArrayBuffer[Int]
     val marked = new BitSet()
@@ -202,7 +202,7 @@ class Graph {
         consumer => marked(consumer) || consumer == muxNameID
       })) {
         result += id
-        marked(id) = true
+        marked.add(id)
         q ++= inNeigh(id)
       }
     }
@@ -210,7 +210,7 @@ class Graph {
       val currId = q.dequeue
       if (!dontPass(currId) && !marked(currId)) {
         if (outNeigh(currId) forall ( consumer => marked(consumer) )) {
-          marked(currId) = true
+          marked.add(currId)
           result += currId
           q ++= inNeigh(currId)
         }
@@ -227,10 +227,7 @@ class Graph {
   }
 
   def findAllShadows(muxMap: Map[String,Mux], dontPassSigs: Seq[String]) = {
-    val dontPass = ArrayBuffer.fill(nameToID.size)(false)
-    dontPassSigs foreach {
-      name: String => if (nameToID.contains(name)) dontPass(nameToID(name)) = true
-    }
+    val dontPass = BitSet() ++ dontPassSigs.filter(nameToID.contains).map(nameToID)
     val shadows = muxMap.keys flatMap {name =>
       val muxExpr = muxMap(name)
       val muxNameID = nameToID(name)
