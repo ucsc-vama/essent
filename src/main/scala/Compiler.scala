@@ -702,9 +702,9 @@ class FinalCleanups extends SeqTransform {
   val transforms = Seq(
     firrtl.passes.VerilogWrap,
     // essent.passes.InferAddw,
-    essent.passes.WireConstProp,
+    // essent.passes.WireConstProp,
     essent.passes.ZeroFromBits,
-    essent.passes.WireConstProp,
+    // essent.passes.WireConstProp,
     essent.passes.RandInitInvalids,
     essent.passes.NoResetsOrClockConnects,
     essent.passes.RegFromMem1,
