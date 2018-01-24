@@ -705,7 +705,7 @@ class FinalCleanups extends SeqTransform {
     // essent.passes.WireConstProp,
     // essent.passes.ZeroFromBits,
     // essent.passes.WireConstProp,
-    essent.passes.RandInitInvalids,
+    // essent.passes.RandInitInvalids,
     essent.passes.NoResetsOrClockConnects,
     essent.passes.RegFromMem1,
     essent.passes.FactorMemReads)
