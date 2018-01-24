@@ -703,7 +703,7 @@ class FinalCleanups extends SeqTransform {
     firrtl.passes.VerilogWrap,
     // essent.passes.InferAddw,
     // essent.passes.WireConstProp,
-    essent.passes.ZeroFromBits,
+    // essent.passes.ZeroFromBits,
     // essent.passes.WireConstProp,
     essent.passes.RandInitInvalids,
     essent.passes.NoResetsOrClockConnects,

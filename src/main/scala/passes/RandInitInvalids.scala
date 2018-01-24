@@ -21,8 +21,14 @@ object RandInitInvalids extends Pass {
     val replaced = s match {
       case i: IsInvalid => {
         val randLit = i.expr.tpe match {
-          case UIntType(IntWidth(w)) => UIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
-          case SIntType(IntWidth(w)) => SIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
+          case UIntType(IntWidth(w)) => {
+            println("found one!")
+            UIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
+          }
+          case SIntType(IntWidth(w)) => {
+            println("found one!")
+            SIntLiteral(genRandomLiteral(w.toInt), IntWidth(w))
+          }
         }
         if (portNames.contains(emitExpr(i.expr)))
           Connect(i.info, i.expr, randLit)
