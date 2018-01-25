@@ -5,7 +5,7 @@ import firrtl.ir._
 
 import essent.Extract._
 
-import collection.mutable.{ArrayBuffer, BitSet, HashMap, HashSet}
+import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.util.Random
 
 import scala.io.Source
@@ -27,7 +27,7 @@ class Graph {
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh = ArrayBuffer[ArrayBuffer[Int]]()
   // Intended vertices (did vertex ID get called with addNode)
-  val validNodes = HashSet[Int]()
+  val validNodes = BitSet()
 
 
   // Graph building
