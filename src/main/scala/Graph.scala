@@ -240,37 +240,31 @@ class Graph {
   }
 
 
-  // Partitioning (for zoning)
+  // Partitioning via MFFCs (for zoning)
   //----------------------------------------------------------------------------
-  def findMFFCs(): ArrayBuffer[Int] = {
-    val mffcInit = ArrayBuffer.fill(numNodeRefs)(-1)
-    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
-    sinks foreach { id => mffcInit(id) = id }
-    val mffc = findMFFCHelper(sinks, mffcInit)
-    findMFFCLayer(mffc)
-  }
-
-  def findMFFCLayer(priorMFFC: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+  def findMFFCs(priorMFFC: ArrayBuffer[Int] = ArrayBuffer.fill(numNodeRefs)(-1)): ArrayBuffer[Int] = {
     // print MFFC stats
     val skipUnreached = priorMFFC.zipWithIndex filter { p => p._1 != -1 }
     val mffcGrouped = skipUnreached groupBy { _._1 }
     println(s"# nodes reached: ${skipUnreached.size}")
     println(s"# MFFC's: ${mffcGrouped.size}")
-    val biggestSize = mffcGrouped map { _._2} map { _.size } reduceLeft { _ max _}
+    val biggestSize = mffcGrouped.map{ _._2}.map{ _.size }.foldLeft(0){ case (biggestSoFar, next) => biggestSoFar max next}
     println(s"biggest MFFC: $biggestSize")
     // compute new layer
     val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
-    val fringeSeed = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
+    val fringe = (visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }).distinct
+    val sinks = (0 until numNodeRefs) filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
+    val newMFFCseeds = fringe ++ sinks
     // FUTURE: exclude source nodes?
-    if (fringeSeed.isEmpty) priorMFFC
+    if (newMFFCseeds.isEmpty) priorMFFC
     else {
-      fringeSeed foreach { id => priorMFFC(id) = id }
-      val mffc = findMFFCHelper(fringeSeed, priorMFFC)
-      findMFFCLayer(mffc)
+      newMFFCseeds foreach { id => priorMFFC(id) = id }
+      val mffc = maximizeFFCs(newMFFCseeds, priorMFFC)
+      findMFFCs(mffc)
     }
   }
 
-  def findMFFCHelper(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
+  def maximizeFFCs(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
     val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
     val newMembers = fringeAncestors flatMap { id => {
       val childMFFCs = (outNeigh(id) map mffc).distinct
@@ -280,7 +274,7 @@ class Graph {
       } else Seq()
     }}
     if (newMembers.isEmpty) mffc
-    else findMFFCHelper(newMembers, mffc)
+    else maximizeFFCs(newMembers, mffc)
   }
 
 
