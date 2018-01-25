@@ -67,6 +67,8 @@ class Graph {
 
   def numEdges() = allOutDegrees() reduceLeft { _+_ }
 
+  def nodeRefIDs = 0 until numNodeRefs
+
   def printTopologyStats() {
     println(s"Nodes: ${numNodes()}")
     println(s"Referenced Nodes: ${numNodeRefs()}")
@@ -140,7 +142,7 @@ class Graph {
     def visit(vertexID: Int) {
       if (inStack(vertexID)) {
         println(s"${idToName(vertexID)} $vertexID")
-        (0 until numNodeRefs) filter inStack foreach printNode
+        nodeRefIDs filter inStack foreach printNode
         throw new Exception("There is a cycle!")
       } else if (!finished(vertexID)) {
         inStack.add(vertexID)
@@ -244,9 +246,9 @@ class Graph {
   //----------------------------------------------------------------------------
   def findMFFCs(priorMFFC: ArrayBuffer[Int] = ArrayBuffer.fill(numNodeRefs)(-1)): ArrayBuffer[Int] = {
     // seed new layer
-    val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
+    val visited = nodeRefIDs filter { priorMFFC(_) != -1 }
     val fringe = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
-    val sinks = (0 until numNodeRefs) filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
+    val sinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
     val newMFFCseeds = fringe.distinct ++ sinks
     // FUTURE: exclude source nodes?
     if (newMFFCseeds.isEmpty) {
@@ -292,7 +294,7 @@ class Graph {
   }
 
   def removeDeadZones(zoneMap: Map[Int, Seq[Int]], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
-    val sinks = (0 until numNodeRefs) filter { outNeigh(_).isEmpty }
+    val sinks = nodeRefIDs filter { outNeigh(_).isEmpty }
     val unshadowedSinks = sinks filter {
       sinkID => (!doNotShadow.contains(sinkID)) &&
                 (!zoneMap.contains(sinkID) || !zoneMap(sinkID).exists(doNotShadow.contains(_)))
@@ -896,7 +898,7 @@ class Graph {
   def writeMetisFile(filename: String) {
     val fw = new FileWriter(new File(filename))
     fw.write(s"${numNodeRefs()} ${numEdges()} 000\n")
-    (0 until numNodeRefs()) foreach { rowID => {
+    nodeRefIDs foreach { rowID => {
       val neighs = (outNeigh(rowID) ++ inNeigh(rowID)).distinct map { _ + 1 }
       fw.write(s"${neighs.mkString(" ")}\n")
     }}
@@ -919,7 +921,7 @@ class Graph {
 
   def writeDegreeFile(regNames: Seq[String], filename: String) {
     val fw = new FileWriter(new File(filename))
-    val allSources = (0 until numNodeRefs()) filter { inNeigh(_).isEmpty }
+    val allSources = nodeRefIDs filter { inNeigh(_).isEmpty }
     val startingDepths = ArrayBuffer.fill(nameToID.size)(-1)
     allSources foreach {id => startingDepths(id) = 0}
     val depths = stepBFSDepth(allSources.toSet, startingDepths)
