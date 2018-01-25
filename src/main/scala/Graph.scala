@@ -243,20 +243,23 @@ class Graph {
   // Partitioning via MFFCs (for zoning)
   //----------------------------------------------------------------------------
   def findMFFCs(priorMFFC: ArrayBuffer[Int] = ArrayBuffer.fill(numNodeRefs)(-1)): ArrayBuffer[Int] = {
-    // print MFFC stats
-    val skipUnreached = priorMFFC.zipWithIndex filter { p => p._1 != -1 }
-    val mffcGrouped = skipUnreached groupBy { _._1 }
-    println(s"# nodes reached: ${skipUnreached.size}")
-    println(s"# MFFC's: ${mffcGrouped.size}")
-    val biggestSize = mffcGrouped.map{ _._2}.map{ _.size }.foldLeft(0){ case (biggestSoFar, next) => biggestSoFar max next}
-    println(s"biggest MFFC: $biggestSize")
-    // compute new layer
+    // seed new layer
     val visited = (0 until numNodeRefs) filter { priorMFFC(_) != -1 }
     val fringe = (visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }).distinct
     val sinks = (0 until numNodeRefs) filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
     val newMFFCseeds = fringe ++ sinks
     // FUTURE: exclude source nodes?
-    if (newMFFCseeds.isEmpty) priorMFFC
+    if (newMFFCseeds.isEmpty) {
+      // print MFFC stats
+      val skipUnreached = priorMFFC filter { _ != -1 }
+      val mffcGrouped = skipUnreached groupBy { identity }
+      println(s"# nodes reached: ${skipUnreached.size}")
+      println(s"# MFFC's: ${mffcGrouped.size}")
+      val biggestSize = mffcGrouped.mapValues{ _.size }.max
+      println(s"biggest MFFC: $biggestSize")
+      // return result
+      priorMFFC
+    }
     else {
       newMFFCseeds foreach { id => priorMFFC(id) = id }
       val mffc = maximizeFFCs(newMFFCseeds, priorMFFC)
