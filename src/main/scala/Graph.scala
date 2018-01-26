@@ -604,9 +604,8 @@ class Graph {
   //----------------------------------------------------------------------------
   def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
-    val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
-    val zonesGrouped = skipUnreached groupBy { _._1 }
-    val zoneMap = zonesGrouped map { case (k,v) => (k, v map { _._2 })}
+    val zoneMapWithSources = Util.groupIndicesByValue(mffc)
+    val zoneMap = zoneMapWithSources - (-2)
     val sourceZonesConsolidated = consolidateSourceZones(zoneMap, mffc)
     val doNotShadowSet = (doNotShadow filter {nameToID.contains} map nameToID).toSet
     val noDeadMFFCs = removeDeadZones(sourceZonesConsolidated, doNotShadowSet)
