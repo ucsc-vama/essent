@@ -288,7 +288,7 @@ class Graph {
   def consolidateSourceZones(zoneMap: Map[Int, Seq[Int]], mffc: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val sourceZones = zoneMap filter { case (k,v) => zoneInputs(v filter validNodes).isEmpty }
     println(s"${sourceZones.size} source MFFCs merged")
-    val sourceZoneMembers = sourceZones.values reduceLeft { _ ++ _ }
+    val sourceZoneMembers = sourceZones.values.flatten.toSeq
     sourceZoneMembers foreach { mffc(_) = -2 }
     removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
   }
@@ -306,7 +306,7 @@ class Graph {
       else Seq()
     }}
     // FUTURE: set deleted mffc array entries to -1?
-    // FUTURE: actually remove dead sinks rather than just unzoning them
+    // for now unzone because some seem like legit parents to external IOs
     removeZones(deadSinks, zoneMap)
   }
 
@@ -478,7 +478,7 @@ class Graph {
     }
   }
 
-  def mergeIndentInps(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
+  def mergeIdentInps(zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
     val zoneToInputs = zoneMap map {
       case (name, members) => (name, zoneInputs(members filter validNodes))
     }
