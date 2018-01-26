@@ -290,7 +290,7 @@ class Graph {
     println(s"${sourceZones.size} source MFFCs merged")
     val sourceZoneMembers = sourceZones.values.flatten.toSeq
     sourceZoneMembers foreach { mffc(_) = -2 }
-    removeZones(sourceZones.keys.toSet, zoneMap) + ((-2, sourceZoneMembers))
+    zoneMap -- sourceZones.keys + (-2 -> sourceZoneMembers)
   }
 
   def removeDeadZones(zoneMap: Map[Int, Seq[Int]], doNotShadow: Set[Int]): Map[Int, Seq[Int]] = {
@@ -307,7 +307,7 @@ class Graph {
     }}
     // FUTURE: set deleted mffc array entries to -1?
     // for now unzone because some seem like legit parents to external IOs
-    removeZones(deadSinks, zoneMap)
+    zoneMap -- deadSinks
   }
 
   def validInputZones(memberIDs: Seq[Int], zones: ArrayBuffer[Int]) = {
@@ -411,10 +411,6 @@ class Graph {
 
   // Merging mutations (for zoning)
   //----------------------------------------------------------------------------
-  def removeZones(zonesToRemove: Set[Int], zoneMap: Map[Int, Seq[Int]]): Map[Int, Seq[Int]] = {
-    zoneMap filter { case (zoneName, zoneMembers) => !zonesToRemove.contains(zoneName) }
-  }
-
   def mergeNodesMutably(nodesToMerge: Seq[String]) {
     val idsToMerge = nodesToMerge map nameToID
     val mergedID = idsToMerge.head
@@ -445,8 +441,7 @@ class Graph {
       allMembers foreach { zones(_) = newZoneName }
       (newZoneName, allMembers)
     }}
-    val zonesToMergeRemoved = removeZones(mergeReqs.flatten.toSet, zoneMap)
-    zonesToMergeRemoved ++ newMergedZones.toMap
+    zoneMap -- mergeReqs.flatten ++ newMergedZones.toMap
   }
 
   def mergeZonesSafe(mergeReqs: Seq[Seq[Int]], zoneGraph: Graph, zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {
@@ -466,8 +461,7 @@ class Graph {
           val newZoneName = zones(zonesToMerge.head)
           val allMembers = zonesToMerge flatMap zoneMap
           allMembers foreach { zones(_) = newZoneName }
-          val zonesToMergeRemoved = removeZones(zonesToMerge.toSet, zoneMap)
-          val newZoneMap = zonesToMergeRemoved ++ Seq((newZoneName, allMembers)).toMap
+          val newZoneMap = zoneMap -- zonesToMerge + (newZoneName -> allMembers)
           // println(s"ok with ${zonesToMerge}")
           mergeZonesSafe(mergeReqs.tail, zoneGraph, newZoneMap, zones)
         } else {
