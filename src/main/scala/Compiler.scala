@@ -138,8 +138,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeBodyUnoptSG(indentLevel: Int, bodies: Seq[Statement]) {
-    val sg = new StatementGraph
-    sg.buildFromBodies(bodies)
+    val sg = StatementGraph(bodies)
     sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
   }
 
@@ -532,7 +531,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = false
+    val simpleOnly = true
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -567,12 +566,13 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnopt(1, otherDeps, regNames)
     writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
-    val mergedRegs = if (simpleOnly)
-                       // writeBodyRegTailOpt(1, otherDeps, safeRegs)
-                       writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
-                     else
-                       writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
-                          allMemUpdates, extIOs.toMap, safeRegs)
+    val mergedRegs = Seq()
+    // val mergedRegs = if (simpleOnly)
+    //                    // writeBodyRegTailOpt(1, otherDeps, safeRegs)
+    //                    writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
+    //                  else
+    //                    writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
+    //                       allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {

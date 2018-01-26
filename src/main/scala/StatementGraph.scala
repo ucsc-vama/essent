@@ -37,3 +37,11 @@ class StatementGraph extends Graph {
     topologicalSort filter validNodes map idToStmt
   }
 }
+
+object StatementGraph {
+  def apply(bodies: Seq[Statement]) = {
+    val sg = new StatementGraph
+    sg.buildFromBodies(bodies)
+    sg
+  }
+}
