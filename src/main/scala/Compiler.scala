@@ -18,49 +18,6 @@ class EmitCpp(writer: Writer) {
   val tabs = "  "
 
   // Graph Building
-  def findDependencesExpr(e: Expression): Seq[String] = {
-    val result = e match {
-      case w: WRef => Seq(w.name)
-      case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
-      case w: WSubField => Seq(emitExpr(w))
-      case w: WSubAccess => Seq(emitExpr(w.expr), emitExpr(w.index))
-      case p: DoPrim => p.args flatMap findDependencesExpr
-      case u: UIntLiteral => Seq()
-      case s: SIntLiteral => Seq()
-      case _ => throw new Exception("unexpected expression type! " + e)
-    }
-    result.distinct
-  }
-
-  def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
-    case b: Block => b.stmts flatMap findDependencesStmt
-    case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
-    case c: Connect => {
-      val lhs = emitExpr(c.loc)
-      val rhs = findDependencesExpr(c.expr)
-      firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq(HyperedgeDep(lhs + "$next", rhs, s))
-        case _ => Seq(HyperedgeDep(lhs, rhs, s))
-      }
-    }
-    case p: Print =>
-      Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++
-                                 (p.args flatMap findDependencesExpr), s))
-    case st: Stop => Seq(HyperedgeDep("stop", findDependencesExpr(st.en), st))
-    case r: DefRegister => Seq()
-    case w: DefWire => Seq()
-    case m: DefMemory => Seq()
-    case i: WDefInstance => Seq()
-    case EmptyStmt => Seq()
-    case _ => throw new Exception(s"unexpected statement type! $s")
-  }
-
-  def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {
-    val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
-    (deps filter { name => !name.startsWith("UInt<1>(0x") }).distinct
-  }
-
   def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
     val (printsAndStops, otherDeps) = deps.partition { dep => dep.stmt match {
       case p: Print => true
