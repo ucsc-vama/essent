@@ -602,7 +602,7 @@ class Graph {
 
   // Zoning (MFFC based)
   //----------------------------------------------------------------------------
-  def findZonesMFFC(regNames: Seq[String], doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
+  def findZonesMFFC(doNotShadow: Seq[String]): Map[String, Graph.ZoneInfo] = {
     val mffc = findMFFCs()
     val skipUnreached = mffc.zipWithIndex filter { p => p._1 != -1 }
     val zonesGrouped = skipUnreached groupBy { _._1 }
@@ -614,9 +614,6 @@ class Graph {
     val smallZonesMerged = mergeSmallZones(singlesMergedUp, mffc)
     val smallZonesMerged2 = mergeSmallZones2(smallZonesMerged, mffc)
     val smallZonesMerged3 = mergeSmallZones2(smallZonesMerged2, mffc, 40, 0.25)
-    // val loopbackRegs = loopBackRegsSafeToMerge(regNames, smallZonesMerged3, mffc)
-    // loopBackRegsCycleCheck(regNames, smallZonesMerged3, mffc)
-    // mergeInLoopbackRegs(regNames, smallZonesMerged3, mffc)
     smallZonesMerged3 map { case (zoneID, zoneMemberIDs) => {
       val validMembers = zoneMemberIDs filter { id => validNodes.contains(id) }
       val inputNames = zoneInputs(validMembers) map idToName

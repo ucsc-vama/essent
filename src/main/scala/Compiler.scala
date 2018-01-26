@@ -299,10 +299,8 @@ class EmitCpp(writer: Writer) {
   }
 
   // Emitter that zones design in addition to shadowing muxes and merging reg updates
-  def writeBodyZoneOpt(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String],
-                           regDefs: Seq[DefRegister], resetTree: Seq[String],
-                           topName: String, otherDeps: Seq[String],
-                           doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
+  def writeBodyZoneOpt(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String], resetTree: Seq[String],
+                           topName: String, doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
                            extIOtypes: Map[String, Type], regsToConsider: Seq[String]): Seq[String] = {
     // map of name -> original hyperedge
     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
@@ -311,7 +309,7 @@ class EmitCpp(writer: Writer) {
     val g = buildGraph(bodyEdges)
     g.printTopologyStats
     val mergedRegs = g.mergeRegsSafe(regsToConsider)
-    val zoneMapWithSources = g.findZonesMFFC(regNames, doNotShadow)
+    val zoneMapWithSources = g.findZonesMFFC(doNotShadow)
     val zoneMapCF = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
     val gDF = buildGraph(bodyEdges)
     val zoneMapDF = gDF.remakeZoneMap(zoneMapCF, doNotShadow)
@@ -604,12 +602,12 @@ class EmitCpp(writer: Writer) {
       writeLines(1, resetTree)
     }
     // writeBodyUnopt(1, otherDeps, regNames)
+    val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
-                       writeBodyMuxOpt(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
+                       writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
                      else
-                       writeBodyZoneOpt(otherDeps, regNames, allRegDefs, resetTree,
-                          topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
+                       writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
                           allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
