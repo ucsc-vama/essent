@@ -294,7 +294,7 @@ object Emitter {
     case _ => throw new Exception(s"Don't yet support $s")
   }
 
-  def emitBody(m: Module, circuit: Circuit, prefix: String) = {
+  def flattenBodies(m: Module, circuit: Circuit, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(m.body)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { prefix + _.name }
@@ -308,8 +308,7 @@ object Emitter {
     val renames = (allTempSigs map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }).toMap
-    val namesReplaced = replaceNamesStmt(renames)(body)
-    (findRegisters(body), namesReplaced)
+    replaceNamesStmt(renames)(body)
   }
 
   def generateMemUpdates(bodies: Seq[Statement]): Seq[MemUpdate] = {

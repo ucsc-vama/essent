@@ -575,9 +575,9 @@ class EmitCpp(writer: Writer) {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
-    val module_results = allInstances flatMap {
+    val allBodies = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Some(emitBody(m, circuit, prefix))
+        case m: Module => Some(flattenBodies(m, circuit, prefix))
         case em: ExtModule => None
       }
     }
@@ -588,11 +588,11 @@ class EmitCpp(writer: Writer) {
       }
     }
     val resetTree = buildResetTree(allInstances, circuit)
-    val (allRegDefs, allBodies) = module_results.unzip
     val allMemUpdates = generateMemUpdates(allBodies)
+    val allRegDefs = allBodies flatMap findRegisters
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
-    val regNames = allRegDefs.flatten map { _.name }
+    val regNames = allRegDefs map { _.name }
     val memDeps = allMemUpdates flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     val unsafeRegs = regNames.intersect(memDeps ++ pAndSDeps)
@@ -608,7 +608,7 @@ class EmitCpp(writer: Writer) {
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        writeBodyMuxOpt(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
                      else
-                       writeBodyZoneOpt(otherDeps, regNames, allRegDefs.flatten, resetTree,
+                       writeBodyZoneOpt(otherDeps, regNames, allRegDefs, resetTree,
                           topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
                           allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
@@ -624,9 +624,9 @@ class EmitCpp(writer: Writer) {
     if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
       writeLines(1, "if (update_registers) {")
       writeLines(2, allMemUpdates map emitMemUpdate)
-      // writeLines(2, allRegDefs.flatten map emitRegUpdate)
+      // writeLines(2, allRegDefs map emitRegUpdate)
       writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
-      writeLines(2, regResetOverrides(allRegDefs.flatten))
+      writeLines(2, regResetOverrides(allRegDefs))
       if (!simpleOnly)
         writeLines(1, "regs_set = true;")
       writeLines(1, "}")
