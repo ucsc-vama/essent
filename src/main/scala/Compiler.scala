@@ -588,11 +588,12 @@ class EmitCpp(writer: Writer) {
       }
     }
     val resetTree = buildResetTree(allInstances, circuit)
-    val (allRegDefs, allBodies, allMemUpdates) = module_results.unzip3
+    val (allRegDefs, allBodies) = module_results.unzip
+    val allMemUpdates = generateMemUpdates(allBodies)
     val allDeps = allBodies flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs.flatten map { _.name }
-    val memDeps = allMemUpdates.flatten flatMap findDependencesMemWrite
+    val memDeps = allMemUpdates flatMap findDependencesMemWrite
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     val unsafeRegs = regNames.intersect(memDeps ++ pAndSDeps)
     val safeRegs = regNames diff unsafeRegs
@@ -609,7 +610,7 @@ class EmitCpp(writer: Writer) {
                      else
                        writeBodyZoneOpt(otherDeps, regNames, allRegDefs.flatten, resetTree,
                           topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
-                          allMemUpdates.flatten, extIOs.toMap, safeRegs)
+                          allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -622,7 +623,7 @@ class EmitCpp(writer: Writer) {
     }
     if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
       writeLines(1, "if (update_registers) {")
-      writeLines(2, allMemUpdates.flatten map emitMemUpdate)
+      writeLines(2, allMemUpdates map emitMemUpdate)
       // writeLines(2, allRegDefs.flatten map emitRegUpdate)
       writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs.flatten))

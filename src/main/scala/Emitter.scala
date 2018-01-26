@@ -30,6 +30,7 @@ object Emitter {
     val replaced = s match {
       case n: DefNode => n.copy(name = prefix + n.name)
       case r: DefRegister => r.copy(name = prefix + r.name)
+      case m: DefMemory => m.copy(name = prefix + m.name)
       case _ => s
     }
     replaced map addPrefixToNameStmt(prefix) map addPrefixToNameExpr(prefix)
@@ -295,9 +296,6 @@ object Emitter {
 
   def emitBody(m: Module, circuit: Circuit, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(m.body)
-    val memories = findMemory(body)
-    memories foreach {m =>
-      if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { prefix + _.name }
     // FUTURE: remove unneeded or identity renames
@@ -310,22 +308,27 @@ object Emitter {
     val renames = (allTempSigs map { s: String =>
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }).toMap
-    val memConnects = grabMemInfo(body).toMap
-    val memWriteCommands = memories flatMap {m: DefMemory => {
-      m.writers map { writePortName:String => {
-        val wrEnName = memConnects(s"$prefix${m.name}.$writePortName.en")
-        val wrAddrName = memConnects(s"$prefix${m.name}.$writePortName.addr")
-        val wrDataName = memConnects(s"$prefix${m.name}.$writePortName.data")
-        val wrMaskName = memConnects(s"$prefix${m.name}.$writePortName.mask")
-        val wrEnNameRep = renames.getOrElse(wrEnName, wrEnName)
-        val wrAddrNameRep = renames.getOrElse(wrAddrName, wrAddrName)
-        val wrDataNameRep = renames.getOrElse(wrDataName, wrDataName)
-        val wrMaskNameRep = renames.getOrElse(wrMaskName, wrMaskName)
-        MemUpdate(prefix + m.name, wrEnNameRep, wrMaskNameRep, wrAddrNameRep, wrDataNameRep)
-      }}
-    }}
     val namesReplaced = replaceNamesStmt(renames)(body)
-    (findRegisters(body), namesReplaced, memWriteCommands)
+    (findRegisters(body), namesReplaced)
+  }
+
+  def generateMemUpdates(bodies: Seq[Statement]): Seq[MemUpdate] = {
+    bodies flatMap { body =>
+      val memories = findMemory(body)
+      memories foreach {m =>
+        if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
+      val memConnects = grabMemInfo(body).toMap
+      val memWriteCommands = memories flatMap {m: DefMemory => {
+        m.writers map { writePortName:String => {
+          val wrEnName = memConnects(s"${m.name}.$writePortName.en")
+          val wrAddrName = memConnects(s"${m.name}.$writePortName.addr")
+          val wrDataName = memConnects(s"${m.name}.$writePortName.data")
+          val wrMaskName = memConnects(s"${m.name}.$writePortName.mask")
+          MemUpdate(m.name, wrEnName, wrMaskName, wrAddrName, wrDataName)
+        }}
+      }}
+      memWriteCommands
+    }
   }
 
   def emitMemUpdate(mu: MemUpdate) = {
