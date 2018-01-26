@@ -575,18 +575,16 @@ class EmitCpp(writer: Writer) {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
-    val module_results = allInstances map {
+    val module_results = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => emitBody(m, circuit, prefix)
-        case em: ExtModule => (Seq(), EmptyStmt, Seq())
+        case m: Module => Some(emitBody(m, circuit, prefix))
+        case em: ExtModule => None
       }
     }
     val extIOs = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Seq()
-        case em: ExtModule => { em.ports map {
-          port => (s"$prefix${port.name}", port.tpe)
-        }}
+        case m: Module => None
+        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
     val resetTree = buildResetTree(allInstances, circuit)
@@ -603,51 +601,34 @@ class EmitCpp(writer: Writer) {
     if (simpleOnly) {
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
       writeLines(1, resetTree)
-      // writeBodyUnopt(1, otherDeps, regNames)
-      // val mergedRegs = writeBodyRegTailOpt(1, otherDeps, safeRegs)
-      val mergedRegs = writeBodyMuxOpt(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
-      if (!prints.isEmpty || !stops.isEmpty) {
-        writeLines(1, "if (done_reset && update_registers) {")
-        if (!prints.isEmpty) {
-          writeLines(2, "if(verbose) {")
-          writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
-          writeLines(2, "}")
-        }
-        writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
-        writeLines(1, "}")
+    }
+    // writeBodyUnopt(1, otherDeps, regNames)
+    val mergedRegs = if (simpleOnly)
+                       // writeBodyRegTailOpt(1, otherDeps, safeRegs)
+                       writeBodyMuxOpt(1, otherDeps, (regNames ++ memDeps ++ pAndSDeps).distinct, regNames.toSet, safeRegs)
+                     else
+                       writeBodyZoneOpt(otherDeps, regNames, allRegDefs.flatten, resetTree,
+                          topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
+                          allMemUpdates.flatten, extIOs.toMap, safeRegs)
+    if (!prints.isEmpty || !stops.isEmpty) {
+      writeLines(1, "if (done_reset && update_registers) {")
+      if (!prints.isEmpty) {
+        writeLines(2, "if(verbose) {")
+        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(2, "}")
       }
-      if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
-        writeLines(1, "if (update_registers) {")
-        // writeLines(2, safeRegs map { regName => s"$regName = $regName$$next;" })
-        writeLines(2, allMemUpdates.flatten map emitMemUpdate)
-        // writeLines(2, allRegDefs.flatten map emitRegUpdate)
-        // writeLines(2, regNames map { regName => s"$regName = $regName$$next;" })
-        writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
-        writeLines(2, regResetOverrides(allRegDefs.flatten))
-        writeLines(1, "}")
-      }
-    } else {
-      val mergedRegs = writeBodyZoneOpt(otherDeps, regNames, allRegDefs.flatten, resetTree,
-                           topName, memDeps ++ pAndSDeps, (regNames ++ memDeps ++ pAndSDeps).distinct,
-                           allMemUpdates.flatten, extIOs.toMap, safeRegs)
-      if (!prints.isEmpty || !stops.isEmpty) {
-        writeLines(1, "if (done_reset && update_registers) {")
-        if (!prints.isEmpty) {
-          writeLines(2, "if(verbose) {")
-          writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
-          writeLines(2, "}")
-        }
-        writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
-        writeLines(1, "}")
-      }
-      if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
-        writeLines(1, "if (update_registers) {")
-        writeLines(2, allMemUpdates.flatten map emitMemUpdate)
-        writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
-        writeLines(2, regResetOverrides(allRegDefs.flatten))
+      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+      writeLines(1, "}")
+    }
+    if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
+      writeLines(1, "if (update_registers) {")
+      writeLines(2, allMemUpdates.flatten map emitMemUpdate)
+      // writeLines(2, allRegDefs.flatten map emitRegUpdate)
+      writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, regResetOverrides(allRegDefs.flatten))
+      if (!simpleOnly)
         writeLines(1, "regs_set = true;")
-        writeLines(1, "}")
-      }
+      writeLines(1, "}")
     }
     writeLines(0, "}")
     writeLines(0, "")
