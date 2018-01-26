@@ -137,6 +137,12 @@ class EmitCpp(writer: Writer) {
     }
   }
 
+  def writeBodyUnoptSG(indentLevel: Int, bodies: Seq[Statement]) {
+    val sg = new StatementGraph
+    sg.buildFromBodies(bodies)
+    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+  }
+
   // Emitter that performs single-phase reg updates (merges) when possible, and returns merged regs
   def writeBodyRegTailOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
     val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
@@ -559,6 +565,7 @@ class EmitCpp(writer: Writer) {
       writeLines(1, resetTree)
     }
     // writeBodyUnopt(1, otherDeps, regNames)
+    writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
