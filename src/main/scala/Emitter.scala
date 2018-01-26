@@ -28,8 +28,8 @@ object Emitter {
   // Replacement methods
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
     val replaced = s match {
-      case n: DefNode => DefNode(n.info, prefix + n.name, n.value)
-      case r: DefRegister => r.copy(name = (prefix + r.name))
+      case n: DefNode => n.copy(name = prefix + n.name)
+      case r: DefRegister => r.copy(name = prefix + r.name)
       case _ => s
     }
     replaced map addPrefixToNameStmt(prefix) map addPrefixToNameExpr(prefix)
@@ -37,7 +37,7 @@ object Emitter {
 
   def addPrefixToNameExpr(prefix: String)(e: Expression): Expression = {
     val replaced = e match {
-      case w: WRef => WRef(prefix + w.name, w.tpe, w.kind, w.gender)
+      case w: WRef => w.copy(name = prefix + w.name)
       case _ => e
     }
     replaced map addPrefixToNameExpr(prefix)
@@ -51,7 +51,7 @@ object Emitter {
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
     val nodeReplaced = s match {
       case n: DefNode => {
-        if (renames.contains(n.name)) DefNode(n.info, renames(n.name), n.value)
+        if (renames.contains(n.name)) n.copy(name = renames(n.name))
         else n
       }
       case _ => s
@@ -61,11 +61,12 @@ object Emitter {
 
   def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = e match {
     case w: WRef => {
-      if (renames.contains(w.name)) WRef(renames(w.name), w.tpe, w.kind, w.gender)
+      if (renames.contains(w.name)) w.copy(name = renames(w.name))
       else w
     }
     case w: WSubField => {
       val fullName = emitExpr(w)
+      // flattens out nested WSubFields
       if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
       else w
     }
