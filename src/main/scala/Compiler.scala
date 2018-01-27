@@ -160,6 +160,14 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
+  def writeBodyRegTailOptSG(indentLevel: Int, bodies: Seq[Statement], regNames: Seq[String]): Seq[String] = {
+    val sg = StatementGraph(bodies)
+    val mergedRegs = sg.mergeRegsSafe(regNames)
+    sg.updateMergedRegWrites(mergedRegs)
+    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+    mergedRegs
+  }
+
   // Emitter that shadows muxes in addition to single-phase reg updates
   def writeBodyMuxOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
@@ -531,7 +539,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = false
+    val simpleOnly = true
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -568,7 +576,8 @@ class EmitCpp(writer: Writer) {
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
     val mergedRegs = if (simpleOnly)
-                       writeBodyRegTailOpt(1, otherDeps, safeRegs)
+                       // writeBodyRegTailOpt(1, otherDeps, safeRegs)
+                       writeBodyRegTailOptSG(1, allBodies, safeRegs)
                        // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
                      else
                        writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,

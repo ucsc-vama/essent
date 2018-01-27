@@ -3,6 +3,7 @@ package essent
 import firrtl._
 import firrtl.ir._
 
+import essent.Emitter._
 import essent.Extract._
 
 import collection.mutable.ArrayBuffer
@@ -36,7 +37,17 @@ class StatementGraph extends Graph {
   def stmtsOrdered(): Seq[Statement] = {
     topologicalSort filter validNodes map idToStmt
   }
+
+  def updateMergedRegWrites(mergedRegs: Seq[String]) {
+    mergedRegs foreach { regName => {
+      val regWriteName = regName + "$next"
+      val regWriteID = nameToID(regWriteName)
+      val newName = s"if (update_registers) $regName"
+      idToStmt(regWriteID) = replaceNamesStmt(Map(regWriteName -> newName))(idToStmt(regWriteID))
+    }}
+  }
 }
+
 
 object StatementGraph {
   def apply(bodies: Seq[Statement]) = {
