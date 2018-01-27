@@ -531,7 +531,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = true
+    val simpleOnly = false
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -564,15 +564,15 @@ class EmitCpp(writer: Writer) {
       writeLines(1, resetTree)
     }
     // writeBodyUnopt(1, otherDeps, regNames)
-    writeBodyUnoptSG(1, allBodies)
+    // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
-    val mergedRegs = Seq()
-    // val mergedRegs = if (simpleOnly)
-    //                    // writeBodyRegTailOpt(1, otherDeps, safeRegs)
-    //                    writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
-    //                  else
-    //                    writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
-    //                       allMemUpdates, extIOs.toMap, safeRegs)
+    // val mergedRegs = Seq()
+    val mergedRegs = if (simpleOnly)
+                       writeBodyRegTailOpt(1, otherDeps, safeRegs)
+                       // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
+                     else
+                       writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
+                          allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
@@ -652,7 +652,8 @@ class FinalCleanups extends SeqTransform {
     // essent.passes.RandInitInvalids,
     essent.passes.NoResetsOrClockConnects,
     essent.passes.RegFromMem1,
-    essent.passes.FactorMemReads)
+    essent.passes.FactorMemReads,
+    essent.passes.SplitRegUpdates)
     // passes.VerilogRename,
     // passes.VerilogPrep)
 }

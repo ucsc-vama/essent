@@ -110,12 +110,11 @@ object Extract {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => {
-      val lhs = emitExpr(c.loc)
-      val rhs = findDependencesExpr(c.expr)
+      val name = emitExpr(c.loc)
+      val deps = findDependencesExpr(c.expr)
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq(HyperedgeDep(lhs + "$next", rhs, s))
-        case _ => Seq(HyperedgeDep(lhs, rhs, s))
+        case _ => Seq(HyperedgeDep(name, deps, s))
       }
     }
     case p: Print =>

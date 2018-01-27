@@ -242,7 +242,7 @@ object Emitter {
       val rhs = emitExpr(c.expr)
       firrtl.Utils.kind(c.loc) match {
         case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq(s"$lhs$$next = $rhs;")
+        case firrtl.RegKind => Seq(s"$lhs = $rhs;")
         case firrtl.WireKind => {
           if (doNotDec.contains(lhs))
             Seq(s"$lhs = $rhs;")
