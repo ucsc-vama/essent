@@ -244,21 +244,23 @@ class EmitCpp(writer: Writer) {
     if (!bodies.isEmpty) {
       val sg = StatementGraph(bodies)
       sg.coarsenMuxShadows(doNotShadow)
+      val mergedRegs = sg.mergeRegsSafe(regsToConsider)
+      sg.updateMergedRegWrites(mergedRegs)
       sg.stmtsOrdered foreach { stmt => stmt match {
         case ms: MuxShadowed => {
-          if ((!ms.outName.endsWith("$next")) && (!doNotDec.contains(ms.outName)))
+          if ((!ms.outName.endsWith("$next")) && (!doNotDec.contains(ms.outName)) && (!ms.outName.contains("if (update_registers)")))
             writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.outName};")
           writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
-          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec, regsToConsider)
+          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec)
           writeLines(indentLevel + 1, s"${ms.outName} = ${emitExpr(ms.mux.tval)};")
           writeLines(indentLevel, "} else {")
-          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec, regsToConsider)
+          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec)
           writeLines(indentLevel + 1, s"${ms.outName} = ${emitExpr(ms.mux.fval)};")
           writeLines(indentLevel, "}")
         }
         case _ => writeLines(indentLevel, emitStmt(Set())(stmt))
       }}
-      Seq()
+      mergedRegs
     } else Seq()
   }
 

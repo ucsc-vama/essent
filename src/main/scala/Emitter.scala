@@ -1,6 +1,7 @@
 package essent
 
 import essent.Extract._
+import essent.ir._
 
 import firrtl._
 import firrtl.annotations._
@@ -54,6 +55,10 @@ object Emitter {
       case n: DefNode => {
         if (renames.contains(n.name)) n.copy(name = renames(n.name))
         else n
+      }
+      case ms: MuxShadowed => {
+        if (renames.contains(ms.outName)) ms.copy(outName = renames(ms.outName))
+        else ms
       }
       case _ => s
     }
