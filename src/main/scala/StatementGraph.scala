@@ -5,8 +5,9 @@ import firrtl.ir._
 
 import essent.Emitter._
 import essent.Extract._
+import essent.ir._
 
-import collection.mutable.ArrayBuffer
+import collection.mutable.{ArrayBuffer, BitSet}
 
 class StatementGraph extends Graph {
   // Vertex ID -> firrtl statement (Block used for aggregates)
@@ -21,17 +22,14 @@ class StatementGraph extends Graph {
   }
 
   def buildFromBodies(bodies: Seq[Statement]) {
-    // FUTURE: does bodies contain blocks? should it not after first level?
-    bodies foreach {
-      case b: Block => {
-        val bodyHE = b.stmts flatMap findDependencesStmt
-        bodyHE foreach { he => {
-          addNodeWithDeps(he.name, he.deps)
-          idToStmt(getID(he.name)) = he.stmt
-        }}
-      }
-      case _ => throw new Exception("module level wasn't a Body Statement")      
+    val bodyHE = bodies flatMap {
+      case b: Block => b.stmts flatMap findDependencesStmt
+      case s => findDependencesStmt(s)
     }
+    bodyHE foreach { he => {
+      addNodeWithDeps(he.name, he.deps)
+      idToStmt(getID(he.name)) = he.stmt
+    }}
   }
 
   def stmtsOrdered(): Seq[Statement] = {
@@ -44,6 +42,42 @@ class StatementGraph extends Graph {
       val regWriteID = nameToID(regWriteName)
       val newName = s"if (update_registers) $regName"
       idToStmt(regWriteID) = replaceNamesStmt(Map(regWriteName -> newName))(idToStmt(regWriteID))
+    }}
+  }
+
+  def findMuxIDs(): Seq[Int] = idToStmt.zipWithIndex flatMap {
+    case (stmt, id) => { stmt match {
+      case DefNode(_, _, Mux(_, _, _, _)) => Seq(id)
+      case Connect(_, _, Mux(_, _, _, _)) => Seq(id)
+      case _ => Seq()
+    }}
+  }
+
+  // FUTURE: consider creating all MuxShadowed statements on first pass (including nested)
+  def coarsenMuxShadows(dontPassSigs: Seq[String]) {
+    val muxIDs = findMuxIDs
+    val dontPass = BitSet() ++ dontPassSigs.filter(nameToID.contains).map(nameToID)
+    def convToStmts(ids: Seq[Int]): Seq[Statement] = ids map idToStmt
+    val muxIDToShadows = (muxIDs map { muxID => {
+      val muxExpr = grabMux(idToStmt(muxID))
+      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxID) map nameToID
+      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, muxID) map nameToID
+      (muxID -> (tShadow, fShadow))
+    }}).toMap
+    val muxIDSet = muxIDs.toSet
+    val nestedMuxes = muxIDToShadows flatMap {
+      case (muxID, (tShadow, fShadow)) => (tShadow ++ fShadow) filter muxIDSet
+    }
+    val topLevelMuxes = muxIDSet -- nestedMuxes
+    topLevelMuxes foreach { muxID => {
+      val muxExpr = grabMux(idToStmt(muxID))
+      val muxOutputName = idToName(muxID)
+      val (tShadow, fShadow) = muxIDToShadows(muxID)
+      idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr, convToStmts(tShadow), convToStmts(fShadow))
+      val idsToRemove = tShadow ++ fShadow
+      idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+      val namesOfShadowMembers = (tShadow ++ fShadow) map idToName
+      super.mergeNodesMutably(Seq(muxOutputName) ++ namesOfShadowMembers)
     }}
   }
 }

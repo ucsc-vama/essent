@@ -5,6 +5,7 @@ import java.io.Writer
 
 import essent.Emitter._
 import essent.Extract._
+import essent.ir._
 
 import firrtl._
 import firrtl.annotations._
@@ -235,6 +236,29 @@ class EmitCpp(writer: Writer) {
         }
       }}
       mergedRegs
+    } else Seq()
+  }
+
+  def writeBodyMuxOptSG(indentLevel: Int, bodies: Seq[Statement], doNotShadow: Seq[String],
+      doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
+    if (!bodies.isEmpty) {
+      val sg = StatementGraph(bodies)
+      sg.coarsenMuxShadows(doNotShadow)
+      sg.stmtsOrdered foreach { stmt => stmt match {
+        case ms: MuxShadowed => {
+          if ((!ms.outName.endsWith("$next")) && (!doNotDec.contains(ms.outName)))
+            writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.outName};")
+          writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
+          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec, regsToConsider)
+          writeLines(indentLevel + 1, s"${ms.outName} = ${emitExpr(ms.mux.tval)};")
+          writeLines(indentLevel, "} else {")
+          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec, regsToConsider)
+          writeLines(indentLevel + 1, s"${ms.outName} = ${emitExpr(ms.mux.fval)};")
+          writeLines(indentLevel, "}")
+        }
+        case _ => writeLines(indentLevel, emitStmt(Set())(stmt))
+      }}
+      Seq()
     } else Seq()
   }
 
@@ -577,8 +601,9 @@ class EmitCpp(writer: Writer) {
     // val mergedRegs = Seq()
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
-                       writeBodyRegTailOptSG(1, allBodies, safeRegs)
+                       // writeBodyRegTailOptSG(1, allBodies, safeRegs)
                        // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
+                       writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
                      else
                        writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
                           allMemUpdates, extIOs.toMap, safeRegs)
