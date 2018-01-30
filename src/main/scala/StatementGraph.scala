@@ -69,7 +69,11 @@ class StatementGraph extends Graph {
       case (muxID, (tShadow, fShadow)) => (tShadow ++ fShadow) filter muxIDSet
     }
     val topLevelMuxes = muxIDSet -- nestedMuxes
-    topLevelMuxes foreach { muxID => {
+    val muxesWorthShadowing = topLevelMuxes filter { muxID => {
+      val (tShadow, fShadow) = muxIDToShadows(muxID)
+      !(tShadow.isEmpty && fShadow.isEmpty)
+    }}
+    muxesWorthShadowing foreach { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
       val muxStmtName = idToName(muxID)
       val muxOutputName = findResultName(idToStmt(muxID))
