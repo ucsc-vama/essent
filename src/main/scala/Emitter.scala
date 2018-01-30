@@ -57,7 +57,7 @@ object Emitter {
         else n
       }
       case ms: MuxShadowed => {
-        if (renames.contains(ms.outName)) ms.copy(outName = renames(ms.outName))
+        if (renames.contains(ms.name)) ms.copy(name = renames(ms.name))
         else ms
       }
       case _ => s

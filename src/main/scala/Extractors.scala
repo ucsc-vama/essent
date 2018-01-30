@@ -81,7 +81,7 @@ object Extract {
   def findResultName(stmt: Statement): String = stmt match {
     case d: DefNode => d.name
     case c: Connect => emitExpr(c.loc)
-    case ms: MuxShadowed => ms.outName
+    case ms: MuxShadowed => ms.name
     case _ => throw new Exception("Don't know how to find result name")
   }
 
