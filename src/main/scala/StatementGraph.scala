@@ -71,13 +71,14 @@ class StatementGraph extends Graph {
     val topLevelMuxes = muxIDSet -- nestedMuxes
     topLevelMuxes foreach { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
-      val muxOutputName = idToName(muxID)
+      val muxStmtName = idToName(muxID)
+      val muxOutputName = findResultName(idToStmt(muxID))
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr, convToStmts(tShadow), convToStmts(fShadow))
       val idsToRemove = tShadow ++ fShadow
       idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
       val namesOfShadowMembers = (tShadow ++ fShadow) map idToName
-      super.mergeNodesMutably(Seq(muxOutputName) ++ namesOfShadowMembers)
+      super.mergeNodesMutably(Seq(muxStmtName) ++ namesOfShadowMembers)
     }}
   }
 }

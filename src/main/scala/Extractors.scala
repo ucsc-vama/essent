@@ -1,6 +1,7 @@
 package essent
 
 import essent.Emitter._
+import essent.ir._
 
 import firrtl._
 import firrtl.ir._
@@ -75,6 +76,13 @@ object Extract {
       case Connect(_, _, Mux(_, _, _, _)) => Seq(he.name)
       case _ => Seq()
     }
+  }
+
+  def findResultName(stmt: Statement): String = stmt match {
+    case d: DefNode => d.name
+    case c: Connect => emitExpr(c.loc)
+    case ms: MuxShadowed => ms.outName
+    case _ => throw new Exception("Don't know how to find result name")
   }
 
   def findMuxExpr(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
