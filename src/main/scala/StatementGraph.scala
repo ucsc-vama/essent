@@ -6,6 +6,7 @@ import firrtl.ir._
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
+import essent.Util._
 
 import collection.mutable.{ArrayBuffer, BitSet}
 
@@ -78,12 +79,36 @@ class StatementGraph extends Graph {
       val muxStmtName = idToName(muxID)
       val muxOutputName = findResultName(idToStmt(muxID))
       val (tShadow, fShadow) = muxIDToShadows(muxID)
+      // FUTURE: consider adding connects for output within shadows
       idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr, convToStmts(tShadow), convToStmts(fShadow))
       val idsToRemove = tShadow ++ fShadow
       idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
       val namesOfShadowMembers = (tShadow ++ fShadow) map idToName
       super.mergeNodesMutably(Seq(muxStmtName) ++ namesOfShadowMembers)
     }}
+  }
+
+  def coarsenToMFFCs() {
+    val idToMFFC = findMFFCs()
+    val mffcMap = Util.groupIndicesByValue(idToMFFC)
+    // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
+    mffcMap foreach { case (mffcID, memberIDs) => {
+      idToStmt(mffcID) = Block(memberIDs map idToStmt)
+      val idsToRemove = memberIDs diff Seq(mffcID)
+      idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+      val namesToMerge = (Seq(mffcID) ++ idsToRemove) map idToName
+      super.mergeNodesMutably(namesToMerge)
+    }}
+  }
+
+  def consolidateSourceZones() {
+    val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
+    println(s"Merging ${sourceIDs.size} source zones")
+    addNodeWithDeps("SOURCE_ZONE", Seq())
+    // FUTURE: consider flattening blocks
+    idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs map idToStmt)
+    val namesToMerge = Seq("SOURCE_ZONE") ++ (sourceIDs map idToName)
+    super.mergeNodesMutably(namesToMerge)
   }
 }
 

@@ -463,6 +463,13 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
+  def writeBodyZoneOptSG(bodies: Seq[Statement]) {
+    val sg = StatementGraph(bodies)
+    sg.coarsenToMFFCs()
+    sg.consolidateSourceZones()
+    // Not worrying about dead zones for now
+  }
+
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
                              regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
     val regNamesSet = regNames.toSet
@@ -565,7 +572,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = true
+    val simpleOnly = false
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -601,6 +608,7 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
+    writeBodyZoneOptSG(allBodies)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
