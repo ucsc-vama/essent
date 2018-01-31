@@ -54,6 +54,16 @@ class StatementGraph extends Graph {
     }}
   }
 
+  // assumes merged ID/name will be ids.head
+  // assumes caller will set new idToStmt
+  def mergeStmtsMutably(ids: Seq[Int]) {
+    val mergedID = ids.head
+    val idsToRemove = ids.tail
+    idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+    val namesToMerge = (Seq(mergedID) ++ idsToRemove) map idToName
+    mergeNodesMutably(namesToMerge)
+  }
+
   // FUTURE: consider creating all MuxShadowed statements on first pass (including nested)
   def coarsenMuxShadows(dontPassSigs: Seq[String]) {
     val muxIDs = findMuxIDs
@@ -81,10 +91,7 @@ class StatementGraph extends Graph {
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       // FUTURE: consider adding connects for output within shadows
       idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr, convToStmts(tShadow), convToStmts(fShadow))
-      val idsToRemove = tShadow ++ fShadow
-      idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
-      val namesOfShadowMembers = (tShadow ++ fShadow) map idToName
-      super.mergeNodesMutably(Seq(muxStmtName) ++ namesOfShadowMembers)
+      mergeStmtsMutably(Seq(muxID) ++ tShadow ++ fShadow)
     }}
   }
 
@@ -95,9 +102,7 @@ class StatementGraph extends Graph {
     mffcMap foreach { case (mffcID, memberIDs) => {
       idToStmt(mffcID) = Block(memberIDs map idToStmt)
       val idsToRemove = memberIDs diff Seq(mffcID)
-      idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
-      val namesToMerge = (Seq(mffcID) ++ idsToRemove) map idToName
-      super.mergeNodesMutably(namesToMerge)
+      mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
     }}
   }
 
@@ -107,8 +112,7 @@ class StatementGraph extends Graph {
     addNodeWithDeps("SOURCE_ZONE", Seq())
     // FUTURE: consider flattening blocks
     idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs map idToStmt)
-    val namesToMerge = Seq("SOURCE_ZONE") ++ (sourceIDs map idToName)
-    super.mergeNodesMutably(namesToMerge)
+    mergeStmtsMutably(Seq(getID("SOURCE_ZONE")) ++ sourceIDs)
   }
 }
 
