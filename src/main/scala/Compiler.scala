@@ -468,6 +468,7 @@ class EmitCpp(writer: Writer) {
     sg.coarsenToMFFCs()
     sg.consolidateSourceZones()
     // Not worrying about dead zones for now
+    sg.mergeSingleInputMFFCsToParents()
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],

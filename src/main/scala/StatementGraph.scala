@@ -114,6 +114,25 @@ class StatementGraph extends Graph {
     idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs map idToStmt)
     mergeStmtsMutably(Seq(getID("SOURCE_ZONE")) ++ sourceIDs)
   }
+
+  def mergeSingleInputMFFCsToParents() {
+    def grabFirstParent(id: Int) = inNeigh(id).head
+    def grabStmts(id: Int) = idToStmt(id) match {
+      case b: Block => b.stmts
+      case s => Seq(s)
+    }
+    val singleInputIDs = nodeRefIDs filter { inNeigh(_).size == 1 }
+    val baseSingleInputIDs = singleInputIDs filter { id => inNeigh(grabFirstParent(id)).size != -1 }
+    if (!baseSingleInputIDs.isEmpty) {
+      println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
+      baseSingleInputIDs foreach { childID => {
+        val parentID = grabFirstParent(childID)
+        idToStmt(parentID) = Block(grabStmts(parentID) ++ grabStmts(childID))
+        mergeStmtsMutably(Seq(parentID, childID))
+      }}
+      mergeSingleInputMFFCsToParents()
+    }
+  }
 }
 
 
