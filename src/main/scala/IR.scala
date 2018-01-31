@@ -1,0 +1,15 @@
+package essent.ir
+
+import firrtl._
+import firrtl.ir._
+
+// ESSENT's additions to the IR for optimization
+
+case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow: Seq[Statement]) extends Statement {
+  def serialize: String =  "shadow mux"
+  // FUTURE probably shouldn't have all maps be identity
+  def mapStmt(f: Statement => Statement): Statement = this.copy(tShadow = tShadow map f, fShadow = fShadow map f)
+  def mapExpr(f: Expression => Expression): Statement = this
+  def mapType(f: Type => Type): Statement = this
+  def mapString(f: String => String): Statement = this
+}
