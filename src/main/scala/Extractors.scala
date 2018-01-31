@@ -8,34 +8,26 @@ import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.Utils._
 
+import scala.reflect.ClassTag
 
 // Find methods
 // assumption: registers can only appear in blocks since whens expanded
 
 object Extract {
-  def findRegisters(s: Statement): Seq[DefRegister] = s match {
-    case b: Block => b.stmts flatMap findRegisters
-    case d: DefRegister => Seq(d)
+  // https://medium.com/@sinisalouc/overcoming-type-erasure-in-scala-8f2422070d20
+  def findInstancesOf[T <: Statement](s: Statement)(implicit tag: ClassTag[T]): Seq[T] = s match {
+    case t: T => Seq(t)
+    case b: Block => b.stmts flatMap findInstancesOf[T]
     case _ => Seq()
   }
 
-  def findWires(s: Statement): Seq[DefWire] = s match {
-    case b: Block => b.stmts flatMap findWires
-    case d: DefWire => Seq(d)
-    case _ => Seq()
-  }
+  def findRegisters(s: Statement) = findInstancesOf[DefRegister](s)
 
-  def findMemory(s: Statement): Seq[DefMemory] = s match {
-    case b: Block => b.stmts flatMap findMemory
-    case d: DefMemory => Seq(d)
-    case _ => Seq()
-  }
+  def findWires(s: Statement) = findInstancesOf[DefWire](s)
 
-  def findNodes(s: Statement): Seq[DefNode] = s match {
-    case b: Block => b.stmts flatMap findNodes
-    case d: DefNode => Seq(d)
-    case _ => Seq()
-  }
+  def findMemory(s: Statement) = findInstancesOf[DefMemory](s)
+
+  def findNodes(s: Statement) = findInstancesOf[DefNode](s)
 
   def findPortNames(dm: DefModule): Seq[String] = dm match {
     case m: Module => m.ports.map{_.name}.filter{s => s != "clock" && s != "reset"}
