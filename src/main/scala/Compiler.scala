@@ -469,6 +469,8 @@ class EmitCpp(writer: Writer) {
     sg.consolidateSourceZones()
     // Not worrying about dead zones for now
     sg.mergeSingleInputMFFCsToParents()
+    sg.mergeSmallZones()
+    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],

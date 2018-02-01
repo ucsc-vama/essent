@@ -64,6 +64,17 @@ class StatementGraph extends Graph {
     mergeNodesMutably(namesToMerge)
   }
 
+  def mergeNodesSafe(mergeReqs: Seq[Seq[Int]]) {
+    mergeReqs foreach { mergeReq => {
+      if (mergeReq.size < 2) println("tiny merge req!")
+      val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
+      val allPairs = mergeReq.combinations(2).toSeq
+      val mergeOK = allPairs.forall{ case Seq(idA, idB) => safeToMerge(idToName(idA), idToName(idB)) }
+      if (zonesStillExist && mergeOK)
+        mergeStmtsMutably(mergeReq)
+    }}
+  }
+
   // FUTURE: consider creating all MuxShadowed statements on first pass (including nested)
   def coarsenMuxShadows(dontPassSigs: Seq[String]) {
     val muxIDs = findMuxIDs
@@ -133,6 +144,38 @@ class StatementGraph extends Graph {
         mergeStmtsMutably(Seq(parentID, childID))
       }}
       mergeSingleInputMFFCsToParents()
+    }
+  }
+
+  def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
+
+  def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
+
+  // like mergeSmallZones2
+  def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
+    val smallZoneIDs = nodeRefIDs filter { id => {
+      val idSize = nodeSize(id)
+      (idSize > 0) && (idSize < smallZoneCutoff)
+    }}
+    def overlapSize(idA: Int, idB: Int): Int = outNeigh(idA).intersect(outNeigh(idB)).size
+    val mergesToConsider = smallZoneIDs flatMap { id => {
+      val numInputs = inNeigh(id).size.toDouble
+      val siblings = (inNeigh(id) flatMap outNeigh).distinct - id
+      val sibsScored = siblings map {
+        sibID => (overlapSize(id, sibID) / numInputs, sibID)
+      }
+      val choices = sibsScored filter { _._1 >= mergeThreshold }
+      val topChoice = choices.find {
+        case (score, sibID) => safeToMerge(idToName(sibID), idToName(id))
+      }
+      if (topChoice.isEmpty) Seq()
+      else Seq(Seq(topChoice.get._2, id))
+    }}
+    println(s"Small zones: ${smallZoneIDs.size}")
+    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    if (!mergesToConsider.isEmpty) {
+      mergeNodesSafe(mergesToConsider)
+      mergeSmallZones(smallZoneCutoff, mergeThreshold)
     }
   }
 }
