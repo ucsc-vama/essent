@@ -121,8 +121,10 @@ class StatementGraph extends Graph {
       case b: Block => b.stmts
       case s => Seq(s)
     }
-    val singleInputIDs = nodeRefIDs filter { inNeigh(_).size == 1 }
-    val baseSingleInputIDs = singleInputIDs filter { id => inNeigh(grabFirstParent(id)).size != -1 }
+    val sourceZoneID = nameToID("SOURCE_ZONE")
+    val singleInputIDs = nodeRefIDs filter { id => (inNeigh(id) - sourceZoneID).size == 1}
+    val singleInputSet = singleInputIDs.toSet
+    val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(grabFirstParent(id)) }
     if (!baseSingleInputIDs.isEmpty) {
       println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
       baseSingleInputIDs foreach { childID => {
