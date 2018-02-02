@@ -469,7 +469,10 @@ class EmitCpp(writer: Writer) {
     sg.consolidateSourceZones()
     // Not worrying about dead zones for now
     sg.mergeSingleInputMFFCsToParents()
-    sg.mergeSmallZones()
+    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
+    sg.mergeSmallSiblings()
+    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
+    sg.mergeSmallZones(10, 1.0)
     println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
   }
 

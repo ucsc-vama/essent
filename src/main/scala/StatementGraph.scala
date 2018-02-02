@@ -147,6 +147,31 @@ class StatementGraph extends Graph {
     }
   }
 
+  def mergeSmallSiblings(smallZoneCutoff: Int = 10) {
+    val smallZoneIDs = nodeRefIDs filter { id => {
+      val idSize = nodeSize(id)
+      (idSize > 0) && (idSize < smallZoneCutoff)
+    }}
+    val inputsAndIDPairs = smallZoneIDs map { id => {
+      val inputsCanonicalized = inNeigh(id).toSeq.sorted
+      (inputsCanonicalized, id)
+    }}
+    val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs)
+    val mergesToConsider = inputsToSiblings.toSeq flatMap { case (inputIDs, siblingIDs) => {
+      val allPairs = siblingIDs.combinations(2).toSeq
+      val okToMerge = allPairs.forall{
+        case Seq(idA, idB) => safeToMerge(idToName(idA), idToName(idB))
+      }
+      if ((siblingIDs.size > 1) && okToMerge) Seq(siblingIDs)
+      else Seq()
+    }}
+    if (!mergesToConsider.isEmpty) {
+      println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
+      mergeNodesSafe(mergesToConsider)
+      mergeSmallSiblings(smallZoneCutoff)
+    }
+  }
+
   def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
 
   def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
