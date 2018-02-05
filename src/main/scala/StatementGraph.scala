@@ -182,7 +182,7 @@ class StatementGraph extends Graph {
       val idSize = nodeSize(id)
       (idSize > 0) && (idSize < smallZoneCutoff)
     }}
-    def overlapSize(idA: Int, idB: Int): Int = outNeigh(idA).intersect(outNeigh(idB)).size
+    def overlapSize(idA: Int, idB: Int): Int = inNeigh(idA).intersect(inNeigh(idB)).size
     val sourceZoneID = nameToID("SOURCE_ZONE")
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
