@@ -205,6 +205,32 @@ class StatementGraph extends Graph {
       mergeSmallZones(smallZoneCutoff, mergeThreshold)
     }
   }
+
+  def coarsenIntoZones() {
+    coarsenToMFFCs()
+    consolidateSourceZones()
+    // Not worrying about dead zones for now
+    val startSingle = System.currentTimeMillis()
+    mergeSingleInputMFFCsToParents()
+    val stopSingle = System.currentTimeMillis()
+    println(s"Single took: ${stopSingle - startSingle}")
+    println(s"Down to ${nonEmptyStmts()} statement blocks")
+    val startSibs = System.currentTimeMillis()
+    mergeSmallSiblings()
+    val stopSibs = System.currentTimeMillis()
+    println(s"Sibs took: ${stopSibs - startSibs}")
+    println(s"Down to ${nonEmptyStmts()} statement blocks")
+    val startSmall = System.currentTimeMillis()
+    mergeSmallZones(20, 0.5)
+    val stopSmall = System.currentTimeMillis()
+    println(s"Small took: ${stopSmall - startSmall}")
+    println(s"Down to ${nonEmptyStmts()} statement blocks")
+    val startSmall2 = System.currentTimeMillis()
+    mergeSmallZones(40, 0.25)
+    val stopSmall2 = System.currentTimeMillis()
+    println(s"Small2 took: ${stopSmall2 - startSmall2}")
+    println(s"Down to ${nonEmptyStmts()} statement blocks")
+  }
 }
 
 

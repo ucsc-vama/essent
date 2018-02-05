@@ -465,15 +465,7 @@ class EmitCpp(writer: Writer) {
 
   def writeBodyZoneOptSG(bodies: Seq[Statement]) {
     val sg = StatementGraph(bodies)
-    sg.coarsenToMFFCs()
-    sg.consolidateSourceZones()
-    // Not worrying about dead zones for now
-    sg.mergeSingleInputMFFCsToParents()
-    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
-    sg.mergeSmallSiblings()
-    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
-    sg.mergeSmallZones(10, 1.0)
-    println(s"Down to ${sg.nonEmptyStmts()} statement blocks")
+    sg.coarsenIntoZones()
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
