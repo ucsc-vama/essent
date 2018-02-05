@@ -191,7 +191,8 @@ class StatementGraph extends Graph {
         sibID => (overlapSize(id, sibID) / numInputs, sibID)
       }
       val choices = sibsScored filter { _._1 >= mergeThreshold }
-      val topChoice = choices.find {
+      val choicesOrdered = choices.sortWith{_._1 >= _._1}
+      val topChoice = choicesOrdered.find {
         case (score, sibID) => safeToMerge(idToName(sibID), idToName(id))
       }
       if (topChoice.isEmpty) Seq()
