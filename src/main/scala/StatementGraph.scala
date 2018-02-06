@@ -267,6 +267,14 @@ class StatementGraph extends Graph {
     val stopIR = System.currentTimeMillis()
     println(s"IR took: ${stopIR - startIR}")
   }
+
+  def getZoneOutputTypes(): Map[String,Type] = {
+    val allZoneOutputTypes = nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => Some(az.outputTypes)
+      case _ => None
+    }}
+    allZoneOutputTypes.flatten.toMap
+  }
 }
 
 
