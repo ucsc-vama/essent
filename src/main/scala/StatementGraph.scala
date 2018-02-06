@@ -112,7 +112,7 @@ class StatementGraph extends Graph {
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
-      idToStmt(mffcID) = Block(memberIDs map idToStmt)
+      idToStmt(mffcID) = Block(memberIDs flatMap grabStmts)
       val idsToRemove = memberIDs diff Seq(mffcID)
       mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
     }}
@@ -122,8 +122,7 @@ class StatementGraph extends Graph {
     val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
     println(s"Merging ${sourceIDs.size} source zones")
     addNodeWithDeps("SOURCE_ZONE", Seq())
-    // FUTURE: consider flattening blocks
-    idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs map idToStmt)
+    idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs flatMap grabStmts)
     mergeStmtsMutably(Seq(getID("SOURCE_ZONE")) ++ sourceIDs)
   }
 
@@ -169,9 +168,12 @@ class StatementGraph extends Graph {
 
   def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
 
-  def grabStmts(id: Int) = idToStmt(id) match {
-    case b: Block => b.stmts
-    case s => Seq(s)
+  def grabStmts(id: Int) = {
+    val stmtsPossiblyWithEmpty = idToStmt(id) match {
+      case b: Block => b.stmts
+      case s => Seq(s)
+    }
+    stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
   }
 
   // like mergeSmallZones2
