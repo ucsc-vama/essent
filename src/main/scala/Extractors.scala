@@ -136,6 +136,8 @@ object Extract {
 
   def flattenStmts(s: Statement): Seq[Statement] = s match {
     case b: Block => b.stmts flatMap flattenStmts
+    case az: ActivityZone => az.members flatMap flattenStmts
+    case m: MuxShadowed => (m.tShadow ++ m.fShadow) flatMap flattenStmts
     case EmptyStmt => Seq()
     case _ => Seq(s)
   }

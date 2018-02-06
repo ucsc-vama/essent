@@ -270,6 +270,7 @@ class StatementGraph extends Graph {
     translateBlocksIntoZones()
     val stopIR = System.currentTimeMillis()
     println(s"IR took: ${stopIR - startIR}")
+    analyzeZoningQuality()
   }
 
   def getZoneOutputTypes(): Seq[(String,Type)] = {
@@ -285,6 +286,18 @@ class StatementGraph extends Graph {
       case az: ActivityZone => Seq(az.name)
       case _ => Seq()
     }}
+  }
+
+  def analyzeZoningQuality() {
+    println(s"Zones: ${getZoneNames().size}")
+    val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => Some(az.members.size)
+      case _ => None
+    }}).sum
+    // NOTE: Compiler withholds some statements from zoning process
+    val numStmtsTotal = (nodeRefIDs map nodeSize).sum
+    val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
+    println(f"Nodes in zones: $numStmtsInZones/$numStmtsTotal ($percNodesInZones%2.1f%%)")
   }
 }
 
