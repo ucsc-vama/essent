@@ -268,12 +268,12 @@ class StatementGraph extends Graph {
     println(s"IR took: ${stopIR - startIR}")
   }
 
-  def getZoneOutputTypes(): Map[String,Type] = {
+  def getZoneOutputTypes(): Seq[(String,Type)] = {
     val allZoneOutputTypes = nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Some(az.outputTypes)
-      case _ => None
+      case az: ActivityZone => az.outputTypes.toSeq
+      case _ => Seq()
     }}
-    allZoneOutputTypes.flatten.toMap
+    allZoneOutputTypes
   }
 }
 

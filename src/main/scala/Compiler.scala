@@ -466,6 +466,9 @@ class EmitCpp(writer: Writer) {
   def writeBodyZoneOptSG(bodies: Seq[Statement]) {
     val sg = StatementGraph(bodies)
     sg.coarsenIntoZones()
+    // predeclare zone outputs
+    val outputPairs = sg.getZoneOutputTypes()
+    writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
@@ -606,7 +609,7 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
-    writeBodyZoneOptSG(allBodies)
+    // writeBodyZoneOptSG(allBodies)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
