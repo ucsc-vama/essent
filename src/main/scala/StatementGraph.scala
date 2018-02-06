@@ -71,8 +71,10 @@ class StatementGraph extends Graph {
       val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
       val allPairs = mergeReq.combinations(2).toSeq
       val mergeOK = allPairs.forall{ case Seq(idA, idB) => safeToMerge(idToName(idA), idToName(idB)) }
-      if (zonesStillExist && mergeOK)
+      if (zonesStillExist && mergeOK) {
+        idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
         mergeStmtsMutably(mergeReq)
+      }
     }}
   }
 
@@ -130,10 +132,6 @@ class StatementGraph extends Graph {
   def mergeSingleInputMFFCsToParents() {
     val sourceZoneID = nameToID("SOURCE_ZONE")
     def grabFirstParent(id: Int) = (inNeigh(id) - sourceZoneID).head
-    def grabStmts(id: Int) = idToStmt(id) match {
-      case b: Block => b.stmts
-      case s => Seq(s)
-    }
     val singleInputIDs = nodeRefIDs filter { id => (inNeigh(id) - sourceZoneID).size == 1}
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(grabFirstParent(id)) }
@@ -176,6 +174,11 @@ class StatementGraph extends Graph {
   def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
 
   def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
+
+  def grabStmts(id: Int) = idToStmt(id) match {
+    case b: Block => b.stmts
+    case s => Seq(s)
+  }
 
   // like mergeSmallZones2
   def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
