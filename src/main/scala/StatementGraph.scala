@@ -191,7 +191,7 @@ class StatementGraph extends Graph {
       val choices = sibsScored filter { _._1 >= mergeThreshold }
       val choicesOrdered = choices.sortWith{_._1 > _._1}
       val topChoice = choicesOrdered.find {
-        case (score, sibID) => safeToMerge(idToName(sibID), idToName(id))
+        case (score, sibID) => safeToMergeArb(Seq(sibID, id))
       }
       if (topChoice.isEmpty) Seq()
       else Seq(Seq(topChoice.get._2, id))
