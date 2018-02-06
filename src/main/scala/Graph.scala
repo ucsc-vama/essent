@@ -371,6 +371,11 @@ class Graph {
     }
   }
 
+  // making sure no external paths exist between any nodes in merge request ids
+  def safeToMergeArb(ids: Seq[Int]): Boolean = {
+    ids forall { source => !extPathExists(Seq(source), ids diff Seq(source)) }
+  }
+
   // FUTURE: could probably combine helpers
   def pathExists(sourceID: Int, destID: Int): Boolean = {
     pathExistsHelper(Seq(sourceID), BitSet() + sourceID, destID)

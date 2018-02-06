@@ -69,9 +69,7 @@ class StatementGraph extends Graph {
     mergeReqs foreach { mergeReq => {
       if (mergeReq.size < 2) println("tiny merge req!")
       val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
-      val allPairs = mergeReq.combinations(2).toSeq
-      val mergeOK = allPairs.forall{ case Seq(idA, idB) => safeToMerge(idToName(idA), idToName(idB)) }
-      if (zonesStillExist && mergeOK) {
+      if (zonesStillExist && safeToMergeArb(mergeReq)) {
         idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
         mergeStmtsMutably(mergeReq)
       }
@@ -157,11 +155,7 @@ class StatementGraph extends Graph {
     }}
     val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs)
     val mergesToConsider = inputsToSiblings.toSeq flatMap { case (inputIDs, siblingIDs) => {
-      val allPairs = siblingIDs.combinations(2).toSeq
-      val okToMerge = allPairs.forall{
-        case Seq(idA, idB) => safeToMerge(idToName(idA), idToName(idB))
-      }
-      if ((siblingIDs.size > 1) && okToMerge) Seq(siblingIDs)
+      if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) Seq(siblingIDs)
       else Seq()
     }}
     if (!mergesToConsider.isEmpty) {
