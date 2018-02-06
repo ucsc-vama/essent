@@ -34,7 +34,8 @@ class StatementGraph extends Graph {
   }
 
   def stmtsOrdered(): Seq[Statement] = {
-    topologicalSort filter validNodes map idToStmt
+    topologicalSort filter { idToStmt(_) != EmptyStmt } map idToStmt
+    // topologicalSort filter validNodes map idToStmt
   }
 
   def updateMergedRegWrites(mergedRegs: Seq[String]) {
@@ -127,12 +128,12 @@ class StatementGraph extends Graph {
   }
 
   def mergeSingleInputMFFCsToParents() {
-    def grabFirstParent(id: Int) = inNeigh(id).head
+    val sourceZoneID = nameToID("SOURCE_ZONE")
+    def grabFirstParent(id: Int) = (inNeigh(id) - sourceZoneID).head
     def grabStmts(id: Int) = idToStmt(id) match {
       case b: Block => b.stmts
       case s => Seq(s)
     }
-    val sourceZoneID = nameToID("SOURCE_ZONE")
     val singleInputIDs = nodeRefIDs filter { id => (inNeigh(id) - sourceZoneID).size == 1}
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(grabFirstParent(id)) }
@@ -191,7 +192,7 @@ class StatementGraph extends Graph {
         sibID => (overlapSize(id, sibID) / numInputs, sibID)
       }
       val choices = sibsScored filter { _._1 >= mergeThreshold }
-      val choicesOrdered = choices.sortWith{_._1 >= _._1}
+      val choicesOrdered = choices.sortWith{_._1 > _._1}
       val topChoice = choicesOrdered.find {
         case (score, sibID) => safeToMerge(idToName(sibID), idToName(id))
       }
@@ -274,6 +275,13 @@ class StatementGraph extends Graph {
       case _ => Seq()
     }}
     allZoneOutputTypes
+  }
+
+  def getZoneNames(): Seq[String] = {
+    nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => Seq(az.name)
+      case _ => Seq()
+    }}
   }
 }
 
