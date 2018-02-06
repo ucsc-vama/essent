@@ -243,33 +243,23 @@ class StatementGraph extends Graph {
   }
 
   def coarsenIntoZones() {
-    coarsenToMFFCs()
-    consolidateSourceZones()
     // Not worrying about dead zones for now
-    val startSingle = System.currentTimeMillis()
-    mergeSingleInputMFFCsToParents()
-    val stopSingle = System.currentTimeMillis()
-    println(s"Single took: ${stopSingle - startSingle}")
-    println(s"Down to ${nonEmptyStmts()} statement blocks")
-    val startSibs = System.currentTimeMillis()
-    mergeSmallSiblings()
-    val stopSibs = System.currentTimeMillis()
-    println(s"Sibs took: ${stopSibs - startSibs}")
-    println(s"Down to ${nonEmptyStmts()} statement blocks")
-    val startSmall = System.currentTimeMillis()
-    mergeSmallZones(20, 0.5)
-    val stopSmall = System.currentTimeMillis()
-    println(s"Small took: ${stopSmall - startSmall}")
-    println(s"Down to ${nonEmptyStmts()} statement blocks")
-    val startSmall2 = System.currentTimeMillis()
-    mergeSmallZones(40, 0.25)
-    val stopSmall2 = System.currentTimeMillis()
-    println(s"Small2 took: ${stopSmall2 - startSmall2}")
-    println(s"Down to ${nonEmptyStmts()} statement blocks")
-    val startIR = System.currentTimeMillis()
-    translateBlocksIntoZones()
-    val stopIR = System.currentTimeMillis()
-    println(s"IR took: ${stopIR - startIR}")
+    val toApply = Seq(
+      ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
+      ("source", {sg: StatementGraph => sg.consolidateSourceZones()}),
+      ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
+      ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
+      ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
+      ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
+      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
+    )
+    toApply foreach { case(label, func) => {
+      val startTime = System.currentTimeMillis()
+      func(this)
+      val stopTime = System.currentTimeMillis()
+      println(s"[$label] took: ${stopTime - startTime}")
+      println(s"Down to ${nonEmptyStmts()} statement blocks")
+    }}
     analyzeZoningQuality()
   }
 
