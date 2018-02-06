@@ -206,6 +206,34 @@ class StatementGraph extends Graph {
     }
   }
 
+  def translateBlocksIntoZones() {
+    val blockIDs = nodeRefIDs filter { idToStmt(_).isInstanceOf[Block] }
+    val idToMembers: Map[Int,Seq[Statement]] = (blockIDs map { id => {
+      val members = idToStmt(id) match {
+        case b: Block => b.stmts
+        case _ => throw new Exception("matched a non-block statement")
+      }
+      (id -> members)
+    }}).toMap
+    val idToHE = idToMembers mapValues { members => members flatMap findDependencesStmt }
+    val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }
+    val idToInputNames = idToHE map { case (id, zoneHE) => {
+      val zoneDepNames = zoneHE flatMap { _.deps }
+      val externalDepNames = zoneDepNames.distinct diff idToMemberNames(id)
+      (id -> externalDepNames)
+    }}
+    val inputNameToConsumingZoneIDs = Util.groupByFirst(idToInputNames.toSeq flatMap {
+      case (id, inputNames) => inputNames map { (_, id) }
+    })
+    blockIDs foreach { id => {
+      val outputNames = idToMemberNames(id).intersect(inputNameToConsumingZoneIDs.keys.toSeq)
+      val outputMap = (outputNames map {
+        outputName => (outputName, inputNameToConsumingZoneIDs(outputName) map idToName)
+      }).toMap
+      idToStmt(id) = ActivityZone(idToName(id), idToMembers(id), outputMap)
+    }}
+  }
+
   def coarsenIntoZones() {
     coarsenToMFFCs()
     consolidateSourceZones()
@@ -230,6 +258,10 @@ class StatementGraph extends Graph {
     val stopSmall2 = System.currentTimeMillis()
     println(s"Small2 took: ${stopSmall2 - startSmall2}")
     println(s"Down to ${nonEmptyStmts()} statement blocks")
+    val startIR = System.currentTimeMillis()
+    translateBlocksIntoZones()
+    val stopIR = System.currentTimeMillis()
+    println(s"IR took: ${stopIR - startIR}")
   }
 }
 
