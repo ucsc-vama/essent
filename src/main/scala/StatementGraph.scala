@@ -171,6 +171,7 @@ class StatementGraph extends Graph {
   def grabStmts(id: Int) = {
     val stmtsPossiblyWithEmpty = idToStmt(id) match {
       case b: Block => b.stmts
+      case az: ActivityZone => az.members
       case s => Seq(s)
     }
     stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
@@ -275,7 +276,8 @@ class StatementGraph extends Graph {
   }
 
   def analyzeZoningQuality() {
-    println(s"Zones: ${getZoneNames().size}")
+    val numZones = getZoneNames().size
+    println(s"Zones: $numZones")
     val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
       case az: ActivityZone => Some(az.members.size)
       case _ => None
@@ -283,7 +285,22 @@ class StatementGraph extends Graph {
     // NOTE: Compiler withholds some statements from zoning process
     val numStmtsTotal = (nodeRefIDs map nodeSize).sum
     val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
-    println(f"Nodes in zones: $numStmtsInZones/$numStmtsTotal ($percNodesInZones%2.1f%%)")
+    println(f"Nodes in zones: $numStmtsInZones ($percNodesInZones%2.1f%%)")
+    val numEdgesOrig = (nodeRefIDs flatMap {
+      id => grabStmts(id) flatMap {
+        stmt => findDependencesStmt(stmt) map { _.deps.size }
+      }
+    }).sum
+    val allOutputMaps = nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => az.outputConsumers.toSeq
+      case _ => None
+    }}
+    val numOutputsUnique = allOutputMaps.size
+    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
+    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
+    println(f"Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%)")
+    println(f"Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f")
+    println(f"Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f")
   }
 }
 
