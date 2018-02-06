@@ -226,11 +226,15 @@ class StatementGraph extends Graph {
       case (id, inputNames) => inputNames map { (_, id) }
     })
     blockIDs foreach { id => {
-      val outputNames = idToMemberNames(id).intersect(inputNameToConsumingZoneIDs.keys.toSeq)
-      val outputMap = (outputNames map {
+      val outputNameSet = idToMemberNames(id).toSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
+      val outputConsumers = outputNameSet map {
         outputName => (outputName, inputNameToConsumingZoneIDs(outputName) map idToName)
-      }).toMap
-      idToStmt(id) = ActivityZone(idToName(id), idToMembers(id), outputMap)
+      }
+      val outputTypes = idToHE(id) flatMap {
+        he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
+              else Seq()
+      }
+      idToStmt(id) = ActivityZone(idToName(id), idToMembers(id), outputConsumers.toMap, outputTypes.toMap)
     }}
   }
 
