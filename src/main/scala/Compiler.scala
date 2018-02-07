@@ -469,17 +469,18 @@ class EmitCpp(writer: Writer) {
     sg.coarsenIntoZones()
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
+    val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
     // TODO: set doNotDec to zone outputs
     // TODO: declare cache nodes and flags for IOs and mems
     val otherInputs = sg.getExternalZoneInputs() diff regNames
     val memNames = (memUpdates map { _.memName }).toSet
-    val (memCaches, nonMemCaches) = otherInputs partition { memNames.contains(_) }
-    val nonMemCacheTypes = nonMemCaches.toSeq map {
+    val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
+    val nonMemCacheTypes = nonMemInputs.toSeq map {
       name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
     }
-    val nonMemCacheDecs = (nonMemCacheTypes zip nonMemCaches.toSeq) map {
+    val nonMemCacheDecs = (nonMemCacheTypes zip nonMemInputs.toSeq) map {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(0, nonMemCacheDecs)
@@ -501,6 +502,21 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "sim_cached = regs_set;")
 
     // TODO: IO change detects and caching
+    // do activity detection on other inputs (external IOs and resets)
+    val nonMemChangeDetects = nonMemInputs flatMap { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      genDepZoneTriggers(outputConsumers(sigName), s"$sigName != $oldVersion")
+    }}
+    writeLines(1, nonMemChangeDetects.toSeq)
+    // cache old versions
+    val nonMemCaches = nonMemInputs map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      s"$oldVersion = $sigName;"
+    }}
+    writeLines(1, nonMemCaches.toSeq)
+
+    // emit zones (and unzoned statements)
+    // TODO: treat SOURCE_ZONE differently
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(1, s"if (${genFlagName(az.name)}) {")

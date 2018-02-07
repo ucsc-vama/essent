@@ -278,6 +278,14 @@ class StatementGraph extends Graph {
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
+  def getZoneInputMap(): Map[String,Seq[String]] = {
+    val allZoneInputs = nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => az.inputs map { (_, idToName(id)) }
+      case _ => Seq()
+    }}
+    Util.groupByFirst(allZoneInputs)
+  }
+
   def getZoneNames(): Seq[String] = {
     nodeRefIDs flatMap { id => idToStmt(id) match {
       case az: ActivityZone => Seq(az.name)
