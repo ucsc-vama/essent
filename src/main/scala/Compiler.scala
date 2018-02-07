@@ -463,10 +463,18 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String, resetTree: Seq[String],
-                         memUpdates: Seq[MemUpdate], extIOtypes: Map[String, Type],
-                         regNames: Seq[String], keepAvail: Seq[String]) {
+  def writeBodyZoneOptSG(
+      bodies: Seq[Statement],
+      topName: String,
+      resetTree: Seq[String],
+      memUpdates: Seq[MemUpdate],
+      extIOtypes: Map[String, Type],
+      regNames: Seq[String],
+      keepAvail: Seq[String],
+      regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
+    // FUTURE: consider merging after zoning?
+    val mergedRegs = Seq()//sg.mergeRegsSafe(regsToConsider)
     sg.coarsenIntoZones(keepAvail)
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
@@ -553,6 +561,7 @@ class EmitCpp(writer: Writer) {
       else Seq()
     }}
     writeLines(1, regsTriggerZones)
+    Seq[String]()
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
@@ -693,16 +702,15 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     val keepAvail = (memDeps ++ pAndSDeps).distinct
-    // val mergedRegs = Seq()
-    // writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames, keepAvail)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
                        // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
                        writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
                      else
-                       writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
-                          allMemUpdates, extIOs.toMap, safeRegs)
+                       writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames, keepAvail, safeRegs)
+                       // writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
+                       //    allMemUpdates, extIOs.toMap, safeRegs)
     if (!prints.isEmpty || !stops.isEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (!prints.isEmpty) {
