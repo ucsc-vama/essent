@@ -207,7 +207,7 @@ class StatementGraph extends Graph {
     }
   }
 
-  def translateBlocksIntoZones() {
+  def translateBlocksIntoZones(keepAvail: Set[String]) {
     val blockIDs = nodeRefIDs filter { idToStmt(_).isInstanceOf[Block] }
     val idToMembers: Map[Int,Seq[Statement]] = (blockIDs map { id => {
       val members = idToStmt(id) match {
@@ -227,10 +227,14 @@ class StatementGraph extends Graph {
       case (id, inputNames) => inputNames map { (_, id) }
     })
     blockIDs foreach { id => {
-      val outputNameSet = idToMemberNames(id).toSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
-      val outputConsumers = outputNameSet map {
-        outputName => (outputName, inputNameToConsumingZoneIDs(outputName) map idToName)
-      }
+      val memberSet = idToMemberNames(id).toSet
+      val requestedOutputs = memberSet.intersect(keepAvail)
+      val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
+      val outputNameSet = requestedOutputs ++ consumedOutputs
+      val outputConsumers = outputNameSet map { outputName => {
+        val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
+        (outputName, consumerIDs map idToName)
+      }}
       val outputTypes = idToHE(id) flatMap {
         he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
@@ -240,7 +244,7 @@ class StatementGraph extends Graph {
     }}
   }
 
-  def coarsenIntoZones() {
+  def coarsenIntoZones(keepAvail: Seq[String] = Seq()) {
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
@@ -249,7 +253,7 @@ class StatementGraph extends Graph {
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
-      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
+      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(keepAvail.toSet)})
     )
     toApply foreach { case(label, func) => {
       val startTime = System.currentTimeMillis()

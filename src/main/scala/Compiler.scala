@@ -464,9 +464,10 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String, resetTree: Seq[String],
-                         memUpdates: Seq[MemUpdate], extIOtypes: Map[String, Type], regNames: Seq[String]) {
+                         memUpdates: Seq[MemUpdate], extIOtypes: Map[String, Type],
+                         regNames: Seq[String], keepAvail: Seq[String]) {
     val sg = StatementGraph(bodies)
-    sg.coarsenIntoZones()
+    sg.coarsenIntoZones(keepAvail)
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
     val outputConsumers = sg.getZoneInputMap()
@@ -691,8 +692,9 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnopt(1, otherDeps, regNames)
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
+    val keepAvail = (memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
-    // writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames)
+    // writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames, keepAvail)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
