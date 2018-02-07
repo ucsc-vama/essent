@@ -463,7 +463,7 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String) {
+  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String, resetTree: Seq[String]) {
     val sg = StatementGraph(bodies)
     sg.coarsenIntoZones()
     // predeclare zone outputs
@@ -483,7 +483,7 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "sim_cached = false;")
     writeLines(2, "regs_set = false;")
     writeLines(1, "}")
-    // TODO: emit resetTree
+    writeLines(1, resetTree)
 
     writeLines(1, "if (!sim_cached) {")
     writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
@@ -508,6 +508,8 @@ class EmitCpp(writer: Writer) {
       }
       case _ => writeLines(1, emitStmt(Set())(stmt))
     }}
+    // TODO: mem write trigger wakeups
+    // TODO: reg check triggers
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
@@ -648,7 +650,7 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
-    // writeBodyZoneOptSG(allBodies, topName)
+    // writeBodyZoneOptSG(allBodies, topName, resetTree)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
