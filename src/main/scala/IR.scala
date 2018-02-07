@@ -16,6 +16,7 @@ case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow:
 
 case class ActivityZone(
     name:String,
+    inputs: Seq[String],
     members: Seq[Statement],
     outputConsumers: Map[String,Seq[String]],
     outputTypes: Map[String,firrtl.ir.Type]) extends Statement {

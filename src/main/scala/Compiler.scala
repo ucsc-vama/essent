@@ -463,7 +463,8 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String, resetTree: Seq[String]) {
+  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String, resetTree: Seq[String],
+                         memUpdates: Seq[MemUpdate], extIOtypes: Map[String, Type], regNames: Seq[String]) {
     val sg = StatementGraph(bodies)
     sg.coarsenIntoZones()
     // predeclare zone outputs
@@ -472,6 +473,16 @@ class EmitCpp(writer: Writer) {
     println(s"Output nodes: ${outputPairs.size}")
     // TODO: set doNotDec to zone outputs
     // TODO: declare cache nodes and flags for IOs and mems
+    val otherInputs = sg.getExternalZoneInputs() diff regNames
+    val memNames = (memUpdates map { _.memName }).toSet
+    val (memCaches, nonMemCaches) = otherInputs partition { memNames.contains(_) }
+    val nonMemCacheTypes = nonMemCaches.toSeq map {
+      name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
+    }
+    val nonMemCacheDecs = (nonMemCacheTypes zip nonMemCaches.toSeq) map {
+      case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    }
+    writeLines(0, nonMemCacheDecs)
     val zoneNames = sg.getZoneNames()
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
@@ -484,7 +495,6 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "regs_set = false;")
     writeLines(1, "}")
     writeLines(1, resetTree)
-
     writeLines(1, "if (!sim_cached) {")
     writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
     writeLines(1, "}")
@@ -650,7 +660,7 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
-    // writeBodyZoneOptSG(allBodies, topName, resetTree)
+    // writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)

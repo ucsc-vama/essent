@@ -235,7 +235,8 @@ class StatementGraph extends Graph {
         he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
-      idToStmt(id) = ActivityZone(idToName(id), idToMembers(id), outputConsumers.toMap, outputTypes.toMap)
+      idToStmt(id) = ActivityZone(idToName(id), idToInputNames(id), idToMembers(id),
+                                  outputConsumers.toMap, outputTypes.toMap)
     }}
   }
 
@@ -266,6 +267,15 @@ class StatementGraph extends Graph {
       case _ => Seq()
     }}
     allZoneOutputTypes
+  }
+
+  def getExternalZoneInputs(): Seq[String] = {
+    val allZoneInputs = (nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => az.inputs
+      case _ => Seq()
+    }}).toSet
+    val allZoneOutputs = (getZoneOutputTypes() map { _._1 }).toSet
+    (allZoneInputs -- allZoneOutputs).toSeq
   }
 
   def getZoneNames(): Seq[String] = {
