@@ -473,7 +473,6 @@ class EmitCpp(writer: Writer) {
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
     // TODO: set doNotDec to zone outputs
-    // TODO: declare cache nodes and flags for IOs and mems
     val otherInputs = sg.getExternalZoneInputs() diff regNames
     val memNames = (memUpdates map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
@@ -501,7 +500,6 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "}")
     writeLines(1, "sim_cached = regs_set;")
 
-    // TODO: IO change detects and caching
     // do activity detection on other inputs (external IOs and resets)
     val nonMemChangeDetects = nonMemInputs flatMap { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
@@ -516,21 +514,24 @@ class EmitCpp(writer: Writer) {
     writeLines(1, nonMemCaches.toSeq)
 
     // emit zones (and unzoned statements)
-    // TODO: treat SOURCE_ZONE differently
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        writeLines(1, s"if (${genFlagName(az.name)}) {")
-        writeLines(2, s"${genFlagName(az.name)} = false;")
-        val cacheOldOutputs = az.outputTypes.toSeq map {
-          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
-        }}
-        writeLines(2, cacheOldOutputs)
-        writeBodyUnoptSG(2, az.members)
-        val outputTriggers = az.outputConsumers.toSeq flatMap {
-          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+        if (az.name == "SOURCE_ZONE") {
+          writeBodyUnoptSG(1, az.members)
+        } else {
+          writeLines(1, s"if (${genFlagName(az.name)}) {")
+          writeLines(2, s"${genFlagName(az.name)} = false;")
+          val cacheOldOutputs = az.outputTypes.toSeq map {
+            case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+          }}
+          writeLines(2, cacheOldOutputs)
+          writeBodyUnoptSG(2, az.members)
+          val outputTriggers = az.outputConsumers.toSeq flatMap {
+            case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+          }
+          writeLines(2, outputTriggers)
+          writeLines(1, "}")
         }
-        writeLines(2, outputTriggers)
-        writeLines(1, "}")
       }
       case _ => writeLines(1, emitStmt(Set())(stmt))
     }}
