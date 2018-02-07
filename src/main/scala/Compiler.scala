@@ -138,9 +138,9 @@ class EmitCpp(writer: Writer) {
     }
   }
 
-  def writeBodyUnoptSG(indentLevel: Int, bodies: Seq[Statement]) {
+  def writeBodyUnoptSG(indentLevel: Int, bodies: Seq[Statement], doNotDec: Set[String] = Set()) {
     val sg = StatementGraph(bodies)
-    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
   }
 
   // Emitter that performs single-phase reg updates (merges) when possible, and returns merged regs
@@ -473,7 +473,7 @@ class EmitCpp(writer: Writer) {
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
-    // TODO: set doNotDec to zone outputs
+    val doNotDec = (outputPairs map { _._1 }).toSet
     val otherInputs = sg.getExternalZoneInputs() diff regNames
     val memNames = (memUpdates map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
@@ -526,7 +526,7 @@ class EmitCpp(writer: Writer) {
             case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
           }}
           writeLines(2, cacheOldOutputs)
-          writeBodyUnoptSG(2, az.members)
+          writeBodyUnoptSG(2, az.members, doNotDec)
           val outputTriggers = az.outputConsumers.toSeq flatMap {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
           }
@@ -534,7 +534,7 @@ class EmitCpp(writer: Writer) {
           writeLines(1, "}")
         }
       }
-      case _ => writeLines(1, emitStmt(Set())(stmt))
+      case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups
