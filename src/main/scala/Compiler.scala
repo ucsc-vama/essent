@@ -535,8 +535,23 @@ class EmitCpp(writer: Writer) {
       }
       case _ => writeLines(1, emitStmt(Set())(stmt))
     }}
-    // TODO: mem write trigger wakeups
-    // TODO: reg check triggers
+    // trigger zones based on mem writes
+    // NOTE: if mem has multiple write ports, either can trigger wakeups
+    val memEnablesAndMasks = (memUpdates map {
+      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
+    }).toMap
+    val memWriteTriggerZones = memInputs.toSeq flatMap { flagName => {
+      val condition = memEnablesAndMasks(flagName).mkString(" && ")
+      genDepZoneTriggers(outputConsumers(flagName), condition)
+    }}
+    writeLines(1, memWriteTriggerZones)
+    // trigger zone based on reg changes
+    val regsTriggerZones = regNames flatMap { regName => {
+      if (outputConsumers.contains(regName))
+        genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+      else Seq()
+    }}
+    writeLines(1, regsTriggerZones)
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
@@ -703,7 +718,7 @@ class EmitCpp(writer: Writer) {
       writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
       if (!simpleOnly)
-        writeLines(1, "regs_set = true;")
+        writeLines(2, "regs_set = true;")
       writeLines(1, "}")
     }
     writeLines(0, "}")
