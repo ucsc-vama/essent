@@ -463,12 +463,51 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyZoneOptSG(bodies: Seq[Statement]) {
+  def writeBodyZoneOptSG(bodies: Seq[Statement], topName: String) {
     val sg = StatementGraph(bodies)
     sg.coarsenIntoZones()
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
+    println(s"Output nodes: ${outputPairs.size}")
+    // TODO: set doNotDec to zone outputs
+    // TODO: declare cache nodes and flags for IOs and mems
+    val zoneNames = sg.getZoneNames()
+    writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+    writeLines(0, s"bool sim_cached = false;")
+    writeLines(0, s"bool regs_set = false;")
+
+    // start emitting eval function
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, "if (reset || !done_reset) {")
+    writeLines(2, "sim_cached = false;")
+    writeLines(2, "regs_set = false;")
+    writeLines(1, "}")
+    // TODO: emit resetTree
+
+    writeLines(1, "if (!sim_cached) {")
+    writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
+    writeLines(1, "}")
+    writeLines(1, "sim_cached = regs_set;")
+
+    // TODO: IO change detects and caching
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case az: ActivityZone => {
+        writeLines(1, s"if (${genFlagName(az.name)}) {")
+        writeLines(2, s"${genFlagName(az.name)} = false;")
+        val cacheOldOutputs = az.outputTypes.toSeq map {
+          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+        }}
+        writeLines(2, cacheOldOutputs)
+        writeBodyUnoptSG(2, az.members)
+        val outputTriggers = az.outputConsumers.toSeq flatMap {
+          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+        }
+        writeLines(2, outputTriggers)
+        writeLines(1, "}")
+      }
+      case _ => writeLines(1, emitStmt(Set())(stmt))
+    }}
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
@@ -609,7 +648,7 @@ class EmitCpp(writer: Writer) {
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
     // val mergedRegs = Seq()
-    // writeBodyZoneOptSG(allBodies)
+    // writeBodyZoneOptSG(allBodies, topName)
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOpt(1, otherDeps, safeRegs)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
