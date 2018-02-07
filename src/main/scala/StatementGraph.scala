@@ -218,19 +218,23 @@ class StatementGraph extends Graph {
     }}).toMap
     val idToHE = idToMembers mapValues { members => members flatMap findDependencesStmt }
     val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }
+    val sourceZoneMembers = if (idToName.contains("SOURCE_ZONE"))
+                              idToMemberNames(nameToID("SOURCE_ZONE")).toSeq
+                            else Seq[String]()
     val idToInputNames = idToHE map { case (id, zoneHE) => {
-      val zoneDepNames = zoneHE flatMap { _.deps }
-      val externalDepNames = zoneDepNames.distinct diff idToMemberNames(id)
+      val zoneDepNames = (zoneHE flatMap { _.deps }).distinct diff sourceZoneMembers
+      val externalDepNames = zoneDepNames diff idToMemberNames(id)
       (id -> externalDepNames)
     }}
     val inputNameToConsumingZoneIDs = Util.groupByFirst(idToInputNames.toSeq flatMap {
       case (id, inputNames) => inputNames map { (_, id) }
     })
     blockIDs foreach { id => {
+      val zoneName = idToName(id)
       val memberSet = idToMemberNames(id).toSet
       val requestedOutputs = memberSet.intersect(keepAvail)
       val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
-      val outputNameSet = requestedOutputs ++ consumedOutputs
+      val outputNameSet = if (zoneName != "SOURCE_ZONE") requestedOutputs ++ consumedOutputs else Set[String]()
       val outputConsumers = outputNameSet map { outputName => {
         val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map idToName)
@@ -239,7 +243,7 @@ class StatementGraph extends Graph {
         he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
-      idToStmt(id) = ActivityZone(idToName(id), idToInputNames(id), idToMembers(id),
+      idToStmt(id) = ActivityZone(zoneName, idToInputNames(id), idToMembers(id),
                                   outputConsumers.toMap, outputTypes.toMap)
     }}
   }
