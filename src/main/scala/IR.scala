@@ -17,12 +17,13 @@ case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow:
 case class ActivityZone(
     name:String,
     inputs: Seq[String],
-    members: Seq[Statement],
+    memberStmts: Seq[Statement],
+    memberNames: Seq[String],
     outputConsumers: Map[String,Seq[String]],
     outputTypes: Map[String,firrtl.ir.Type]) extends Statement {
   def serialize: String =  "activity zone"
   // FUTURE probably shouldn't have all maps be identity
-  def mapStmt(f: Statement => Statement): Statement = this.copy(members = members map f)
+  def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this

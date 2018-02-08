@@ -474,7 +474,8 @@ class EmitCpp(writer: Writer) {
       regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
     // FUTURE: consider merging after zoning?
-    val mergedRegs = Seq()//sg.mergeRegsSafe(regsToConsider)
+    val mergedRegs = Seq[String]() //sg.mergeRegsSafe(regsToConsider)
+    val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     sg.coarsenIntoZones(keepAvail)
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
@@ -526,7 +527,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (az.name == "SOURCE_ZONE") {
-          writeBodyUnoptSG(1, az.members)
+          writeBodyUnoptSG(1, az.memberStmts)
         } else {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
           writeLines(2, s"${genFlagName(az.name)} = false;")
@@ -534,7 +535,7 @@ class EmitCpp(writer: Writer) {
             case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
           }}
           writeLines(2, cacheOldOutputs)
-          writeBodyUnoptSG(2, az.members, doNotDec)
+          writeBodyUnoptSG(2, az.memberStmts, doNotDec)
           val outputTriggers = az.outputConsumers.toSeq flatMap {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
           }
@@ -555,13 +556,13 @@ class EmitCpp(writer: Writer) {
     }}
     writeLines(1, memWriteTriggerZones)
     // trigger zone based on reg changes
-    val regsTriggerZones = regNames flatMap { regName => {
+    val regsTriggerZones = (regNames diff mergedRegs) flatMap { regName => {
       if (outputConsumers.contains(regName))
         genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
       else Seq()
     }}
     writeLines(1, regsTriggerZones)
-    Seq[String]()
+    mergedRegs
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],

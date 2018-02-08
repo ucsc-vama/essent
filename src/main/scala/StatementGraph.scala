@@ -171,7 +171,7 @@ class StatementGraph extends Graph {
   def grabStmts(id: Int) = {
     val stmtsPossiblyWithEmpty = idToStmt(id) match {
       case b: Block => b.stmts
-      case az: ActivityZone => az.members
+      case az: ActivityZone => az.memberStmts
       case s => Seq(s)
     }
     stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
@@ -209,14 +209,14 @@ class StatementGraph extends Graph {
 
   def translateBlocksIntoZones(keepAvail: Set[String]) {
     val blockIDs = nodeRefIDs filter { idToStmt(_).isInstanceOf[Block] }
-    val idToMembers: Map[Int,Seq[Statement]] = (blockIDs map { id => {
+    val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map { id => {
       val members = idToStmt(id) match {
         case b: Block => b.stmts
         case _ => throw new Exception("matched a non-block statement")
       }
       (id -> members)
     }}).toMap
-    val idToHE = idToMembers mapValues { members => members flatMap findDependencesStmt }
+    val idToHE = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
     val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }
     val sourceZoneMembers = if (idToName.contains("SOURCE_ZONE"))
                               idToMemberNames(nameToID("SOURCE_ZONE")).toSeq
@@ -243,8 +243,8 @@ class StatementGraph extends Graph {
         he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
-      idToStmt(id) = ActivityZone(zoneName, idToInputNames(id), idToMembers(id),
-                                  outputConsumers.toMap, outputTypes.toMap)
+      idToStmt(id) = ActivityZone(zoneName, idToInputNames(id), idToMemberStmts(id),
+                                  idToMemberNames(id), outputConsumers.toMap, outputTypes.toMap)
     }}
   }
 
@@ -305,7 +305,7 @@ class StatementGraph extends Graph {
     val numZones = getZoneNames().size
     println(s"Zones: $numZones")
     val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Some(az.members.size)
+      case az: ActivityZone => Some(az.memberStmts.size)
       case _ => None
     }}).sum
     // NOTE: Compiler withholds some statements from zoning process
