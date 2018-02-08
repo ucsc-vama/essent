@@ -161,11 +161,11 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
-  def writeBodyRegTailOptSG(indentLevel: Int, bodies: Seq[Statement], regNames: Seq[String]): Seq[String] = {
+  def writeBodyRegTailOptSG(indentLevel: Int, bodies: Seq[Statement], doNotDec: Set[String], regNames: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
     val mergedRegs = sg.mergeRegsSafe(regNames)
     sg.updateMergedRegWrites(mergedRegs)
-    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(Set())(stmt)) }
+    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
     mergedRegs
   }
 
@@ -258,7 +258,7 @@ class EmitCpp(writer: Writer) {
           writeLines(indentLevel + 1, s"${ms.name} = ${emitExpr(ms.mux.fval)};")
           writeLines(indentLevel, "}")
         }
-        case _ => writeLines(indentLevel, emitStmt(Set())(stmt))
+        case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
       }}
       mergedRegs
     } else Seq()
@@ -482,7 +482,7 @@ class EmitCpp(writer: Writer) {
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
-    val doNotDec = (outputPairs map { _._1 }).toSet
+    val doNotDec = ((outputPairs map { _._1 }) ++ regNames).toSet
     val otherInputs = sg.getExternalZoneInputs() diff regNames
     val memNames = (memUpdates map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
@@ -527,7 +527,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (az.name == "SOURCE_ZONE") {
-          writeBodyUnoptSG(1, az.memberStmts)
+          writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
         } else {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
           writeLines(2, s"${genFlagName(az.name)} = false;")
@@ -535,7 +535,7 @@ class EmitCpp(writer: Writer) {
             case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
           }}
           writeLines(2, cacheOldOutputs)
-          writeBodyUnoptSG(2, az.memberStmts, doNotDec)
+          writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ regNames ++ doNotDec, doNotDec)
           val outputTriggers = az.outputConsumers.toSeq flatMap {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
           }
@@ -545,7 +545,7 @@ class EmitCpp(writer: Writer) {
             regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
           }
           writeLines(2, regsTriggerZones)
-          writeLines(2, mergedRegsInZone map { regName => s"$regName = $regName$$next;" })
+          writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
           writeLines(1, "}")
         }
       }
