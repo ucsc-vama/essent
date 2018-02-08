@@ -301,6 +301,34 @@ class StatementGraph extends Graph {
     }}
   }
 
+  def mergeRegUpdatesIntoZones(regsToConsider: Seq[String]): Seq[String] = {
+    // FUTURE: consider converting to ids internally to speed up
+    val inputNameToConsumers = getZoneInputMap()
+    val regNamesSet = regsToConsider.toSet
+    val regNameToZoneName = (nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => {
+        val zoneName = idToName(id)
+        val regsInZone = az.memberNames map { _.replaceAllLiterally("$next","") } filter regNamesSet
+        regsInZone map { (_, zoneName) }
+      }
+      case _ => Seq()
+    }}).toMap
+    val mergedRegs = regsToConsider flatMap { regName => {
+      val regWriterZoneID = nameToID(regNameToZoneName(regName))
+      val regReaderZoneIDs = inputNameToConsumers(regName) map nameToID
+      val okToMerge = regReaderZoneIDs forall { readerID => !pathExists(regWriterZoneID, readerID) }
+      if (okToMerge) {
+        val regWriterZoneName = idToName(regWriterZoneID)
+        regReaderZoneIDs map idToName filter { _ != regWriterZoneName }foreach {
+          readerName => addEdge(readerName, regWriterZoneName)
+        }
+        Seq(regName)
+      } else Seq()
+    }}
+    println(s"Was able to merge ${mergedRegs.size}/${regsToConsider.size} of mergeable regs")
+    mergedRegs
+  }
+
   def analyzeZoningQuality() {
     val numZones = getZoneNames().size
     println(s"Zones: $numZones")

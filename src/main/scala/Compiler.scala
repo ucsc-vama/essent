@@ -474,9 +474,9 @@ class EmitCpp(writer: Writer) {
       regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
     // FUTURE: consider merging after zoning?
-    val mergedRegs = Seq[String]() //sg.mergeRegsSafe(regsToConsider)
-    val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     sg.coarsenIntoZones(keepAvail)
+    val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
+    val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
     val outputConsumers = sg.getZoneInputMap()
@@ -540,6 +540,12 @@ class EmitCpp(writer: Writer) {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
           }
           writeLines(2, outputTriggers)
+          val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+          val regsTriggerZones = mergedRegsInZone flatMap {
+            regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+          }
+          writeLines(2, regsTriggerZones)
+          writeLines(2, mergedRegsInZone map { regName => s"$regName = $regName$$next;" })
           writeLines(1, "}")
         }
       }
