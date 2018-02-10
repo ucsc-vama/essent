@@ -322,9 +322,10 @@ class StatementGraph extends Graph {
       val okToMerge = regReaderZoneIDs forall { readerID => !pathExists(regWriterZoneID, readerID) }
       if (okToMerge) {
         val regWriterZoneName = idToName(regWriterZoneID)
-        regReaderZoneIDs map idToName filter { _ != regWriterZoneName }foreach {
-          readerName => addEdge(readerName, regWriterZoneName)
-        }
+        regReaderZoneIDs map idToName filter { _ != regWriterZoneName } foreach { readerName => {
+          if (!outNeigh(nameToID(readerName)).contains(regWriterZoneID))
+            addEdge(readerName, regWriterZoneName)
+        }}
         Seq(regName)
       } else Seq()
     }}

@@ -742,7 +742,10 @@ class Graph {
         if (safeToMergeReg(regNameToMerge)) {
           val regWriteName = regNameToMerge + "$next"
           val regReaders = outNeigh(regIDToMerge) map idToName filter { _ != regWriteName }
-          regReaders foreach { readerName => addEdge(readerName, regWriteName) }
+          regReaders foreach { readerName => {
+            if (!outNeigh(nameToID(readerName)).contains(nameToID(regWriteName)))
+              addEdge(readerName, regWriteName)
+          }}
           Seq(regNameToMerge)
         } else {
           println(s"couldn't merge reg $regNameToMerge")
