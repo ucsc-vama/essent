@@ -112,9 +112,11 @@ class StatementGraph extends Graph {
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
-      idToStmt(mffcID) = Block(memberIDs flatMap grabStmts)
-      val idsToRemove = memberIDs diff Seq(mffcID)
-      mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
+      if (mffcID > 0) {
+        idToStmt(mffcID) = Block(memberIDs flatMap grabStmts)
+        val idsToRemove = memberIDs diff Seq(mffcID)
+        mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
+      }
     }}
   }
 
@@ -234,6 +236,7 @@ class StatementGraph extends Graph {
       val memberSet = idToMemberNames(id).toSet
       val requestedOutputs = memberSet.intersect(keepAvail)
       val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
+      // NOTE: can be overlaps, but set addition removes differences
       val outputNameSet = if (zoneName != "SOURCE_ZONE") requestedOutputs ++ consumedOutputs else Set[String]()
       val outputConsumers = outputNameSet map { outputName => {
         val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())

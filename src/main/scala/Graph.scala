@@ -272,11 +272,16 @@ class Graph {
   def maximizeFFCs(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
     val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
     val newMembers = fringeAncestors.distinct flatMap { id => {
-      val childMFFCs = (outNeigh(id) map mffc).distinct
-      if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
-        mffc(id) = childMFFCs.head
-        Seq(id)
-      } else Seq()
+      if (validNodes(id)) {
+        val childMFFCs = (outNeigh(id) map mffc).distinct
+        if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
+          mffc(id) = childMFFCs.head
+          Seq(id)
+        } else Seq()
+      } else {
+        mffc(id) = -3
+        Seq()
+      }
     }}
     if (newMembers.isEmpty) mffc
     else maximizeFFCs(newMembers, mffc)
