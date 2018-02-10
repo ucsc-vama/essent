@@ -574,6 +574,69 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
+  def checkZoningSanity(
+      sg: StatementGraph,
+      memUpdates: Seq[MemUpdate],
+      extIOtypes: Map[String, Type],
+      regNames: Seq[String],
+      keepAvail: Seq[String]): Boolean = {
+    // GOAL: make sure every input on every zone gets a trigger
+    // possible stretch goal: ensure unzoned values given fresh values to compare
+    // possible stretch goal: make sure trigger ordering is appropriate
+    // Generate all triggers
+    val outputPairs = sg.getZoneOutputTypes()
+    val outputConsumers = sg.getZoneInputMap()
+    val doNotDec = (outputPairs map { _._1 }).toSet
+    val otherInputs = sg.getExternalZoneInputs() diff regNames
+    val memNames = (memUpdates map { _.memName }).toSet
+    val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
+    val nonMemTriggers = nonMemInputs flatMap { sigName => {
+      outputConsumers(sigName) flatMap { zoneName => Seq((sigName, zoneName) -> "PRE-nonMem") }
+    }}
+    val fromZoneTriggers = sg.stmtsOrdered flatMap { stmt => stmt match {
+      case az: ActivityZone => {
+        val outputTriggers = az.outputConsumers.toSeq flatMap {
+          case (name, consumers) => consumers flatMap {
+            zoneName => Seq((name, zoneName) -> az.name)
+          }
+        }
+        outputTriggers
+        // TODO: merged regs triggers
+      }
+      case _ => Seq()
+    }}
+    val memTriggers = memInputs.toSeq flatMap { memName => {
+      outputConsumers(memName) flatMap { zoneName => Seq((memName, zoneName) -> "POST-mem") }
+    }}
+    val globalRegTriggers = regNames flatMap { regName => {
+      if (outputConsumers.contains(regName)) {
+        outputConsumers(regName) flatMap { zoneName => Seq((regName, zoneName) -> "POST-reg") }
+      } else Seq()
+    }}
+    val inputZonePairToTriggerSource = (nonMemTriggers ++ fromZoneTriggers ++ memTriggers ++ globalRegTriggers).toMap
+
+    // For each zone, verify all inputs have a trigger
+    val allZoneInputs = sg.stmtsOrdered flatMap { stmt => stmt match {
+      case az: ActivityZone => az.inputs
+      case _ => Seq()
+    }}
+    if (inputZonePairToTriggerSource.size != allZoneInputs.size)
+      println(s"MISMATCH: ${inputZonePairToTriggerSource.size} triggers for ${allZoneInputs.size} inputs")
+    val allTriggersFound = sg.stmtsOrdered forall { stmt => stmt match {
+      case az: ActivityZone => {
+        val allInputsHaveTriggers = az.inputs forall {
+          inputName => inputZonePairToTriggerSource.contains((inputName, az.name))
+        }
+        if (!allInputsHaveTriggers)
+          println(s"zone ${az.name} has incomplete set of triggers")
+        allInputsHaveTriggers
+      }
+      case _ => true
+    }}
+    println(s"all triggers found: $allTriggersFound")
+    allTriggersFound
+  }
+
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
                              regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
     val regNamesSet = regNames.toSet

@@ -760,6 +760,16 @@ class Graph {
 
   // Unused traversals and scans
   //----------------------------------------------------------------------------
+  def dupeEdgesExist(): Boolean = {
+    def dupesInArr(arr: ArrayBuffer[Int]) = arr.size != arr.distinct.size
+    nodeRefIDs exists { id => dupesInArr(inNeigh(id)) || dupesInArr(outNeigh(id)) }
+  }
+
+  def selfLoopsExist(): Boolean = {
+    def selfInArr(self: Int, arr: ArrayBuffer[Int]) = arr.contains(self)
+    nodeRefIDs exists { id => selfInArr(id, inNeigh(id)) || selfInArr(id, outNeigh(id)) }
+  }
+
   def findStateDepths(stateElemNames: Seq[String], extIONames: Seq[String]): ArrayBuffer[Int] = {
     val stateLoopbacks = (stateElemNames filter { name => nameToID.contains(name) } map {
       name => (nameToID(name + "$next"), nameToID(name))
