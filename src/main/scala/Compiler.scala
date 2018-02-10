@@ -473,9 +473,9 @@ class EmitCpp(writer: Writer) {
       keepAvail: Seq[String],
       regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
-    // FUTURE: consider merging after zoning?
+    val mergedRegs = sg.mergeRegsSafe(regsToConsider)
     sg.coarsenIntoZones(keepAvail)
-    val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
+    // val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
     val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
@@ -527,7 +527,9 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (az.name == "SOURCE_ZONE") {
+          println(s"There are ${az.memberNames.size} nodes in the SOURCE_ZONE")
           writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
+          // writeBodyUnoptSG(1, az.memberStmts, doNotDec ++ regNames)
         } else {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
           writeLines(2, s"${genFlagName(az.name)} = false;")
@@ -536,6 +538,7 @@ class EmitCpp(writer: Writer) {
           }}
           writeLines(2, cacheOldOutputs)
           writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ regNames ++ doNotDec, doNotDec)
+          // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
           val outputTriggers = az.outputConsumers.toSeq flatMap {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
           }
