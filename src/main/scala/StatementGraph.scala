@@ -34,8 +34,8 @@ class StatementGraph extends Graph {
   }
 
   def stmtsOrdered(): Seq[Statement] = {
-    topologicalSort filter { idToStmt(_) != EmptyStmt } map idToStmt
-    // topologicalSort filter validNodes map idToStmt
+    // topologicalSort filter { idToStmt(_) != EmptyStmt } map idToStmt
+    topologicalSort filter validNodes map idToStmt
   }
 
   def updateMergedRegWrites(mergedRegs: Seq[String]) {
@@ -80,7 +80,7 @@ class StatementGraph extends Graph {
   def coarsenMuxShadows(dontPassSigs: Seq[String]) {
     val muxIDs = findMuxIDs
     val dontPass = BitSet() ++ dontPassSigs.filter(nameToID.contains).map(nameToID)
-    def convToStmts(ids: Seq[Int]): Seq[Statement] = ids map idToStmt
+    def convToStmts(ids: Seq[Int]): Seq[Statement] = ids filter validNodes map idToStmt
     val muxIDToShadows = (muxIDs map { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
       val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxID) map nameToID
@@ -110,6 +110,7 @@ class StatementGraph extends Graph {
   def coarsenToMFFCs() {
     val idToMFFC = findMFFCs()
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
+    // TODO: shouldn't need to do anything here because invalid nodes all in component -3?
     // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
       if (mffcID > 0) {
@@ -273,7 +274,7 @@ class StatementGraph extends Graph {
   }
 
   def getZoneOutputTypes(): Seq[(String,Type)] = {
-    val allZoneOutputTypes = nodeRefIDs flatMap { id => idToStmt(id) match {
+    val allZoneOutputTypes = validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.outputTypes.toSeq
       case _ => Seq()
     }}
@@ -281,7 +282,7 @@ class StatementGraph extends Graph {
   }
 
   def getExternalZoneInputs(): Seq[String] = {
-    val allZoneInputs = (nodeRefIDs flatMap { id => idToStmt(id) match {
+    val allZoneInputs = (validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.inputs
       case _ => Seq()
     }}).toSet
@@ -290,7 +291,7 @@ class StatementGraph extends Graph {
   }
 
   def getZoneInputMap(): Map[String,Seq[String]] = {
-    val allZoneInputs = nodeRefIDs flatMap { id => idToStmt(id) match {
+    val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.inputs map { (_, idToName(id)) }
       case _ => Seq()
     }}
@@ -298,7 +299,7 @@ class StatementGraph extends Graph {
   }
 
   def getZoneNames(): Seq[String] = {
-    nodeRefIDs flatMap { id => idToStmt(id) match {
+    validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => Seq(az.name)
       case _ => Seq()
     }}

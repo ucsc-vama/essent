@@ -248,8 +248,12 @@ class Graph {
     // seed new layer
     val visited = nodeRefIDs filter { priorMFFC(_) != -1 }
     val fringe = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
-    val sinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
-    val newMFFCseeds = fringe.distinct ++ sinks
+    val unvisitedSinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
+    val newMFFCseeds = if (visited.isEmpty) {
+      // mark invalid nodes
+      nodeRefIDs filterNot validNodes foreach { priorMFFC(_) = -3 }
+      unvisitedSinks
+    } else fringe.distinct
     // FUTURE: exclude source nodes?
     if (newMFFCseeds.isEmpty) {
       // print MFFC stats
@@ -272,16 +276,11 @@ class Graph {
   def maximizeFFCs(fringe: Seq[Int], mffc: ArrayBuffer[Int]): ArrayBuffer[Int] = {
     val fringeAncestors = fringe flatMap inNeigh filter { mffc(_) == -1 }
     val newMembers = fringeAncestors.distinct flatMap { id => {
-      if (validNodes(id)) {
-        val childMFFCs = (outNeigh(id) map mffc).distinct
-        if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
-          mffc(id) = childMFFCs.head
-          Seq(id)
-        } else Seq()
-      } else {
-        mffc(id) = -3
-        Seq()
-      }
+      val childMFFCs = (outNeigh(id) map mffc).distinct
+      if ((childMFFCs.size == 1) && (childMFFCs.head != -1)) {
+        mffc(id) = childMFFCs.head
+        Seq(id)
+      } else Seq()
     }}
     if (newMembers.isEmpty) mffc
     else maximizeFFCs(newMembers, mffc)
@@ -441,6 +440,8 @@ class Graph {
       inNeigh(deleteID).clear()
       outNeigh(deleteID).clear()
     }}
+    if (idsToMerge.exists(validNodes.contains(_)))
+      validNodes += mergedID
     validNodes --= idsToRemove
   }
 
