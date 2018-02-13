@@ -473,9 +473,9 @@ class EmitCpp(writer: Writer) {
       keepAvail: Seq[String],
       regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
-    val mergedRegs = sg.mergeRegsSafe(regsToConsider)
+    // val mergedRegs = sg.mergeRegsSafe(regsToConsider)
     sg.coarsenIntoZones(keepAvail)
-    // val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
+    val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
     val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
