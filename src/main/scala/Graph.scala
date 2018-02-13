@@ -247,26 +247,20 @@ class Graph {
   def findMFFCs(priorMFFC: ArrayBuffer[Int] = ArrayBuffer.fill(numNodeRefs)(-1)): ArrayBuffer[Int] = {
     // seed new layer
     val visited = nodeRefIDs filter { priorMFFC(_) != -1 }
+    if (visited.isEmpty)
+      nodeRefIDs filterNot validNodes foreach { priorMFFC(_) = -3 }
     val fringe = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
     val unvisitedSinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
-    val newMFFCseeds = if (visited.isEmpty) {
-      // mark invalid nodes
-      nodeRefIDs filterNot validNodes foreach { priorMFFC(_) = -3 }
-      unvisitedSinks
-    } else fringe.distinct
-    // FUTURE: exclude source nodes?
+    val newMFFCseeds = if (visited.isEmpty) unvisitedSinks else fringe.distinct
     if (newMFFCseeds.isEmpty) {
-      // print MFFC stats
       val skipUnreached = priorMFFC filter { _ != -1 }
       val mffcGrouped = skipUnreached groupBy { identity }
       println(s"# nodes reached: ${skipUnreached.size}")
       println(s"# MFFC's: ${mffcGrouped.size}")
       val biggestSize = mffcGrouped.map{ _._2.size }.max
       println(s"biggest MFFC: $biggestSize")
-      // return result
       priorMFFC
-    }
-    else {
+    } else {
       newMFFCseeds foreach { id => priorMFFC(id) = id }
       val mffc = maximizeFFCs(newMFFCseeds, priorMFFC)
       findMFFCs(mffc)
