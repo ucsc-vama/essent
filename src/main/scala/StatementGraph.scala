@@ -33,46 +33,29 @@ class StatementGraph extends Graph {
     }}
   }
 
-  def stmtsOrdered(): Seq[Statement] = {
-    // topologicalSort filter { idToStmt(_) != EmptyStmt } map idToStmt
-    topologicalSort filter validNodes map idToStmt
+  def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
+
+  def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
+
+  def grabStmts(id: Int) = {
+    val stmtsPossiblyWithEmpty = idToStmt(id) match {
+      case b: Block => b.stmts
+      case az: ActivityZone => az.memberStmts
+      case s => Seq(s)
+    }
+    stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
   }
 
-  def updateMergedRegWrites(mergedRegs: Seq[String]) {
-    mergedRegs foreach { regName => {
-      val regWriteName = regName + "$next"
-      val regWriteID = nameToID(regWriteName)
-      val newName = s"if (update_registers) $regName"
-      idToStmt(regWriteID) = replaceNamesStmt(Map(regWriteName -> newName))(idToStmt(regWriteID))
-    }}
-  }
+  def stmtsOrdered(): Seq[Statement] = topologicalSort filter validNodes map idToStmt
 
+
+  // Mux shadowing
+  //----------------------------------------------------------------------------
   def findMuxIDs(): Seq[Int] = idToStmt.zipWithIndex flatMap {
     case (stmt, id) => { stmt match {
       case DefNode(_, _, Mux(_, _, _, _)) => Seq(id)
       case Connect(_, _, Mux(_, _, _, _)) => Seq(id)
       case _ => Seq()
-    }}
-  }
-
-  // assumes merged ID/name will be ids.head
-  // assumes caller will set new idToStmt
-  def mergeStmtsMutably(ids: Seq[Int]) {
-    val mergedID = ids.head
-    val idsToRemove = ids.tail
-    idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
-    val namesToMerge = (Seq(mergedID) ++ idsToRemove) map idToName
-    mergeNodesMutably(namesToMerge)
-  }
-
-  def mergeNodesSafe(mergeReqs: Seq[Seq[Int]]) {
-    mergeReqs foreach { mergeReq => {
-      if (mergeReq.size < 2) println("tiny merge req!")
-      val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
-      if (zonesStillExist && safeToMergeArb(mergeReq)) {
-        idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
-        mergeStmtsMutably(mergeReq)
-      }
     }}
   }
 
@@ -107,6 +90,33 @@ class StatementGraph extends Graph {
     }}
   }
 
+
+  // Topology mutations
+  //----------------------------------------------------------------------------
+  // assumes merged ID/name will be ids.head
+  // assumes caller will set new idToStmt
+  def mergeStmtsMutably(ids: Seq[Int]) {
+    val mergedID = ids.head
+    val idsToRemove = ids.tail
+    idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+    val namesToMerge = (Seq(mergedID) ++ idsToRemove) map idToName
+    mergeNodesMutably(namesToMerge)
+  }
+
+  def mergeNodesSafe(mergeReqs: Seq[Seq[Int]]) {
+    mergeReqs foreach { mergeReq => {
+      if (mergeReq.size < 2) println("tiny merge req!")
+      val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
+      if (zonesStillExist && safeToMergeArb(mergeReq)) {
+        idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
+        mergeStmtsMutably(mergeReq)
+      }
+    }}
+  }
+
+
+  // Zoning
+  //----------------------------------------------------------------------------
   def coarsenToMFFCs() {
     val idToMFFC = findMFFCs()
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
@@ -167,20 +177,7 @@ class StatementGraph extends Graph {
     }
   }
 
-  def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
-
-  def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
-
-  def grabStmts(id: Int) = {
-    val stmtsPossiblyWithEmpty = idToStmt(id) match {
-      case b: Block => b.stmts
-      case az: ActivityZone => az.memberStmts
-      case s => Seq(s)
-    }
-    stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
-  }
-
-  // like mergeSmallZones2
+  // merges small zones based on fraction of shared inputs
   def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
     val smallZoneIDs = nodeRefIDs filter { id => {
       val idSize = nodeSize(id)
@@ -273,6 +270,9 @@ class StatementGraph extends Graph {
     analyzeZoningQuality()
   }
 
+
+  // Zone info
+  //----------------------------------------------------------------------------
   def getZoneOutputTypes(): Seq[(String,Type)] = {
     val allZoneOutputTypes = validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.outputTypes.toSeq
@@ -305,6 +305,37 @@ class StatementGraph extends Graph {
     }}
   }
 
+  def analyzeZoningQuality() {
+    val numZones = getZoneNames().size
+    println(s"Zones: $numZones")
+    val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => Some(az.memberStmts.size)
+      case _ => None
+    }}).sum
+    // NOTE: Compiler withholds some statements from zoning process
+    val numStmtsTotal = (nodeRefIDs map nodeSize).sum
+    val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
+    println(f"Nodes in zones: $numStmtsInZones ($percNodesInZones%2.1f%%)")
+    val numEdgesOrig = (nodeRefIDs flatMap {
+      id => grabStmts(id) flatMap {
+        stmt => findDependencesStmt(stmt) map { _.deps.size }
+      }
+    }).sum
+    val allOutputMaps = nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => az.outputConsumers.toSeq
+      case _ => None
+    }}
+    val numOutputsUnique = allOutputMaps.size
+    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
+    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
+    println(f"Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%)")
+    println(f"Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f")
+    println(f"Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f")
+  }
+
+
+  // Register merging
+  //----------------------------------------------------------------------------
   def mergeRegUpdatesIntoZones(regsToConsider: Seq[String]): Seq[String] = {
     // FUTURE: consider converting to ids internally to speed up
     val inputNameToConsumers = getZoneInputMap()
@@ -334,32 +365,13 @@ class StatementGraph extends Graph {
     mergedRegs
   }
 
-  def analyzeZoningQuality() {
-    val numZones = getZoneNames().size
-    println(s"Zones: $numZones")
-    val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Some(az.memberStmts.size)
-      case _ => None
-    }}).sum
-    // NOTE: Compiler withholds some statements from zoning process
-    val numStmtsTotal = (nodeRefIDs map nodeSize).sum
-    val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
-    println(f"Nodes in zones: $numStmtsInZones ($percNodesInZones%2.1f%%)")
-    val numEdgesOrig = (nodeRefIDs flatMap {
-      id => grabStmts(id) flatMap {
-        stmt => findDependencesStmt(stmt) map { _.deps.size }
-      }
-    }).sum
-    val allOutputMaps = nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.outputConsumers.toSeq
-      case _ => None
+  def updateMergedRegWrites(mergedRegs: Seq[String]) {
+    mergedRegs foreach { regName => {
+      val regWriteName = regName + "$next"
+      val regWriteID = nameToID(regWriteName)
+      val newName = s"if (update_registers) $regName"
+      idToStmt(regWriteID) = replaceNamesStmt(Map(regWriteName -> newName))(idToStmt(regWriteID))
     }}
-    val numOutputsUnique = allOutputMaps.size
-    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
-    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
-    println(f"Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%)")
-    println(f"Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f")
-    println(f"Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f")
   }
 }
 
