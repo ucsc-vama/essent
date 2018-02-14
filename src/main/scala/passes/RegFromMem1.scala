@@ -64,7 +64,7 @@ object RegFromMem1 extends Pass {
   // insert reg write muxes
   def generateRegUpdates(memsToReplace: Seq[DefMemory], body: Statement): Seq[Statement] = {
     val memConnects = grabMemConnects(body).toMap
-    val memsWithWrites = memsToReplace filter { !_.writers.isEmpty }
+    val memsWithWrites = memsToReplace filter { _.writers.nonEmpty }
     memsWithWrites flatMap { mem => mem.writers map { writePortName => {
       // FUTURE: is this correct gender
       val selfRef = WRef(mem.name, mem.dataType, firrtl.RegKind, firrtl.BIGENDER)

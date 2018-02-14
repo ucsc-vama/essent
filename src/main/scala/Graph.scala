@@ -208,7 +208,7 @@ class Graph {
         q ++= inNeigh(id)
       }
     }
-    while (!q.isEmpty) {
+    while (q.nonEmpty) {
       val currId = q.dequeue
       if (!dontPass(currId) && !marked(currId)) {
         if (outNeigh(currId) forall ( consumer => marked(consumer) )) {
@@ -730,7 +730,7 @@ class Graph {
 
   // Returns successfully merged regs
   def mergeRegsSafe(regNames: Seq[String]): Seq[String] = {
-    if (!regNames.isEmpty) {
+    if (regNames.nonEmpty) {
       val mergeableRegs = findMergeableRegs(regNames)
       val mergedRegs = mergeableRegs flatMap { regNameToMerge => {
         val regIDToMerge = nameToID(regNameToMerge)
@@ -790,7 +790,7 @@ class Graph {
     }
     val lastReachedStateElems = lastReached filter { stateLoopbacks.contains(_) }
     val startingFrontier = (lastReachedStateElems map stateLoopbacks).toSet
-    if (!startingFrontier.isEmpty) {
+    if (startingFrontier.nonEmpty) {
       println(s"starting depth ${lastDepth+1} with ${startingFrontier.size}")
       startingFrontier foreach { id => regDepths(id) = lastDepth+1 }
       reachAll(startingFrontier, lastDepth+1, regDepths)
@@ -799,7 +799,7 @@ class Graph {
   }
 
   def reachAll(frontier: Set[Int], depth: Int, regDepths: ArrayBuffer[Int]) {
-    if (!frontier.isEmpty) {
+    if (frontier.nonEmpty) {
       val nextFrontier = frontier flatMap { id => outNeigh(id) flatMap { neigh =>
         if (regDepths(neigh) == -1) {
           regDepths(neigh) = depth

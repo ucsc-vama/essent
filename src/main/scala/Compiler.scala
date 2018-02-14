@@ -172,7 +172,7 @@ class EmitCpp(writer: Writer) {
   // Emitter that shadows muxes in addition to single-phase reg updates
   def writeBodyMuxOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
       doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
-    if (!bodyEdges.isEmpty) {
+    if (bodyEdges.nonEmpty) {
       // name to mux expression
       val muxMap = findMuxExpr(bodyEdges).toMap
       val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
@@ -181,7 +181,7 @@ class EmitCpp(writer: Writer) {
       val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
       // only shadow mux if stuff on at least one side
       val shadowedMuxes = (muxMap.keys filter {
-        muxName => !(trueShadows(muxName).isEmpty && falseShadows(muxName).isEmpty)
+        muxName => trueShadows(muxName).nonEmpty || falseShadows(muxName).nonEmpty
       }).toSet
       // set of signals in shadows
       val shadowedSigs = (shadows flatMap { case (muxName, tShadow, fShadow) => {
@@ -241,7 +241,7 @@ class EmitCpp(writer: Writer) {
 
   def writeBodyMuxOptSG(indentLevel: Int, bodies: Seq[Statement], doNotShadow: Seq[String],
       doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
-    if (!bodies.isEmpty) {
+    if (bodies.nonEmpty) {
       val sg = StatementGraph(bodies)
       sg.coarsenMuxShadows(doNotShadow)
       val mergedRegs = sg.mergeRegsSafe(regsToConsider)
@@ -784,9 +784,9 @@ class EmitCpp(writer: Writer) {
                        writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames, keepAvail, safeRegs)
                        // writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
                        //    allMemUpdates, extIOs.toMap, safeRegs)
-    if (!prints.isEmpty || !stops.isEmpty) {
+    if (prints.nonEmpty || stops.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
-      if (!prints.isEmpty) {
+      if (prints.nonEmpty) {
         writeLines(2, "if(verbose) {")
         writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
         writeLines(2, "}")
@@ -794,7 +794,7 @@ class EmitCpp(writer: Writer) {
       writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
       writeLines(1, "}")
     }
-    if (!allRegDefs.isEmpty || !allMemUpdates.isEmpty) {
+    if (allRegDefs.nonEmpty || allMemUpdates.nonEmpty) {
       writeLines(1, "if (update_registers) {")
       writeLines(2, allMemUpdates map emitMemUpdate)
       // writeLines(2, allRegDefs map emitRegUpdate)

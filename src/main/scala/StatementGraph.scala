@@ -94,7 +94,7 @@ class StatementGraph extends Graph {
     val topLevelMuxes = muxIDSet -- nestedMuxes
     val muxesWorthShadowing = topLevelMuxes filter { muxID => {
       val (tShadow, fShadow) = muxIDToShadows(muxID)
-      !(tShadow.isEmpty && fShadow.isEmpty)
+      tShadow.nonEmpty || fShadow.nonEmpty
     }}
     muxesWorthShadowing foreach { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
@@ -135,7 +135,7 @@ class StatementGraph extends Graph {
     val singleInputIDs = nodeRefIDs filter { id => (inNeigh(id) - sourceZoneID).size == 1}
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(grabFirstParent(id)) }
-    if (!baseSingleInputIDs.isEmpty) {
+    if (baseSingleInputIDs.nonEmpty) {
       println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
       baseSingleInputIDs foreach { childID => {
         val parentID = grabFirstParent(childID)
@@ -160,7 +160,7 @@ class StatementGraph extends Graph {
       if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) Seq(siblingIDs)
       else Seq()
     }}
-    if (!mergesToConsider.isEmpty) {
+    if (mergesToConsider.nonEmpty) {
       println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
       mergeNodesSafe(mergesToConsider)
       mergeSmallSiblings(smallZoneCutoff)
@@ -204,7 +204,7 @@ class StatementGraph extends Graph {
     }}
     println(s"Small zones: ${smallZoneIDs.size}")
     println(s"Worthwhile merges: ${mergesToConsider.size}")
-    if (!mergesToConsider.isEmpty) {
+    if (mergesToConsider.nonEmpty) {
       mergeNodesSafe(mergesToConsider)
       mergeSmallZones(smallZoneCutoff, mergeThreshold)
     }
