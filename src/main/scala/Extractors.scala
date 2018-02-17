@@ -30,7 +30,7 @@ object Extract {
   def findNodes(s: Statement) = findInstancesOf[DefNode](s)
 
   def findPortNames(dm: DefModule): Seq[String] = dm match {
-    case m: Module => m.ports.map{_.name}.filter{s => s != "clock" && s != "reset"}
+    case m: Module => m.ports.map{_.name}.filter{s => s != "clock"}
     case em: ExtModule => Seq()
   }
 

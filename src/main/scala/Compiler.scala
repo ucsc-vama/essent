@@ -466,7 +466,6 @@ class EmitCpp(writer: Writer) {
   def writeBodyZoneOptSG(
       bodies: Seq[Statement],
       topName: String,
-      resetTree: Seq[String],
       memUpdates: Seq[MemUpdate],
       extIOtypes: Map[String, Type],
       regNames: Seq[String],
@@ -504,7 +503,6 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "sim_cached = false;")
     writeLines(2, "regs_set = false;")
     writeLines(1, "}")
-    writeLines(1, resetTree)
     writeLines(1, "if (!sim_cached) {")
     writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
     writeLines(1, "}")
@@ -755,7 +753,6 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
-    val resetTree = buildResetTree(allInstances, circuit)
     val allMemUpdates = generateMemUpdates(allBodies)
     val allRegDefs = allBodies flatMap findRegisters
     val allDeps = allBodies flatMap findDependencesStmt
@@ -767,10 +764,8 @@ class EmitCpp(writer: Writer) {
     val safeRegs = regNames diff unsafeRegs
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
-    if (simpleOnly) {
+    if (simpleOnly)
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-      writeLines(1, resetTree)
-    }
     // writeBodyUnopt(1, otherDeps, regNames)
     // writeBodyUnoptSG(1, allBodies)
     val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
@@ -781,7 +776,7 @@ class EmitCpp(writer: Writer) {
                        // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
                        writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
                      else
-                       writeBodyZoneOptSG(allBodies, topName, resetTree, allMemUpdates, extIOs.toMap, regNames, keepAvail, safeRegs)
+                       writeBodyZoneOptSG(allBodies, topName, allMemUpdates, extIOs.toMap, regNames, keepAvail, safeRegs)
                        // writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
                        //    allMemUpdates, extIOs.toMap, safeRegs)
     if (prints.nonEmpty || stops.nonEmpty) {
