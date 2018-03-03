@@ -5,6 +5,22 @@ import firrtl.ir._
 
 // ESSENT's additions to the IR for optimization
 
+case class MemWrite(memName: String,
+                    portName: String,
+                    wrEn: Expression,
+                    wrMask: Expression,
+                    wrAddr: Expression,
+                    wrData: Expression) extends Statement {
+  // FUTURE: fix serialize
+  def serialize: String =  "mem write"
+  def mapStmt(f: Statement => Statement): Statement = this
+  def mapExpr(f: Expression => Expression): Statement = {
+    MemWrite(memName, portName, f(wrEn), f(wrMask), f(wrAddr), f(wrData))
+  }
+  def mapType(f: Type => Type): Statement = this
+  def mapString(f: String => String): Statement = this
+}
+
 case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow: Seq[Statement]) extends Statement {
   def serialize: String =  "shadow mux"
   // FUTURE probably shouldn't have all maps be identity

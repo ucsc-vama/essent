@@ -466,7 +466,7 @@ class EmitCpp(writer: Writer) {
   def writeBodyZoneOptSG(
       bodies: Seq[Statement],
       topName: String,
-      memUpdates: Seq[MemUpdate],
+      memWrites: Seq[MemWrite],
       extIOtypes: Map[String, Type],
       regNames: Seq[String],
       keepAvail: Seq[String],
@@ -483,7 +483,7 @@ class EmitCpp(writer: Writer) {
     println(s"Output nodes: ${outputPairs.size}")
     val doNotDec = ((outputPairs map { _._1 }) ++ regNames).toSet
     val otherInputs = sg.getExternalZoneInputs() diff regNames
-    val memNames = (memUpdates map { _.memName }).toSet
+    val memNames = (memWrites map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
     val nonMemCacheTypes = nonMemInputs.toSeq map {
       name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
@@ -554,8 +554,8 @@ class EmitCpp(writer: Writer) {
     }}
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups
-    val memEnablesAndMasks = (memUpdates map {
-      mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
+    val memEnablesAndMasks = (memWrites map {
+      mw => (mw.memName, Seq(emitExpr(mw.wrEn), emitExpr(mw.wrMask)))
     }).toMap
     val memWriteTriggerZones = memInputs.toSeq flatMap { flagName => {
       val condition = memEnablesAndMasks(flagName).mkString(" && ")
@@ -753,12 +753,12 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
-    val allMemUpdates = generateMemUpdates(allBodies)
+    val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
     val allRegDefs = allBodies flatMap findRegisters
-    val allDeps = allBodies flatMap findDependencesStmt
+    val allDeps = noMemWrites flatMap findDependencesStmt
     val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs map { _.name }
-    val memDeps = allMemUpdates flatMap findDependencesMemWrite
+    val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
     val unsafeRegs = regNames.intersect(memDeps ++ pAndSDeps)
     val safeRegs = regNames diff unsafeRegs
@@ -776,7 +776,7 @@ class EmitCpp(writer: Writer) {
                        // writeBodyMuxOpt(1, otherDeps, doNotShadow, regNames.toSet, safeRegs)
                        writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
                      else
-                       writeBodyZoneOptSG(allBodies, topName, allMemUpdates, extIOs.toMap, regNames, keepAvail, safeRegs)
+                       writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, safeRegs)
                        // writeBodyZoneOpt(otherDeps, regNames, resetTree, topName, doNotShadow,
                        //    allMemUpdates, extIOs.toMap, safeRegs)
     if (prints.nonEmpty || stops.nonEmpty) {
@@ -789,9 +789,9 @@ class EmitCpp(writer: Writer) {
       writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
       writeLines(1, "}")
     }
-    if (allRegDefs.nonEmpty || allMemUpdates.nonEmpty) {
+    if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
       writeLines(1, "if (update_registers) {")
-      writeLines(2, allMemUpdates map emitMemUpdate)
+      writeLines(2, allMemWrites flatMap emitStmt(Set()))
       // writeLines(2, allRegDefs map emitRegUpdate)
       writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
@@ -859,6 +859,7 @@ class FinalCleanups extends SeqTransform {
     essent.passes.NoResetsOrClockConnects,
     essent.passes.RegFromMem1,
     essent.passes.FactorMemReads,
+    essent.passes.FactorMemWrites,
     essent.passes.SplitRegUpdates)
     // passes.VerilogRename,
     // passes.VerilogPrep)

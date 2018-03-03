@@ -56,6 +56,15 @@ object Extract {
   def findModule(name: String, circuit: Circuit) =
     circuit.modules.find(_.name == name).get
 
+  def partitionByType[T <: Statement](stmts: Seq[Statement])(implicit tag: ClassTag[T]): (Seq[T], Seq[Statement]) = {
+    def filterOutType(s: Statement): Seq[Statement] = s match {
+      case t: T => Seq[Statement]()
+      case b: Block => b.stmts flatMap filterOutType
+      case _ => Seq(s)
+    }
+    (stmts flatMap findInstancesOf[T], stmts flatMap filterOutType)
+  }
+
   def grabMux(stmt: Statement) = stmt match {
     case DefNode(_, _, m: Mux) => m
     case Connect(_, _, m: Mux) => m
@@ -109,13 +118,12 @@ object Extract {
   def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
-    case c: Connect => {
-      val name = emitExpr(c.loc)
-      val deps = findDependencesExpr(c.expr)
-      firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq()
-        case _ => Seq(HyperedgeDep(name, deps, s))
-      }
+    case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
+    // TODO: handle multiple write ports to same mem
+    case mw: MemWrite => {
+      // TODO: how do you make it depend on read ports?
+      val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
+      Seq(HyperedgeDep(s"${mw.memName}.${mw.portName}", deps, s))
     }
     case p: Print =>
       Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++

@@ -32,6 +32,7 @@ object Emitter {
       case n: DefNode => n.copy(name = prefix + n.name)
       case r: DefRegister => r.copy(name = prefix + r.name)
       case m: DefMemory => m.copy(name = prefix + m.name)
+      case mw: MemWrite => mw.copy(memName = prefix + mw.memName)
       case _ => s
     }
     replaced map addPrefixToNameStmt(prefix) map addPrefixToNameExpr(prefix)
@@ -59,6 +60,10 @@ object Emitter {
       case ms: MuxShadowed => {
         if (renames.contains(ms.name)) ms.copy(name = renames(ms.name))
         else ms
+      }
+      case mw: MemWrite => {
+        if (renames.contains(mw.memName)) mw.copy(memName = renames(mw.memName))
+        else mw
       }
       case _ => s
     }
@@ -292,6 +297,9 @@ object Emitter {
       Seq(s"if (${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => Seq(s"if (${emitExpr(st.en)}) exit(${st.ret});")
+    case mw: MemWrite => {
+      Seq(s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
+    }
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
