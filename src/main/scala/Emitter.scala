@@ -15,9 +15,6 @@ import scala.util.Random
 object Emitter {
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
-  case class MemUpdate(memName: String, wrEnName: String, wrMaskName: String,
-                       wrAddrName: String, wrDataName: String)
-
   // Declaration Methods
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
@@ -322,28 +319,5 @@ object Emitter {
       (s, if (s.contains(".")) s.replace('.','$') else s)
     }).toMap
     replaceNamesStmt(renames)(body)
-  }
-
-  def generateMemUpdates(bodies: Seq[Statement]): Seq[MemUpdate] = {
-    bodies flatMap { body =>
-      val memories = findMemory(body)
-      memories foreach {m =>
-        if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
-      val memConnects = grabMemInfo(body).toMap
-      val memWriteCommands = memories flatMap {m: DefMemory => {
-        m.writers map { writePortName:String => {
-          val wrEnName = memConnects(s"${m.name}.$writePortName.en")
-          val wrAddrName = memConnects(s"${m.name}.$writePortName.addr")
-          val wrDataName = memConnects(s"${m.name}.$writePortName.data")
-          val wrMaskName = memConnects(s"${m.name}.$writePortName.mask")
-          MemUpdate(m.name, wrEnName, wrMaskName, wrAddrName, wrDataName)
-        }}
-      }}
-      memWriteCommands
-    }
-  }
-
-  def emitMemUpdate(mu: MemUpdate) = {
-    s"if (${mu.wrEnName} && ${mu.wrMaskName}) ${mu.memName}[${mu.wrAddrName}.as_single_word()] = ${mu.wrDataName};"
   }
 }

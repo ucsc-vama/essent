@@ -27,13 +27,6 @@ class EmitCpp(writer: Writer) {
     g
   }
 
-  def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
-    // FUTURE: does not handle multiple write ports to same mem
-    memUpdates foreach {
-      mu => g.addNodeWithDeps(mu.memName + "$next", findDependencesMemWrite(mu))
-    }
-  }
-
 
   // Writing methods
   def writeLines(indentLevel: Int, lines: String) {
@@ -304,7 +297,7 @@ class EmitCpp(writer: Writer) {
 
   def checkZoningSanity(
       sg: StatementGraph,
-      memUpdates: Seq[MemUpdate],
+      memWrites: Seq[MemWrite],
       extIOtypes: Map[String, Type],
       regNames: Seq[String],
       keepAvail: Seq[String]): Boolean = {
@@ -316,7 +309,7 @@ class EmitCpp(writer: Writer) {
     val outputConsumers = sg.getZoneInputMap()
     val doNotDec = (outputPairs map { _._1 }).toSet
     val otherInputs = sg.getExternalZoneInputs() diff regNames
-    val memNames = (memUpdates map { _.memName }).toSet
+    val memNames = (memWrites map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
     val nonMemTriggers = nonMemInputs flatMap { sigName => {
       outputConsumers(sigName) flatMap { zoneName => Seq((sigName, zoneName) -> "PRE-nonMem") }
@@ -366,7 +359,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
-                             regNames: Seq[String], memUpdates: Seq[MemUpdate]) {
+                             regNames: Seq[String], memWrites: Seq[MemWrite]) {
     val regNamesSet = regNames.toSet
     val regNameZoneNamePairs = zoneMap.toSeq flatMap {
       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
@@ -385,8 +378,8 @@ class EmitCpp(writer: Writer) {
         members map { (_, zoneName) }
       }
     }).toMap
-    val numProducingZones = memUpdates map { mu => {
-      val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
+    val numProducingZones = memWrites map { mw => {
+      val deps = findDependencesStmt(mw).head.deps
       val depsFromZones = deps filter {sigNameZoneMap.contains(_) }
       val numProducingZones = (depsFromZones map sigNameZoneMap).distinct.size
       numProducingZones
@@ -542,7 +535,6 @@ class EmitCpp(writer: Writer) {
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
-    // writeLines(0, "#include <gmpxx.h>")
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)

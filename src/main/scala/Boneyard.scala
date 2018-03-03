@@ -996,6 +996,43 @@
 //   mergedRegs
 // }
 
+// case class MemUpdate(memName: String, wrEnName: String, wrMaskName: String,
+//                      wrAddrName: String, wrDataName: String)
+
+// def addMemDepsToGraph(g: Graph, memUpdates: Seq[MemUpdate]) {
+//   // FUTURE: does not handle multiple write ports to same mem
+//   memUpdates foreach {
+//     mu => g.addNodeWithDeps(mu.memName + "$next", findDependencesMemWrite(mu))
+//   }
+// }
+
+// def generateMemUpdates(bodies: Seq[Statement]): Seq[MemUpdate] = {
+//   bodies flatMap { body =>
+//     val memories = findMemory(body)
+//     memories foreach {m =>
+//       if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
+//     val memConnects = grabMemInfo(body).toMap
+//     val memWriteCommands = memories flatMap {m: DefMemory => {
+//       m.writers map { writePortName:String => {
+//         val wrEnName = memConnects(s"${m.name}.$writePortName.en")
+//         val wrAddrName = memConnects(s"${m.name}.$writePortName.addr")
+//         val wrDataName = memConnects(s"${m.name}.$writePortName.data")
+//         val wrMaskName = memConnects(s"${m.name}.$writePortName.mask")
+//         MemUpdate(m.name, wrEnName, wrMaskName, wrAddrName, wrDataName)
+//       }}
+//     }}
+//     memWriteCommands
+//   }
+// }
+
+// def emitMemUpdate(mu: MemUpdate) = {
+//   s"if (${mu.wrEnName} && ${mu.wrMaskName}) ${mu.memName}[${mu.wrAddrName}.as_single_word()] = ${mu.wrDataName};"
+// }
+
+// def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {
+//   val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
+//   (deps filter { name => !name.startsWith("UInt<1>(0x") }).distinct
+// }
 
 
 

@@ -137,11 +137,6 @@ object Extract {
     case _ => throw new Exception(s"unexpected statement type! $s")
   }
 
-  def findDependencesMemWrite(mu: MemUpdate): Seq[String] = {
-    val deps = Seq(mu.wrEnName, mu.wrMaskName, mu.wrAddrName, mu.wrDataName)
-    (deps filter { name => !name.startsWith("UInt<1>(0x") }).distinct
-  }
-
   def flattenStmts(s: Statement): Seq[Statement] = s match {
     case b: Block => b.stmts flatMap flattenStmts
     case az: ActivityZone => az.memberStmts flatMap flattenStmts
