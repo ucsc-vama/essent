@@ -739,6 +739,263 @@
 //   Seq()
 // }
 
+// Emitter that performs single-phase reg updates (merges) when possible, and returns merged regs
+// def writeBodyRegTailOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]): Seq[String] = {
+//   val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+//   val g = buildGraph(bodyEdges)
+//   val mergedRegs = g.mergeRegsSafe(regNames)
+//   val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
+//   g.reorderNames foreach { name => {
+//     if (mergedRegWrites.contains(name)) {
+//       val emitted = emitStmt(Set())(nameToStmt(name)).head
+//       val replaced = emitted.replaceAllLiterally("$next", "")
+//       writeLines(indentLevel, "if (update_registers) " + replaced)
+//     } else {
+//       writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
+//     }
+//   }}
+//   mergedRegs
+// }
+
+// Emitter that shadows muxes in addition to single-phase reg updates
+// def writeBodyMuxOpt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], doNotShadow: Seq[String],
+//     doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
+//   if (bodyEdges.nonEmpty) {
+//     // name to mux expression
+//     val muxMap = findMuxExpr(bodyEdges).toMap
+//     val shadows = buildGraph(bodyEdges).findAllShadows(muxMap, doNotShadow)
+//     // map of muxName -> true shadows, map of muxName -> false shadows
+//     val trueShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, tShadow)}).toMap
+//     val falseShadows = (shadows map {case (muxName, tShadow, fShadow) => (muxName, fShadow)}).toMap
+//     // only shadow mux if stuff on at least one side
+//     val shadowedMuxes = (muxMap.keys filter {
+//       muxName => trueShadows(muxName).nonEmpty || falseShadows(muxName).nonEmpty
+//     }).toSet
+//     // set of signals in shadows
+//     val shadowedSigs = (shadows flatMap { case (muxName, tShadow, fShadow) => {
+//       if (shadowedMuxes.contains(muxName)) tShadow ++ fShadow
+//       else Seq()
+//     }}).toSet
+//     if (indentLevel == 1) println(s"Total shadow size: ${shadowedSigs.size}")
+//     // map of name -> original hyperedge
+//     val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+//     // top level edges (filter out shadows) & make muxes depend on shadow inputs
+//     val unshadowedHE = bodyEdges filter {he => !shadowedSigs.contains(he.name)}
+//     val topLevelHE = unshadowedHE map { he => {
+//       val deps = if (!shadowedMuxes.contains(he.name)) he.deps
+//                  else {
+//                    val shadowDeps = (trueShadows(he.name) ++ falseShadows(he.name)) flatMap { heMap(_).deps }
+//                    he.deps ++ shadowDeps
+//                  }
+//       // assuming can't depend on internal of other mux cluster, o/w wouldn't be shadow
+//       he.copy(deps = deps.distinct)
+//     }}
+//     // build graph on new hyperedges and run topo sort
+//     val g = buildGraph(topLevelHE)
+//     val mergedRegs = g.mergeRegsSafe(regsToConsider)
+//     val mergedRegWrites = (mergedRegs map { _ + "$next" }).toSet
+//     // Assuming if replacing, only one statement has name, otherwise extra if (upda..
+//     def mergeRegUpdateIfPossible(name: String, toEmit: String): String = {
+//       val removed = toEmit.replaceAllLiterally("$next", "")
+//       if (mergedRegWrites.contains(name)) "if (update_registers) " + removed
+//       else toEmit
+//     }
+//     g.reorderNames foreach { name => {
+//       val stmt = heMap(name).stmt
+//       if (shadowedMuxes.contains(name)) {
+//         def writeShadow(members: Seq[String], muxValExpr: Expression) {
+//           // NOTE: not calling writeBodyMuxOpt since regs can't be in shadows
+//           writeBodyMuxOpt(indentLevel + 1, members map heMap, doNotShadow, doNotDec)
+//           writeLines(indentLevel + 1, mergeRegUpdateIfPossible(name, s"$name = ${emitExpr(muxValExpr)};"))
+//         }
+//         val muxExpr = muxMap(name)
+//         // declare output type
+//         val resultTpe = findResultType(stmt)
+//         // FUTURE: don't require finding $next in name, change caller to adjust doNotDec
+//         if ((!name.endsWith("$next")) && (!doNotDec.contains(name)))
+//           writeLines(indentLevel, s"${genCppType(resultTpe)} $name;")
+//         writeLines(indentLevel, s"if (${emitExpr(muxExpr.cond)}) {")
+//         writeShadow(trueShadows(name), muxExpr.tval)
+//         writeLines(indentLevel, "} else {")
+//         writeShadow(falseShadows(name), muxExpr.fval)
+//         writeLines(indentLevel, "}")
+//       } else {
+//         writeLines(indentLevel, emitStmt(doNotDec)(stmt) map {mergeRegUpdateIfPossible(name, _)})
+//       }
+//     }}
+//     mergedRegs
+//   } else Seq()
+// }
+
+// Emitter that zones design in addition to shadowing muxes and merging reg updates
+// def writeBodyZoneOpt(bodyEdges: Seq[HyperedgeDep], regNames: Seq[String], resetTree: Seq[String],
+//                          topName: String, doNotShadow: Seq[String], memUpdates: Seq[MemUpdate],
+//                          extIOtypes: Map[String, Type], regsToConsider: Seq[String]): Seq[String] = {
+//   // map of name -> original hyperedge
+//   val heMap = (bodyEdges map { he => (he.name, he) }).toMap
+//   val regNamesSet = regNames.toSet
+//   // calculate zones based on all edges
+//   val g = buildGraph(bodyEdges)
+//   g.printTopologyStats
+//   val mergedRegs = g.mergeRegsSafe(regsToConsider)
+//   val zoneMapWithSources = g.findZonesMFFC(doNotShadow)
+//   val zoneMapCF = zoneMapWithSources filter { _._1 != "ZONE_SOURCE" }
+//   val gDF = buildGraph(bodyEdges)
+//   val zoneMapDF = gDF.remakeZoneMap(zoneMapCF, doNotShadow)
+//   gDF.analyzeZoningQuality(zoneMapDF)
+//   val inputsToZones = zoneMapDF.flatMap(_._2.inputs).toSet
+//   val nodesInZones = zoneMapDF.flatMap(_._2.members).toSet
+//   val nodesInZonesWithSources = zoneMapWithSources.flatMap(_._2.members).toSet
+//   val outputsFromZones = zoneMapDF.flatMap(_._2.outputs).toSet.diff(regNamesSet)
+//   val outputConsumers = outputConsumerZones(zoneMapDF)
+//   val inputRegs = (regNamesSet intersect inputsToZones).toSeq
+//   val mergedInRegs = (mergedRegs intersect inputRegs filter { outputConsumers.contains(_) })
+//   val regsUncheckedByZones = inputRegs diff mergedInRegs
+//   val shouldCheckInZone = (mergedInRegs map { _ + "$next"}).toSet
+//   val shouldSetInZone = (mergedRegs map { _ + "$next"}).toSet
+//
+//   // predeclare output nodes
+//   val outputTypes = outputsFromZones.toSeq map {name => findResultType(heMap(name).stmt)}
+//   val outputPairs = (outputTypes zip outputsFromZones).toSeq
+//   val preDecs = outputPairs map {case (tpe, name) => s"${genCppType(tpe)} $name;"}
+//   writeLines(0, preDecs)
+//   val doNotDec = outputsFromZones.toSet
+//   println(s"Output nodes: ${outputsFromZones.size}")
+//
+//   // set input flags to true for other inputs (resets, mems, or external IOs)
+//   // FUTURE: remove. should make change detection for these inputs so consuming
+//   //         zones have a chance to sleep
+//   val otherFlags = inputsToZones diff (regNamesSet ++ zoneMapWithSources.flatMap(_._2.outputs).toSet)
+//   val memNames = memUpdates map { _.memName }
+//   val memFlags = otherFlags intersect memNames.toSet
+//   val nonMemFlags = otherFlags diff memNames.toSet
+//   // FUTURE: fix, can't be hacking for reset, but reset isn't in signal map table
+//   val nonMemFlagTypes = nonMemFlags.toSeq map {
+//     name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
+//   }
+//   val nonMemPreDecs = (nonMemFlagTypes zip nonMemFlags.toSeq) map {
+//     case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+//   }
+//   writeLines(0, nonMemPreDecs)
+//
+//   // predeclare zone activity flags
+//   val zoneNames = zoneMapCF.keys.toSeq
+//   writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+//   println(s"Activity flags: ${zoneNames.size}")
+//
+//   writeLines(0, s"bool sim_cached = false;")
+//   writeLines(0, s"bool regs_set = false;")
+//
+//   // start emitting eval function
+//   writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+//   writeLines(1, "if (reset || !done_reset) {")
+//   writeLines(2, "sim_cached = false;")
+//   writeLines(2, "regs_set = false;")
+//   writeLines(1, "}")
+//   writeLines(1, resetTree)
+//
+//   writeLines(1, "if (!sim_cached) {")
+//   writeLines(2, zoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
+//   writeLines(1, "}")
+//   writeLines(1, "sim_cached = regs_set;")
+//
+//   // do activity detection on other inputs (external IOs and resets)
+//   val nonMemChangeDetects = nonMemFlags flatMap { sigName => {
+//     val oldVersion = s"${sigName.replace('.','$')}$$old"
+//     genDepZoneTriggers(outputConsumers(sigName), s"$sigName != $oldVersion")
+//   }}
+//   writeLines(1, nonMemChangeDetects.toSeq)
+//   // cache old versions
+//   val nonMemCaches = nonMemFlags map { sigName => {
+//     val oldVersion = s"${sigName.replace('.','$')}$$old"
+//     s"$oldVersion = $sigName;"
+//   }}
+//   writeLines(1, nonMemCaches.toSeq)
+//
+//   // compute zone order
+//   // map of name -> zone name (if in zone)
+//   val nameToZoneName = zoneMapCF flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       outputs map { portName => (portName, zoneName) }
+//   }}
+//   // list of super hyperedges for zones
+//   val zoneSuperEdges = zoneMapCF map {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       HyperedgeDep(zoneName, inputs, heMap(members.head).stmt)
+//   }}
+//   // list of non-zone hyperedges
+//   val nonZoneEdges = bodyEdges filter { he => !nodesInZonesWithSources.contains(he.name) }
+//   // list of hyperedges with zone members replaced with zone names
+//   val topLevelHE = zoneSuperEdges map { he:HyperedgeDep => {
+//     val depsRenamedForZones = (he.deps map {
+//       depName => nameToZoneName.getOrElse(depName, depName)
+//     }).distinct
+//     HyperedgeDep(he.name, depsRenamedForZones, he.stmt)
+//   }}
+//   // reordered names
+//   val gTopLevel = buildGraph(topLevelHE.toSeq)
+//   val zonesReordered = gTopLevel.reorderNames
+//
+//   // emit zone of sources
+//   if (zoneMapWithSources.contains("ZONE_SOURCE")) {
+//     val sourceZoneInfo = zoneMapWithSources("ZONE_SOURCE")
+//     val sourceZoneEdges = sourceZoneInfo.members map heMap
+//     // FUTURE: does this need to be made into tail?
+//     writeBodyMuxOpt(1, sourceZoneEdges, doNotShadow ++ doNotDec ++ sourceZoneInfo.outputs, doNotDec)
+//   }
+//
+//   // emit each zone
+//   zonesReordered map { zoneName => (zoneName, zoneMapDF(zoneName)) } foreach {
+//       case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//     writeLines(1, s"if (${genFlagName(zoneName)}) {")
+//     writeLines(2, s"${genFlagName(zoneName)} = false;")
+//     val outputsCleaned = (outputs.toSet intersect inputsToZones diff regNamesSet).toSeq
+//     val outputTypes = outputsCleaned map {name => findResultType(heMap(name).stmt)}
+//     val oldOutputs = outputsCleaned zip outputTypes map {case (name, tpe) => {
+//       s"${genCppType(tpe)} $name$$old = $name;"
+//     }}
+//     writeLines(2, oldOutputs)
+//     val zoneEdges = (members.toSet diff regNamesSet).toSeq map heMap
+//     // FUTURE: shouldn't this be made into tail?
+//     writeBodyMuxOpt(2, zoneEdges, doNotShadow ++ doNotDec, doNotDec)
+//     val regsInZone = members filter shouldCheckInZone map { _.replaceAllLiterally("$next","") }
+//     val regsTriggerZones = regsInZone flatMap {
+//       regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+//     }
+//     writeLines(2, regsTriggerZones)
+//     val outputTriggers = outputsCleaned flatMap {
+//       name => genDepZoneTriggers(outputConsumers(name), s"$name != $name$$old")
+//     }
+//     writeLines(2, outputTriggers)
+//     val regsToUpdate = members filter shouldSetInZone map { _.replaceAllLiterally("$next","") }
+//     writeLines(2, regsToUpdate map { regName => s"$regName = $regName$$next;" })
+//     writeLines(1, "}")
+//   }}
+//
+//   // emit rest of body (without redeclaring)
+//   // FUTURE: does this need to be made into tail?
+//   writeBodyMuxOpt(1, nonZoneEdges, doNotShadow, doNotDec)
+//
+//   // trigger zones based on mem writes
+//   // NOTE: if mem has multiple write ports, either can trigger wakeups
+//   val memEnablesAndMasks = (memUpdates map {
+//     mu => (mu.memName, Seq(mu.wrEnName, mu.wrMaskName))
+//   }).toMap
+//   val memWriteTriggerZones = memFlags.toSeq flatMap { flagName => {
+//     val condition = memEnablesAndMasks(flagName).mkString(" && ");
+//     genDepZoneTriggers(outputConsumers(flagName), condition)
+//   }}
+//   writeLines(1, memWriteTriggerZones)
+//
+//   val regsTriggerZones = regsUncheckedByZones.toSeq flatMap { regName => {
+//     if (outputConsumers.contains(regName))
+//       genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+//     else Seq()
+//   }}
+//   writeLines(1, regsTriggerZones)
+//   mergedRegs
+// }
+
 
 
 
