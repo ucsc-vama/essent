@@ -222,6 +222,8 @@ class EmitCpp(writer: Writer) {
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, "bool assert_triggered = false;")
+    writeLines(1, "int assert_exit_code;")
     writeLines(1, "if (reset || !done_reset) {")
     writeLines(2, "sim_cached = false;")
     writeLines(2, "regs_set = false;")
@@ -480,35 +482,40 @@ class EmitCpp(writer: Writer) {
     val regNames = allRegDefs map { _.name }
     val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
     val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
-    val (stopStmts, noStops) = partitionByType[Stop](noPrints)
-    val prints = printStmts flatMap findDependencesStmt
-    val stops = stopStmts flatMap findDependencesStmt
-    val otherDeps = noStops flatMap findDependencesStmt
+    val stopStmts = noPrints flatMap findInstancesOf[Stop]
+    val otherDeps = noPrints flatMap findDependencesStmt
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
-    val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
-    val unsafeDepSet = (memDeps ++ pAndSDeps).toSet
+    val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
+    val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
-    if (simpleOnly)
+    if (simpleOnly) {
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+      writeLines(1, "bool assert_triggered = false;")
+      writeLines(1, "int assert_exit_code;")
+    }
     // writeBodyUnopt(1, otherDeps, regNames)
     // writeBodyUnoptSG(1, allBodies)
-    val doNotShadow = (regNames ++ memDeps ++ pAndSDeps).distinct
-    val keepAvail = (memDeps ++ pAndSDeps).distinct
+    val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
+    val keepAvail = (memDeps ++ printDeps).distinct
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOptSG(1, allBodies, safeRegs)
                        writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
                      else
                        writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, safeRegs)
-    if (prints.nonEmpty || stops.nonEmpty) {
+    if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
-      if (prints.nonEmpty) {
+      if (printStmts.nonEmpty) {
         writeLines(2, "if(verbose) {")
-        writeLines(3, (prints map {dep => dep.stmt} flatMap emitStmt(Set())))
+        writeLines(3, printStmts flatMap emitStmt(Set()))
         writeLines(2, "}")
       }
-      writeLines(2, (stops map {dep => dep.stmt} flatMap emitStmt(Set())))
+      if (stopStmts.nonEmpty) {
+        writeLines(2, "if (assert_triggered) {")
+        writeLines(3, "exit(assert_exit_code);")
+        writeLines(2, "}")
+      }
       writeLines(1, "}")
     }
     if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {

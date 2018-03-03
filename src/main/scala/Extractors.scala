@@ -128,7 +128,12 @@ object Extract {
     case p: Print =>
       Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++
                                  (p.args flatMap findDependencesExpr), s))
-    case st: Stop => Seq(HyperedgeDep("stop", findDependencesExpr(st.en), st))
+    case st: Stop => {
+      val deps = findDependencesExpr(st.en)
+      val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
+      // FUTURE: more unique name (perhaps line number?)
+      Seq(HyperedgeDep(uniqueName, deps, st))
+    }
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
