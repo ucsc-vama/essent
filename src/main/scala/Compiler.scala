@@ -19,19 +19,6 @@ class EmitCpp(writer: Writer) {
   val tabs = "  "
 
   // Graph Building
-  def separatePrintsAndStops(deps: Seq[HyperedgeDep]) = {
-    val (printsAndStops, otherDeps) = deps.partition { dep => dep.stmt match {
-      case p: Print => true
-      case s: Stop => true
-      case _ => false
-    }}
-    val (prints, stops) = printsAndStops partition { dep => dep.stmt match {
-      case p: Print => true
-      case _ => false
-    }}
-    (otherDeps, prints, stops)
-  }
-
   def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
     val g = new Graph
     hyperEdges foreach { he:HyperedgeDep =>
@@ -496,15 +483,18 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
-    val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
     val allRegDefs = allBodies flatMap findRegisters
-    val allDeps = noMemWrites flatMap findDependencesStmt
-    val (otherDeps, prints, stops) = separatePrintsAndStops(allDeps)
     val regNames = allRegDefs map { _.name }
+    val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
+    val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
+    val (stopStmts, noStops) = partitionByType[Stop](noPrints)
+    val prints = printStmts flatMap findDependencesStmt
+    val stops = stopStmts flatMap findDependencesStmt
+    val otherDeps = noStops flatMap findDependencesStmt
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
     val pAndSDeps = (prints ++ stops) flatMap { he => he.deps }
-    val unsafeRegs = regNames.intersect(memDeps ++ pAndSDeps)
-    val safeRegs = regNames diff unsafeRegs
+    val unsafeDepSet = (memDeps ++ pAndSDeps).toSet
+    val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
     if (simpleOnly)
