@@ -215,6 +215,11 @@ class EmitCpp(writer: Writer) {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(0, nonMemCacheDecs)
+    sg.getSourceZone foreach { az => {
+      println(s"There are ${az.memberNames.size} nodes in the SOURCE_ZONE")
+      writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
+      // writeBodyUnoptSG(1, az.memberStmts, doNotDec ++ regNames)
+    }}
     val zoneNames = sg.getZoneNames()
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
@@ -249,11 +254,7 @@ class EmitCpp(writer: Writer) {
     // emit zones (and unzoned statements)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        if (az.name == "SOURCE_ZONE") {
-          println(s"There are ${az.memberNames.size} nodes in the SOURCE_ZONE")
-          writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
-          // writeBodyUnoptSG(1, az.memberStmts, doNotDec ++ regNames)
-        } else {
+        if (az.name != "SOURCE_ZONE") {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
           writeLines(2, s"${genFlagName(az.name)} = false;")
           val cacheOldOutputs = az.outputTypes.toSeq map {

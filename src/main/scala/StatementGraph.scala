@@ -305,6 +305,15 @@ class StatementGraph extends Graph {
     }}
   }
 
+  def getSourceZone(): Option[ActivityZone] = {
+    if (nameToID.contains("SOURCE_ZONE")) {
+      idToStmt(nameToID("SOURCE_ZONE")) match {
+        case az: ActivityZone => Some(az)
+        case _ => throw new Exception("Non-zone node called SOURCE_ZONE")
+      }
+    } else None
+  }
+
   def analyzeZoningQuality() {
     val numZones = getZoneNames().size
     println(s"Zones: $numZones")
