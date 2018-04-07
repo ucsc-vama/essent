@@ -192,15 +192,7 @@ object Emitter {
       case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})"
       case Sub => p.args map emitExpr mkString(" - ")
       case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})"
-      case Mul => {
-        val argNames = p.args map emitExpr
-        val mulStr = argNames mkString(" * ")
-        if (bitWidth(p.tpe) != (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe))) {
-          // FUTURE: is this a bug in firrtl width inference?
-          val delta = (bitWidth(p.args(0).tpe) + bitWidth(p.args(1).tpe)) - bitWidth(p.tpe)
-          s"($mulStr).tail<$delta>()"
-        } else mulStr
-      }
+      case Mul => p.args map emitExpr mkString(" * ")
       case Div => p.args map emitExpr mkString(" / ")
       case Rem => p.args map emitExpr mkString(" % ")
       case Lt  => p.args map emitExpr mkString(" < ")
@@ -231,7 +223,7 @@ object Emitter {
       case Cat => s"${emitExpr(p.args(0))}.cat(${emitExpr(p.args(1))})"
       case Bits => s"${emitExpr(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
       case Head => s"${emitExpr(p.args.head)}.head<${p.consts.head.toInt}>()"
-      case Tail => s"${emitExpr(p.args.head)}.tail<${p.consts.head.toInt}>()"
+      case Tail => s"(${emitExpr(p.args.head)}).tail<${p.consts.head.toInt}>()"
     }
     case _ => throw new Exception(s"Don't yet support $e")
   }
