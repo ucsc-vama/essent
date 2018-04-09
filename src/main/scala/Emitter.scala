@@ -29,6 +29,7 @@ object Emitter {
       case n: DefNode => n.copy(name = prefix + n.name)
       case r: DefRegister => r.copy(name = prefix + r.name)
       case m: DefMemory => m.copy(name = prefix + m.name)
+      case w: DefWire => w.copy(name = prefix + w.name)
       case mw: MemWrite => mw.copy(memName = prefix + mw.memName)
       case _ => s
     }
@@ -299,7 +300,7 @@ object Emitter {
   def flattenBodies(m: Module, circuit: Circuit, prefix: String) = {
     val body = addPrefixToNameStmt(prefix)(m.body)
     val nodeNames = findNodes(body) map { _.name }
-    val wireNames = findWires(body) map { prefix + _.name }
+    val wireNames = findWires(body) map { _.name }
     // FUTURE: remove unneeded or identity renames
     val externalPortNames = findPortNames(m) map { prefix + _ }
     val internalPortNames = findModuleInstances(m.body) flatMap {
