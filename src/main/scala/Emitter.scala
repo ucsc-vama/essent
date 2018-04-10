@@ -301,16 +301,13 @@ object Emitter {
     val body = addPrefixToNameStmt(prefix)(m.body)
     val nodeNames = findNodes(body) map { _.name }
     val wireNames = findWires(body) map { _.name }
-    // FUTURE: remove unneeded or identity renames
     val externalPortNames = findPortNames(m) map { prefix + _ }
     val internalPortNames = findModuleInstances(m.body) flatMap {
       case (moduleType, moduleName) =>
         findPortNames(findModule(moduleType, circuit)) map {prefix + s"$moduleName." + _}
     }
     val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
-    val renames = (allTempSigs map { s: String =>
-      (s, if (s.contains(".")) s.replace('.','$') else s)
-    }).toMap
+    val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
     replaceNamesStmt(renames)(body)
   }
 }
