@@ -21,6 +21,10 @@ import firrtl.Utils._
 object FactorMemWrites extends Pass {
   def desc = "Transforms mem write ports into MemWrite for easier emission"
 
+  def memHasRightParams(m: DefMemory) = {
+    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
+  }
+
   def findWritePortExprs(writePorts: Set[String])(s: Statement): Seq[(String, Expression)] = s match {
     case b: Block => b.stmts flatMap findWritePortExprs(writePorts)
     case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), suffix, _, _), rhs) =>

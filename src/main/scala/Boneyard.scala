@@ -1814,3 +1814,16 @@
 
 
 
+// from Emitter.scala
+// Helper methods for building eval bodies
+// def grabMemInfo(s: Statement): Seq[(String, String)] = s match {
+//   case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
+//   case c: Connect => {
+//     firrtl.Utils.kind(c.loc) match {
+//       case firrtl.MemKind => Seq((emitExpr(c.loc), emitExpr(c.expr)))
+//       case _ => Seq()
+//     }
+//   }
+//   case _ => Seq()
+// }
+

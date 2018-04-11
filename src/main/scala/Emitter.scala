@@ -83,23 +83,6 @@ object Emitter {
   }
 
 
-  // Helper methods for building eval bodies
-  def grabMemInfo(s: Statement): Seq[(String, String)] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => grabMemInfo(s)}
-    case c: Connect => {
-      firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq((emitExpr(c.loc), emitExpr(c.expr)))
-        case _ => Seq()
-      }
-    }
-    case _ => Seq()
-  }
-
-  def memHasRightParams(m: DefMemory) = {
-    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
-  }
-
-
   // State initialization methods
   def makeRegisterUpdate(prefix: String)(r: DefRegister): String = {
     val regName = prefix + r.name
