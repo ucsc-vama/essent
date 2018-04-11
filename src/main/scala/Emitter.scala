@@ -232,39 +232,16 @@ object Emitter {
   def emitStmt(doNotDec: Set[String])(s: Statement): Seq[String] = s match {
     case b: Block => b.stmts flatMap {s: Statement => emitStmt(doNotDec)(s)}
     case d: DefNode => {
-      val lhs = if (doNotDec.contains(d.name)) d.name
-                else genCppType(d.value.tpe) + " " + d.name
+      val lhs = d.name
       val rhs = emitExpr(d.value)
-      Seq(s"$lhs = $rhs;")
+      if (doNotDec.contains(lhs)) Seq(s"$lhs = $rhs;")
+      else Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
     }
     case c: Connect => {
       val lhs = emitExpr(c.loc)
       val rhs = emitExpr(c.expr)
-      firrtl.Utils.kind(c.loc) match {
-        case firrtl.MemKind => Seq()
-        case firrtl.RegKind => Seq(s"$lhs = $rhs;")
-        case firrtl.WireKind => {
-          if (doNotDec.contains(lhs))
-            Seq(s"$lhs = $rhs;")
-          else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
-        }
-        case firrtl.PortKind => {
-          if (lhs.contains("$")) {
-            if (doNotDec.contains(lhs))
-              Seq(s"$lhs = $rhs;")
-            else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
-          } else Seq(s"$lhs = $rhs;")
-        }
-        case firrtl.InstanceKind => {
-          if (lhs.contains(".")) Seq(s"$lhs = $rhs;")
-          else {
-            if (doNotDec.contains(lhs))
-              Seq(s"$lhs = $rhs;")
-            else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
-          }
-        }
-        case _ => Seq(s"$lhs = $rhs;")
-      }
+      if (doNotDec.contains(lhs)) Seq(s"$lhs = $rhs;")
+      else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
     }
     case p: Print => {
       val formatters = "(%h)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
@@ -286,7 +263,9 @@ object Emitter {
                         (p.args map {arg => s"${emitExpr(arg)}.as_single_word()"})
       Seq(s"if (${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
-    case st: Stop => Seq(s"if (${emitExpr(st.en)}) {assert_triggered = true; assert_exit_code = ${st.ret};}")
+    case st: Stop => {
+      Seq(s"if (${emitExpr(st.en)}) {assert_triggered = true; assert_exit_code = ${st.ret};}")
+    }
     case mw: MemWrite => {
       Seq(s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
