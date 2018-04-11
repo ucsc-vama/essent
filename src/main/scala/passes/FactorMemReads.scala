@@ -7,6 +7,7 @@ import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.passes._
+import firrtl.Utils._
 
 
 // This pass finesses the firrtl graph to make it easier to emit memory reads
@@ -16,6 +17,7 @@ import firrtl.passes._
 // - Pass 3) replaces address connections with SubAccesses into the memory
 // - Pass 4) replaces references to read ports' .data with read port name
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
+// FUTURE: should respect enable for read ports
 
 object FactorMemReads extends Pass {
   def desc = "Transforms mem read ports into SubAccesses for easier emission"
@@ -32,13 +34,16 @@ object FactorMemReads extends Pass {
   def replaceReadConnects(readPortAddrs: Map[String,String],
                           readPortTypes: Map[String,Type])(s: Statement): Statement = {
     val readConnectsReplaced = s match {
-      case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "addr", addrType, addrGender), rhs) =>
+      case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), suffix, addrType, addrGender), rhs) =>
         val fullPortName = memName + "." + portName
         if (readPortAddrs.contains(fullPortName)) {
-          val addrSig = WRef(readPortAddrs(fullPortName), addrType, firrtl.MemKind, addrGender)
-          val memRef = WRef(memName, readPortTypes(fullPortName), firrtl.MemKind, FEMALE)
-          val memRead = WSubAccess(memRef, addrSig, readPortTypes(fullPortName), MALE)
-          DefNode(NoInfo, fullPortName, memRead)
+          if (suffix == "addr") {
+            val addrSig = WRef(readPortAddrs(fullPortName), addrType, firrtl.MemKind, addrGender)
+            val memRef = WRef(memName, readPortTypes(fullPortName), firrtl.MemKind, FEMALE)
+            val memRead = WSubAccess(memRef, addrSig, readPortTypes(fullPortName), MALE)
+            DefNode(NoInfo, fullPortName, memRead)
+          } else if (suffix == "en") EmptyStmt
+          else s
         } else s
       case _ => s
     }
@@ -73,7 +78,7 @@ object FactorMemReads extends Pass {
       throw new Exception("Mismatch between expected and found memory read ports")
     val memReadAddrsReplaced = replaceReadConnects(readPortAddrs, readPortTypes)(m.body)
     val memReadsReplaced = replaceReadPortRefsStmt(readPortAddrs)(memReadAddrsReplaced)
-    Module(m.info, m.name, m.ports, memReadsReplaced)
+    Module(m.info, m.name, m.ports, squashEmpty(memReadsReplaced))
   }
 
   def run(c: Circuit): Circuit = {
