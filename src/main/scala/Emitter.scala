@@ -252,6 +252,7 @@ object Emitter {
     case mw: MemWrite => {
       Seq(s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
+    case ru: RegUpdate => Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${emitExpr(ru.expr)};")
     case r: DefRegister => Seq()
     case w: DefWire => Seq()
     case m: DefMemory => Seq()

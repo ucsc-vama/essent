@@ -378,8 +378,15 @@ class StatementGraph extends Graph {
     mergedRegs foreach { regName => {
       val regWriteName = regName + "$next"
       val regWriteID = nameToID(regWriteName)
-      val newName = s"if (update_registers) $regName"
-      idToStmt(regWriteID) = replaceNamesStmt(Map(regWriteName -> newName))(idToStmt(regWriteID))
+      val prevConnectStmt = idToStmt(regWriteID) match {
+        case c: Connect => c
+        case _ => throw new Exception("Merged register updated without using Connect")
+      }
+      val regNameWithoutNext = prevConnectStmt.loc match {
+        case w: WRef => w.copy(name = w.name.replaceAllLiterally("$next",""))
+        case w: WSubField => w.copy(name = w.name.replaceAllLiterally("$next",""))
+      }
+      idToStmt(regWriteID) = RegUpdate(NoInfo, regNameWithoutNext, prevConnectStmt.expr)
     }}
   }
 }

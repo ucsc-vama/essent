@@ -5,6 +5,15 @@ import firrtl.ir._
 
 // ESSENT's additions to the IR for optimization
 
+case class RegUpdate(info: Info, regRef: Expression, expr: Expression) extends Statement {
+  def serialize: String =  s"${regRef.serialize} <= ${expr.serialize}" + info.serialize
+  // FUTURE probably shouldn't have all maps be identity
+  def mapStmt(f: Statement => Statement): Statement = this
+  def mapExpr(f: Expression => Expression): Statement = this.copy(regRef = f(regRef), expr = f(expr))
+  def mapType(f: Type => Type): Statement = this
+  def mapString(f: String => String): Statement = this
+}
+
 case class MemWrite(memName: String,
                     portName: String,
                     wrEn: Expression,
