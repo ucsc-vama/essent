@@ -191,6 +191,7 @@ class EmitCpp(writer: Writer) {
       extIOtypes: Map[String, Type],
       regNames: Seq[String],
       keepAvail: Seq[String],
+      startingDoNotDec: Set[String],
       regsToConsider: Seq[String]): Seq[String] = {
     val sg = StatementGraph(bodies)
     // val mergedRegs = sg.mergeRegsSafe(regsToConsider)
@@ -202,7 +203,7 @@ class EmitCpp(writer: Writer) {
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
-    val doNotDec = ((outputPairs map { _._1 }) ++ regNames).toSet
+    val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
     val otherInputs = sg.getExternalZoneInputs() diff regNames
     val memNames = (memWrites map { _.memName }).toSet
     val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
@@ -461,7 +462,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = true
+    val simpleOnly = false
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -504,7 +505,7 @@ class EmitCpp(writer: Writer) {
                        // writeBodyRegTailOptSG(1, allBodies, doNotDec, safeRegs)
                        writeBodyMuxOptSG(1, allBodies, doNotShadow, doNotDec, safeRegs)
                      else
-                       writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, safeRegs)
+                       writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, doNotDec, safeRegs)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
