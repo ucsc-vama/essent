@@ -375,18 +375,24 @@ class StatementGraph extends Graph {
   }
 
   def updateMergedRegWrites(mergedRegs: Seq[String]) {
+    def updateConnect(targName: String)(s: Statement): Statement = {
+      val result = s match {
+        case c: Connect => {
+          if (findResultName(c) == targName + "$next") {
+            val regNameWithoutNext = c.loc match {
+              case w: WRef => w.copy(name = w.name.replaceAllLiterally("$next",""))
+              case w: WSubField => w.copy(name = w.name.replaceAllLiterally("$next",""))
+            }
+            RegUpdate(NoInfo, regNameWithoutNext, c.expr)
+          } else c
+        }
+        case _ => s
+      }
+      result mapStmt updateConnect(targName)
+    }
     mergedRegs foreach { regName => {
-      val regWriteName = regName + "$next"
-      val regWriteID = nameToID(regWriteName)
-      val prevConnectStmt = idToStmt(regWriteID) match {
-        case c: Connect => c
-        case _ => throw new Exception("Merged register updated without using Connect")
-      }
-      val regNameWithoutNext = prevConnectStmt.loc match {
-        case w: WRef => w.copy(name = w.name.replaceAllLiterally("$next",""))
-        case w: WSubField => w.copy(name = w.name.replaceAllLiterally("$next",""))
-      }
-      idToStmt(regWriteID) = RegUpdate(NoInfo, regNameWithoutNext, prevConnectStmt.expr)
+      val regWriteID = nameToID(regName + "$next")
+      idToStmt(regWriteID) = updateConnect(regName)(idToStmt(regWriteID))
     }}
   }
 }
