@@ -140,14 +140,12 @@ class EmitCpp(writer: Writer) {
       sg.updateMergedRegWrites(mergedRegs)
       sg.stmtsOrdered foreach { stmt => stmt match {
         case ms: MuxShadowed => {
-          if ((!ms.name.endsWith("$next")) && (!doNotDec.contains(ms.name)) && (!ms.name.contains("if (update_registers)")))
+          if (!doNotDec.contains(ms.name))
             writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
           writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
-          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec)
-          writeLines(indentLevel + 1, s"${ms.name} = ${emitExpr(ms.mux.tval)};")
+          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec + ms.name)
           writeLines(indentLevel, "} else {")
-          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec)
-          writeLines(indentLevel + 1, s"${ms.name} = ${emitExpr(ms.mux.fval)};")
+          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec + ms.name)
           writeLines(indentLevel, "}")
         }
         case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
@@ -463,7 +461,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def emitEvalTail(topName: String, circuit: Circuit) = {
-    val simpleOnly = false
+    val simpleOnly = true
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -473,6 +471,7 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => None
       }
     }
+    // FUTURE: handle top-level external inputs (other than reset)
     val extIOs = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
         case m: Module => None
@@ -481,6 +480,7 @@ class EmitCpp(writer: Writer) {
     }
     val allRegDefs = allBodies flatMap findRegisters
     val regNames = allRegDefs map { _.name }
+    val doNotDec = (regNames ++ (regNames map { _ + "$next" }) ++ (extIOs map { _._1 })).toSet
     val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
     val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
     val stopStmts = noPrints flatMap findInstancesOf[Stop]
@@ -497,12 +497,12 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "int assert_exit_code;")
     }
     // writeBodyUnopt(1, otherDeps, regNames)
-    // writeBodyUnoptSG(1, allBodies)
+    // writeBodyUnoptSG(1, allBodies, doNotDec)
     val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
     val keepAvail = (memDeps ++ printDeps).distinct
     val mergedRegs = if (simpleOnly)
-                       // writeBodyRegTailOptSG(1, allBodies, safeRegs)
-                       writeBodyMuxOptSG(1, allBodies, doNotShadow, regNames.toSet, safeRegs)
+                       // writeBodyRegTailOptSG(1, allBodies, doNotDec, safeRegs)
+                       writeBodyMuxOptSG(1, allBodies, doNotShadow, doNotDec, safeRegs)
                      else
                        writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, safeRegs)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {

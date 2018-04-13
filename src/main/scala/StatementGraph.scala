@@ -79,13 +79,20 @@ class StatementGraph extends Graph {
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       tShadow.nonEmpty || fShadow.nonEmpty
     }}
+    def replaceMux(newResult: Expression)(e: Expression): Expression = e match {
+      case m: Mux => newResult
+      case _ => e
+    }
     muxesWorthShadowing foreach { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
       val muxStmtName = idToName(muxID)
       val muxOutputName = findResultName(idToStmt(muxID))
       val (tShadow, fShadow) = muxIDToShadows(muxID)
+      val muxOutputStmt = idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)
       // FUTURE: consider adding connects for output within shadows
-      idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr, convToStmts(tShadow), convToStmts(fShadow))
+      idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr,
+                          convToStmts(tShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)),
+                          convToStmts(fShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.fval)))
       mergeStmtsMutably(Seq(muxID) ++ tShadow ++ fShadow)
     }}
   }

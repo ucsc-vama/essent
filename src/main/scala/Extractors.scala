@@ -119,6 +119,7 @@ object Extract {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
+    case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$next", findDependencesExpr(ru.expr), s))
     // TODO: handle multiple write ports to same mem
     case mw: MemWrite => {
       // TODO: how do you make it depend on read ports?
