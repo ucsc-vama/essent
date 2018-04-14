@@ -68,8 +68,9 @@ class EmitCpp(writer: Writer) {
       writeLines(0, "")
       writeLines(1, "void eval(bool update_registers, bool verbose, bool done_reset);")
       // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+    } else {
+      writeLines(0, s"} $modName;")
     }
-    writeLines(0, s"} $modName;")
   }
 
   def declareExtModule(m: ExtModule) {
@@ -214,6 +215,8 @@ class EmitCpp(writer: Writer) {
 
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
+  def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
+
   def genDepZoneTriggers(consumers: Seq[String], condition: String) = {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
   }
@@ -233,6 +236,12 @@ class EmitCpp(writer: Writer) {
     sg.coarsenIntoZones(keepAvail)
     val mergedRegs = sg.mergeRegUpdatesIntoZones(regsToConsider)
     val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
+    // predeclare zone eval funcs
+    val zoneEvalFuncPredDecs = sg.getZoneNames() map {
+      zoneName => s"void ${genZoneFuncName(zoneName)}(bool update_registers);"
+    }
+    writeLines(1, zoneEvalFuncPredDecs)
+    writeLines(0, s"} $topName;")
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
     val outputConsumers = sg.getZoneInputMap()
@@ -258,6 +267,37 @@ class EmitCpp(writer: Writer) {
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
     writeLines(0, s"bool regs_set = false;")
+    writeLines(0, "bool assert_triggered = false;")
+    writeLines(0, "int assert_exit_code;")
+
+    // emit zones
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case az: ActivityZone => {
+        if (az.name != "SOURCE_ZONE") {
+          writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
+          writeLines(1, s"${genFlagName(az.name)} = false;")
+          val cacheOldOutputs = az.outputTypes.toSeq map {
+            case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+          }}
+          writeLines(1, cacheOldOutputs)
+          writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
+          // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
+          val outputTriggers = az.outputConsumers.toSeq flatMap {
+            case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+          }
+          writeLines(1, outputTriggers)
+          val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+          val regsTriggerZones = mergedRegsInZone flatMap {
+            regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+          }
+          writeLines(1, regsTriggerZones)
+          writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+          // NOTE: not using RegUpdate since want to do reg change detection
+          writeLines(0, "}")
+        }
+      }
+      case _ =>
+    }}
 
     if (trackActivity) {
       writeLines(0, decZoneActTrackers(zoneNames))
@@ -272,8 +312,6 @@ class EmitCpp(writer: Writer) {
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    writeLines(1, "bool assert_triggered = false;")
-    writeLines(1, "int assert_exit_code;")
     writeLines(1, "if (reset || !done_reset) {")
     writeLines(2, "sim_cached = false;")
     writeLines(2, "regs_set = false;")
@@ -296,31 +334,12 @@ class EmitCpp(writer: Writer) {
     }}
     writeLines(1, nonMemCaches.toSeq)
 
-    // emit zones (and unzoned statements)
+    // emit zone launches and unzoned statements
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (az.name != "SOURCE_ZONE") {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
-          writeLines(2, s"${genFlagName(az.name)} = false;")
-          if (trackActivity)
-            writeLines(2, s"${zoneActTrackerName(az.name)}++;")
-          val cacheOldOutputs = az.outputTypes.toSeq map {
-            case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
-          }}
-          writeLines(2, cacheOldOutputs)
-          writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
-          // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
-          val outputTriggers = az.outputConsumers.toSeq flatMap {
-            case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
-          }
-          writeLines(2, outputTriggers)
-          val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-          val regsTriggerZones = mergedRegsInZone flatMap {
-            regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
-          }
-          writeLines(2, regsTriggerZones)
-          writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
-          // NOTE: not using RegUpdate since want to do reg change detection
+          writeLines(2, s"${genZoneFuncName(az.name)}(update_registers);")
           writeLines(1, "}")
         }
       }
