@@ -260,7 +260,7 @@ class EmitCpp(writer: Writer) {
             case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
           }}
           writeLines(2, cacheOldOutputs)
-          writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ regNames ++ doNotDec, doNotDec)
+          writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
           // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
           val outputTriggers = az.outputConsumers.toSeq flatMap {
             case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
@@ -272,6 +272,7 @@ class EmitCpp(writer: Writer) {
           }
           writeLines(2, regsTriggerZones)
           writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+          // NOTE: not using RegUpdate since want to do reg change detection
           writeLines(1, "}")
         }
       }
