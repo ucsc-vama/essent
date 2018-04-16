@@ -324,10 +324,11 @@ class StatementGraph extends Graph {
   def analyzeZoningQuality() {
     val numZones = getZoneNames().size
     println(s"Zones: $numZones")
-    val numStmtsInZones = (nodeRefIDs flatMap { id => idToStmt(id) match {
+    val zoneSizes = nodeRefIDs flatMap { id => idToStmt(id) match {
       case az: ActivityZone => Some(az.memberStmts.size)
       case _ => None
-    }}).sum
+    }}
+    val numStmtsInZones = zoneSizes.sum
     // NOTE: Compiler withholds some statements from zoning process
     val numStmtsTotal = (nodeRefIDs map nodeSize).sum
     val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
@@ -347,6 +348,7 @@ class StatementGraph extends Graph {
     println(f"Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%)")
     println(f"Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f")
     println(f"Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f")
+    println(f"Zone size range: ${zoneSizes.min} - ${zoneSizes.max}")
   }
 
 
