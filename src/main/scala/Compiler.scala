@@ -193,6 +193,7 @@ class EmitCpp(writer: Writer) {
       keepAvail: Seq[String],
       startingDoNotDec: Set[String],
       regsToConsider: Seq[String]): Seq[String] = {
+    val trackActivity = true
     val sg = StatementGraph(bodies)
     // val mergedRegs = sg.mergeRegsSafe(regsToConsider)
     sg.coarsenIntoZones(keepAvail)
@@ -223,6 +224,17 @@ class EmitCpp(writer: Writer) {
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
     writeLines(0, s"bool regs_set = false;")
+
+    if (trackActivity) {
+      writeLines(0, decZoneActTrackers(zoneNames))
+      val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
+        case az: ActivityZone => Some((az.name, az.memberStmts.size))
+        case _ => None
+      }}
+      writeLines(0, "void printZoneActivities() {")
+      writeLines(1, zoneActOutput(zoneNamesAndSizes))
+      writeLines(0, "}")
+    }
 
     // start emitting eval function
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
@@ -256,6 +268,8 @@ class EmitCpp(writer: Writer) {
         if (az.name != "SOURCE_ZONE") {
           writeLines(1, s"if (${genFlagName(az.name)}) {")
           writeLines(2, s"${genFlagName(az.name)} = false;")
+          if (trackActivity)
+            writeLines(2, s"${zoneActTrackerName(az.name)}++;")
           val cacheOldOutputs = az.outputTypes.toSeq map {
             case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
           }}
@@ -414,6 +428,18 @@ class EmitCpp(writer: Writer) {
     }}).toSet
     if (inSignals == nextInSignals) childZones.toSeq
     else findZoneDescendants(nextInSignals, zoneMap)
+  }
+
+  def zoneActTrackerName(zoneName: String) = s"ACT${zoneName.replace('.', '$')}"
+
+  def decZoneActTrackers(zoneNames: Seq[String]) = {
+    zoneNames map { zoneName => s"uint64_t ${zoneActTrackerName(zoneName)} = 0;"}
+  }
+
+  def zoneActOutput(zoneNamesAndSizes: Seq[(String,Int)]) = {
+    zoneNamesAndSizes map {
+      case (zoneName, zoneSize) => s"""printf("$zoneName %llu %llu\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
+    }
   }
 
   def decRegActivityTracking(regNames: Seq[String]) = {
