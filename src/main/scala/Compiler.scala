@@ -525,14 +525,14 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "int assert_exit_code;")
     }
     // writeBodyUnopt(1, otherDeps, regNames)
-    // writeBodyUnoptSG(1, allBodies, doNotDec)
+    // writeBodyUnoptSG(1, noPrints, doNotDec)
     val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
     val keepAvail = (memDeps ++ printDeps).distinct
     val mergedRegs = if (simpleOnly)
-                       // writeBodyRegTailOptSG(1, allBodies, doNotDec, safeRegs)
-                       writeBodyMuxOptSG(1, allBodies, doNotShadow, doNotDec, safeRegs)
+                       // writeBodyRegTailOptSG(1, noPrints, doNotDec, safeRegs)
+                       writeBodyMuxOptSG(1, noPrints, doNotShadow, doNotDec, safeRegs)
                      else
-                       writeBodyZoneOptSG(allBodies, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, doNotDec, safeRegs)
+                       writeBodyZoneOptSG(noPrints, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, doNotDec, safeRegs)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
