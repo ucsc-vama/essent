@@ -139,7 +139,9 @@ class StatementGraph extends Graph {
   }
 
   def consolidateSourceZones() {
-    val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
+    // TODO: need to filter our regNames and extIOs (but maybe no point to SOURCE_ZONE?)
+    // val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
+    val sourceIDs = Seq()
     println(s"Merging ${sourceIDs.size} source zones")
     addNodeWithDeps("SOURCE_ZONE", Seq())
     idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs flatMap grabStmts)
