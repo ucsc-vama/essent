@@ -1827,3 +1827,31 @@
 //   case _ => Seq()
 // }
 
+
+
+
+// from Compiler.scala (for tracking mem write activities)
+
+// cache mem inputs and addresses (for mem activity scouting)
+// val memAddrs = (memWrites map { _.wrAddr }).distinct
+// val memDatas = (memWrites map { _.wrData }).distinct
+// val memAddrAndDataCaches = (memAddrs ++ memDatas) flatMap { e => {
+//   if (e.isInstanceOf[Literal]) Seq()
+//   else {
+//     val name = emitExpr(e)
+//     Seq(s"${genCppType(e.tpe)} ${name.replace('.','$')}$$old = $name;")
+//   }
+// }}
+// writeLines(1, memAddrAndDataCaches)
+
+// count changes on mem write inputs (for mem activity scouting)
+// val memAddrAndDataDetects = memWrites map { mw => {
+//   def compStr(e: Expression) = {
+//     val name = emitExpr(e)
+//     if (e.isInstanceOf[Literal]) "false"
+//     else s"$name != ${name.replace('.','$')}$$old"
+//   }
+//   // s"if (${compStr(mw.wrAddr)} || ${compStr(mw.wrData)}) ${zoneActTrackerName(mw.memName)}++;"
+//   s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)} && (${compStr(mw.wrAddr)} || ${compStr(mw.wrData)})) ${zoneActTrackerName(mw.memName)}++;"
+// }}
+// writeLines(1, memAddrAndDataDetects)
