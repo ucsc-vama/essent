@@ -263,7 +263,7 @@ class StatementGraph extends Graph {
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
       ("source", {sg: StatementGraph => sg.consolidateSourceZones()}),
-      ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
+      // ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
