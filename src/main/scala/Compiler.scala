@@ -438,7 +438,7 @@ class EmitCpp(writer: Writer) {
 
   def zoneActOutput(zoneNamesAndSizes: Seq[(String,Int)]) = {
     zoneNamesAndSizes map {
-      case (zoneName, zoneSize) => s"""printf("$zoneName %llu %llu\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
+      case (zoneName, zoneSize) => s"""printf("$zoneName %llu %d\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
     }
   }
 
