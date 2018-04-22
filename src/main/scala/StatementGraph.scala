@@ -414,8 +414,7 @@ class StatementGraph extends Graph {
       val memID = nameToID(mw.memName)
       val memReaderNames = outNeigh(memID) map idToName
       buildFromBodies(Seq(mw))
-      val memWriteNodeName = s"${mw.memName}.${mw.portName}"
-      memReaderNames foreach { readerName => addEdge(readerName, memWriteNodeName) }
+      memReaderNames foreach { readerName => addEdge(readerName, mw.nodeName) }
       Seq()
     }}
     // returns mem writes it was unable to merge (why couldn't it merge all?)

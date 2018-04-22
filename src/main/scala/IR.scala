@@ -28,6 +28,7 @@ case class MemWrite(memName: String,
   }
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def nodeName(): String = s"$memName.$portName"
 }
 
 case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow: Seq[Statement]) extends Statement {

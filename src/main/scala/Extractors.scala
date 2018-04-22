@@ -124,7 +124,7 @@ object Extract {
     case mw: MemWrite => {
       // TODO: how do you make it depend on read ports?
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
-      Seq(HyperedgeDep(s"${mw.memName}.${mw.portName}", deps, s))
+      Seq(HyperedgeDep(mw.nodeName, deps, s))
     }
     case p: Print =>
       Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++

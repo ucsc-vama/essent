@@ -164,6 +164,30 @@ class EmitCpp(writer: Writer) {
     } else Seq()
   }
 
+  def writeBodyMuxOptMemSG(indentLevel: Int, bodies: Seq[Statement], doNotShadow: Seq[String],
+      doNotDec: Set[String], regsToConsider: Seq[String]=Seq(), memWrites: Seq[MemWrite]): Seq[String] = {
+    if (bodies.nonEmpty) {
+      val sg = StatementGraph(bodies)
+      sg.mergeMemWritesIntoSG(memWrites)
+      sg.coarsenMuxShadows(doNotShadow)
+      val mergedRegs = sg.mergeRegsSafe(regsToConsider)
+      sg.updateMergedRegWrites(mergedRegs)
+      sg.stmtsOrdered foreach { stmt => stmt match {
+        case ms: MuxShadowed => {
+          if (!doNotDec.contains(ms.name))
+            writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
+          writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
+          writeBodyMuxOptSG(indentLevel + 1, ms.tShadow, doNotShadow, doNotDec + ms.name)
+          writeLines(indentLevel, "} else {")
+          writeBodyMuxOptSG(indentLevel + 1, ms.fShadow, doNotShadow, doNotDec + ms.name)
+          writeLines(indentLevel, "}")
+        }
+        case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
+      }}
+      mergedRegs
+    } else Seq()
+  }
+
   def regResetOverrides(allRegDefs: Seq[DefRegister]): Seq[String] = {
     val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
@@ -524,6 +548,7 @@ class EmitCpp(writer: Writer) {
     val stopStmts = noPrints flatMap findInstancesOf[Stop]
     val otherDeps = noPrints flatMap findDependencesStmt
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
+    // val memDeps = allMemWrites map { _.nodeName }
     val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
     val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
@@ -542,6 +567,7 @@ class EmitCpp(writer: Writer) {
                        // writeBodyRegTailOptSG(1, noPrints, doNotDec, safeRegs)
                        // writeBodyMergeMWSG(1, noPrints, doNotDec, safeRegs, allMemWrites)
                        writeBodyMuxOptSG(1, noPrints, doNotShadow, doNotDec, safeRegs)
+                       // writeBodyMuxOptMemSG(1, noPrints, doNotShadow, doNotDec, safeRegs, allMemWrites)
                      else
                        writeBodyZoneOptSG(noPrints, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, doNotDec, safeRegs)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
