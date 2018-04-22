@@ -131,6 +131,16 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
+  def writeBodyMergeMWSG(indentLevel: Int, bodies: Seq[Statement], doNotDec: Set[String],
+                         regNames: Seq[String], memWrites: Seq[MemWrite]): Seq[String] = {
+    val sg = StatementGraph(bodies)
+    sg.mergeMemWritesIntoSG(memWrites)
+    val mergedRegs = sg.mergeRegsSafe(regNames)
+    sg.updateMergedRegWrites(mergedRegs)
+    sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    mergedRegs
+  }
+
   def writeBodyMuxOptSG(indentLevel: Int, bodies: Seq[Statement], doNotShadow: Seq[String],
       doNotDec: Set[String], regsToConsider: Seq[String]=Seq()): Seq[String] = {
     if (bodies.nonEmpty) {
@@ -530,6 +540,7 @@ class EmitCpp(writer: Writer) {
     val keepAvail = (memDeps ++ printDeps).distinct
     val mergedRegs = if (simpleOnly)
                        // writeBodyRegTailOptSG(1, noPrints, doNotDec, safeRegs)
+                       // writeBodyMergeMWSG(1, noPrints, doNotDec, safeRegs, allMemWrites)
                        writeBodyMuxOptSG(1, noPrints, doNotShadow, doNotDec, safeRegs)
                      else
                        writeBodyZoneOptSG(noPrints, topName, allMemWrites, extIOs.toMap, regNames, keepAvail, doNotDec, safeRegs)

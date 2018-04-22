@@ -405,6 +405,22 @@ class StatementGraph extends Graph {
       idToStmt(regWriteID) = updateConnect(regName)(idToStmt(regWriteID))
     }}
   }
+
+
+  // MemWrite merging
+  //----------------------------------------------------------------------------
+  def mergeMemWritesIntoSG(memWrites: Seq[MemWrite]): Seq[MemWrite] = {
+    val unmergedMemWrites = memWrites flatMap { mw => {
+      val memID = nameToID(mw.memName)
+      val memReaderNames = outNeigh(memID) map idToName
+      buildFromBodies(Seq(mw))
+      val memWriteNodeName = s"${mw.memName}.${mw.portName}"
+      memReaderNames foreach { readerName => addEdge(readerName, memWriteNodeName) }
+      Seq()
+    }}
+    // returns mem writes it was unable to merge (why couldn't it merge all?)
+    unmergedMemWrites
+  }
 }
 
 
