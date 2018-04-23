@@ -410,6 +410,7 @@ class StatementGraph extends Graph {
   // MemWrite merging
   //----------------------------------------------------------------------------
   def mergeMemWritesIntoSG(memWrites: Seq[MemWrite]): Seq[MemWrite] = {
+    // FUTURE: may be able to include MemWrites in body when sg is built, and just read edges later
     val unmergedMemWrites = memWrites flatMap { mw => {
       val memID = nameToID(mw.memName)
       val memReaderNames = outNeigh(memID) map idToName
