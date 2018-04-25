@@ -706,6 +706,7 @@ class EmitCpp(writer: Writer) {
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     writeLines(0, "")
     if (simpleOnly) {
+      writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
       writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
       writeLines(1, "bool assert_triggered = false;")
       writeLines(1, "int assert_exit_code;")
