@@ -1855,3 +1855,204 @@
 //   s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)} && (${compStr(mw.wrAddr)} || ${compStr(mw.wrData)})) ${zoneActTrackerName(mw.memName)}++;"
 // }}
 // writeLines(1, memAddrAndDataDetects)
+
+
+// from Compiler.scala
+
+// def buildResetTree(allInstances: Seq[(String, String)], circuit: Circuit): Seq[String] = {
+//   val instancesWithResets = allInstances filter { case (modName, prefix) => {
+//     findModule(modName, circuit).ports.exists{ _.name == "reset" }
+//   }}
+//   println(s"${instancesWithResets.size}/${allInstances.size} instances have resets")
+//   // TODO: is this correct? should map be { _._1 + _._2 }?
+//   val allInstanceNames = instancesWithResets.tail map { _._2 }
+//   val resetConnects = allInstanceNames map { fullModName: String => {
+//     val trailingDotRemoved = if (fullModName.contains(".")) fullModName.init
+//                              else fullModName
+//     val parentName = if (trailingDotRemoved.contains("."))
+//         trailingDotRemoved.substring(0, trailingDotRemoved.lastIndexOf(".")) + "."
+//       else ""
+//     Connect(NoInfo, WRef(s"${fullModName}reset", UIntType(IntWidth(1)), PortKind, FEMALE),
+//             WRef(s"${parentName}reset", UIntType(IntWidth(1)), PortKind, MALE))
+//   }}
+//   val allDeps = resetConnects flatMap findDependencesStmt
+//   val nameToStmt = (allDeps map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
+//   val reorderedConnectNames = buildGraph(allDeps).reorderNames
+//   reorderedConnectNames map nameToStmt flatMap emitStmt(Set())
+// }
+
+// def outputConsumerZones(zoneMap: Map[String, Graph.ZoneInfo]): Map[String, Seq[String]] = {
+//   val inputConsumerZonePairs = zoneMap.toSeq flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       inputs map { (_, zoneName) }
+//     }
+//   }
+//   inputConsumerZonePairs.groupBy(_._1).mapValues {
+//     pairs => pairs map { _._2 }
+//   }
+// }
+
+// def checkZoningSanity(
+//     sg: StatementGraph,
+//     memWrites: Seq[MemWrite],
+//     extIOtypes: Map[String, Type],
+//     regNames: Seq[String],
+//     keepAvail: Seq[String]): Boolean = {
+//   // GOAL: make sure every input on every zone gets a trigger
+//   // possible stretch goal: ensure unzoned values given fresh values to compare
+//   // possible stretch goal: make sure trigger ordering is appropriate
+//   // Generate all triggers
+//   val outputPairs = sg.getZoneOutputTypes()
+//   val outputConsumers = sg.getZoneInputMap()
+//   val doNotDec = (outputPairs map { _._1 }).toSet
+//   val otherInputs = sg.getExternalZoneInputs() diff regNames
+//   val memNames = (memWrites map { _.memName }).toSet
+//   val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
+//   val nonMemTriggers = nonMemInputs flatMap { sigName => {
+//     outputConsumers(sigName) flatMap { zoneName => Seq((sigName, zoneName) -> "PRE-nonMem") }
+//   }}
+//   val fromZoneTriggers = sg.stmtsOrdered flatMap { stmt => stmt match {
+//     case az: ActivityZone => {
+//       val outputTriggers = az.outputConsumers.toSeq flatMap {
+//         case (name, consumers) => consumers flatMap {
+//           zoneName => Seq((name, zoneName) -> az.name)
+//         }
+//       }
+//       outputTriggers
+//       // TODO: merged regs triggers
+//     }
+//     case _ => Seq()
+//   }}
+//   val memTriggers = memInputs.toSeq flatMap { memName => {
+//     outputConsumers(memName) flatMap { zoneName => Seq((memName, zoneName) -> "POST-mem") }
+//   }}
+//   val globalRegTriggers = regNames flatMap { regName => {
+//     if (outputConsumers.contains(regName)) {
+//       outputConsumers(regName) flatMap { zoneName => Seq((regName, zoneName) -> "POST-reg") }
+//     } else Seq()
+//   }}
+//   val inputZonePairToTriggerSource = (nonMemTriggers ++ fromZoneTriggers ++ memTriggers ++ globalRegTriggers).toMap
+//
+//   // For each zone, verify all inputs have a trigger
+//   val allZoneInputs = sg.stmtsOrdered flatMap { stmt => stmt match {
+//     case az: ActivityZone => az.inputs
+//     case _ => Seq()
+//   }}
+//   if (inputZonePairToTriggerSource.size != allZoneInputs.size)
+//     println(s"MISMATCH: ${inputZonePairToTriggerSource.size} triggers for ${allZoneInputs.size} inputs")
+//   val allTriggersFound = sg.stmtsOrdered forall { stmt => stmt match {
+//     case az: ActivityZone => {
+//       val allInputsHaveTriggers = az.inputs forall {
+//         inputName => inputZonePairToTriggerSource.contains((inputName, az.name))
+//       }
+//       if (!allInputsHaveTriggers)
+//         println(s"zone ${az.name} has incomplete set of triggers")
+//       allInputsHaveTriggers
+//     }
+//     case _ => true
+//   }}
+//   println(s"all triggers found: $allTriggersFound")
+//   allTriggersFound
+// }
+
+// def printZoneStateAffinity(zoneMap: Map[String,Graph.ZoneInfo],
+//                            regNames: Seq[String], memWrites: Seq[MemWrite]) {
+//   val regNamesSet = regNames.toSet
+//   val regNameZoneNamePairs = zoneMap.toSeq flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       val regInputs = inputs.toSet.intersect(regNamesSet)
+//       regInputs.toSeq map { regInput => (regInput, zoneName) }
+//     }
+//   }
+//   val regToConsumingZones = regNameZoneNamePairs.groupBy(_._1)
+//   val regToNumZones = regToConsumingZones map {
+//     case (regName, zoneNamePairs) => (regName, zoneNamePairs.size)
+//   }
+//   println("Histogram of number of zones consume a register:")
+//   println(regToNumZones.values.groupBy(identity).mapValues(_.size))
+//   val sigNameZoneMap = (zoneMap.toSeq flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       members map { (_, zoneName) }
+//     }
+//   }).toMap
+//   val numProducingZones = memWrites map { mw => {
+//     val deps = findDependencesStmt(mw).head.deps
+//     val depsFromZones = deps filter {sigNameZoneMap.contains(_) }
+//     val numProducingZones = (depsFromZones map sigNameZoneMap).distinct.size
+//     numProducingZones
+//   }}
+//   println("Histogram of number of zones producing signals for mem write:")
+//   println(numProducingZones.groupBy(identity).mapValues(_.size))
+//   val includedRegWrites = regNames filter {regName => sigNameZoneMap.contains(regName + "$next") }
+//   println(s"${includedRegWrites.size}/${regNames.size} registers have zone for $$next")
+//   val regsInLoopbackZones = includedRegWrites filter { regName => {
+//     val writeZone = sigNameZoneMap(regName + "$next")
+//     zoneMap(writeZone).inputs.contains(regName)
+//   }}
+//   println(s"${regsInLoopbackZones.size} registers have same zone input and output")
+// }
+
+// def findZoneDescendants(inSignals: Set[String], zoneMap: Map[String, Graph.ZoneInfo]): Seq[String] = {
+//   val childZones = zoneMap flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       if (inputs exists inSignals) Seq(zoneName)
+//       else Seq()
+//     }
+//   }
+//   println(s"CZ size ${childZones.size}")
+//   val childZonesSet = childZones.toSet
+//   val nextInSignals = inSignals ++ (zoneMap flatMap {
+//     case (zoneName, Graph.ZoneInfo(inputs, members, outputs)) => {
+//       if (childZonesSet.contains(zoneName)) outputs
+//       else Seq()
+//   }}).toSet
+//   if (inSignals == nextInSignals) childZones.toSeq
+//   else findZoneDescendants(nextInSignals, zoneMap)
+// }
+
+// def decRegActivityTracking(regNames: Seq[String]) = {
+//   regNames foreach { regName => {
+//     val noDotsInName = regName.replace('.', '$')
+//     writeLines(0, s"uint64_t $noDotsInName$$trans = 0;")
+//   }}
+// }
+
+// def recRegActivityTracking(regNames: Seq[String]) = {
+//   regNames foreach { regName => {
+//     val noDotsInName = regName.replace('.', '$')
+//     writeLines(2, s"if ($regName != ${regName}$$next) $noDotsInName$$trans++;")
+//   }}
+// }
+
+// def printRegActivityTracking(regNames: Seq[String]) = {
+//   writeLines(0, "void print_activity() {")
+//   regNames foreach { regName => {
+//     val noDotsInName = regName.replace('.', '$')
+//     writeLines(1, s"""printf("$regName %llu\\n", $noDotsInName$$trans);""")
+//   }}
+//   writeLines(0, "}")
+// }
+
+// def writeRegActivityTracking(regNames: Seq[String]) {
+//   writeLines(2, s"const uint64_t num_regs = ${regNames.size};")
+//   writeLines(2, s"uint64_t transitions = 0;")
+//   writeLines(2, s"cycles_ticked++;")
+//   regNames foreach { regName =>
+//     writeLines(2, s"if ($regName != ${regName}$$next) transitions++;")
+//   }
+//   writeLines(2, "total_transitions += transitions;")
+//   writeLines(2, s"""printf("Transitions %llu/%llu\\n", transitions, num_regs);""")
+//   writeLines(2, s"""printf("Average Active: %g\\n", (double) total_transitions/cycles_ticked);""")
+// }
+
+// def writeZoneActivityTracking(zoneNames: Seq[String]) {
+//   writeLines(2, s"const uint64_t num_zones = ${zoneNames.size};")
+//   writeLines(2, s"uint64_t zones_active = 0;")
+//   zoneNames foreach { zoneName =>
+//     writeLines(2, s"if (${genFlagName(zoneName)}) zones_active++;")
+//   }
+//   writeLines(2, s"total_zones_active += zones_active;")
+//   writeLines(2, s"""printf("Zones Active %llu/%llu\\n", zones_active, num_zones);""")
+//   writeLines(2, s"""printf("Average Zones: %g\\n", (double) total_zones_active/cycles_ticked);""")
+// }
+
