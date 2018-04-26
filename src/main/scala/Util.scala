@@ -12,4 +12,10 @@ object Util {
   def groupByFirst[T,Y](l: Seq[(T,Y)]): Map[T, Seq[Y]] = {
     l.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
   }
+
+  def selectFromMap[K,V](selectors: Seq[K], targetMap: Map[K,V]): Map[K,V] = {
+    (selectors flatMap {
+      k => if (targetMap.contains(k)) Seq(k -> targetMap(k)) else Seq()
+    }).toMap
+  }
 }

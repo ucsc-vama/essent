@@ -6,6 +6,7 @@ import java.io.Writer
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
+import essent.Util._
 
 import firrtl._
 import firrtl.annotations._
@@ -184,8 +185,16 @@ class EmitCpp(writer: Writer) {
 
   def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
 
-  def genDepZoneTriggers(consumers: Seq[String], condition: String) = {
+  def genDepZoneTriggers(consumers: Seq[String], condition: String): Seq[String] = {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
+  }
+
+  def genAllTriggers(signalToConsumers: Map[String, Seq[String]], suffix: String,
+                     localTarg: Boolean = false): Seq[String] = {
+    signalToConsumers.toSeq flatMap { case (name, consumers) => {
+      val localName = if (localTarg) name.replace('.','$') else name
+      genDepZoneTriggers(consumers, s"$name != $localName$suffix")
+    }}
   }
 
   def writeBodyZoneOptSG(
@@ -254,10 +263,7 @@ class EmitCpp(writer: Writer) {
           }
           writeLines(1, outputTriggers)
           val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-          val regsTriggerZones = mergedRegsInZone flatMap {
-            regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
-          }
-          writeLines(1, regsTriggerZones)
+          writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
           writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
           // NOTE: not using RegUpdate since want to do reg change detection
           writeLines(0, "}")
@@ -289,11 +295,7 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "sim_cached = regs_set;")
 
     // do activity detection on other inputs (external IOs and resets)
-    val nonMemChangeDetects = nonMemInputs flatMap { sigName => {
-      val oldVersion = s"${sigName.replace('.','$')}$$old"
-      genDepZoneTriggers(outputConsumers(sigName), s"$sigName != $oldVersion")
-    }}
-    writeLines(1, nonMemChangeDetects.toSeq)
+    writeLines(1, genAllTriggers(selectFromMap(nonMemInputs, outputConsumers), "$old", true))
     // cache old versions
     val nonMemCaches = nonMemInputs map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
@@ -323,12 +325,7 @@ class EmitCpp(writer: Writer) {
     }}
     writeLines(1, memWriteTriggerZones)
     // trigger zone based on reg changes
-    val regsTriggerZones = (regNames diff mergedRegs) flatMap { regName => {
-      if (outputConsumers.contains(regName))
-        genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
-      else Seq()
-    }}
-    writeLines(1, regsTriggerZones)
+    writeLines(1, genAllTriggers(selectFromMap(regNames diff mergedRegs, outputConsumers), "$next"))
     mergedRegs
   }
 
