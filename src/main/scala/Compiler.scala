@@ -98,6 +98,23 @@ class EmitCpp(writer: Writer) {
     }
   }
 
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String] = Set()) {
+    // TODO: trust others to perform opts to merge regs or mems
+    // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case ms: MuxShadowed => {
+        if (!doNotDec.contains(ms.name))
+          writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
+        writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name)
+        writeLines(indentLevel, "} else {")
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name)
+        writeLines(indentLevel, "}")
+      }
+      case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
+    }}
+  }
+
   def writeBodyUnoptSG(indentLevel: Int, bodies: Seq[Statement], doNotDec: Set[String] = Set()) {
     val sg = StatementGraph(bodies)
     sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
@@ -262,7 +279,7 @@ class EmitCpp(writer: Writer) {
         // NOTE: not using RegUpdate since want to do reg change detection
         writeLines(0, "}")
       }
-      case _ =>
+      case _ => throw new Exception("Statement at top-level is not a zone")
     }}
 
     if (trackActivity) {
@@ -538,6 +555,81 @@ class EmitCpp(writer: Writer) {
     writeLines(0, "")
   }
 
+  def writeEvalOuter(circuit: Circuit) {
+    val simpleOnly = true
+    val optRegs = true
+    val optMuxes = true
+    val topName = circuit.main
+    val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
+    val allInstances = Seq((topModule.name, "")) ++
+      findAllModuleInstances("", circuit)(topModule.body)
+    val allBodies = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => Some(flattenBodies(m, circuit, prefix))
+        case em: ExtModule => None
+      }
+    }
+    // FUTURE: handle top-level external inputs (other than reset)
+    val extIOs = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => None
+        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
+      }
+    }
+    val allRegDefs = allBodies flatMap findRegisters
+    val regNames = allRegDefs map { _.name }
+    val doNotDec = (regNames ++ (regNames map { _ + "$next" }) ++ (extIOs map { _._1 })).toSet
+    val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
+    val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
+    val stopStmts = noPrints flatMap findInstancesOf[Stop]
+    val otherDeps = noPrints flatMap findDependencesStmt
+    val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
+    val memWritePorts = allMemWrites map { _.nodeName }
+    val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
+    val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
+    val unsafeDepSet = (memDeps ++ printDeps).toSet
+    val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
+    println(s"${unsafeRegs.size} registers are deps for unmovable ops")
+    writeLines(0, "")
+    if (simpleOnly) {
+      writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
+      writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+      writeLines(1, "bool assert_triggered = false;")
+      writeLines(1, "int assert_exit_code;")
+    }
+    val sg = StatementGraph(noPrints)
+    if (optMuxes)
+      sg.coarsenMuxShadows(doNotShadow)
+    val mergedRegs = if (optRegs) sg.mergeRegsSafe(safeRegs) else Seq()
+    sg.updateMergedRegWrites(mergedRegs)
+    writeBodyInner(1, sg, doNotDec)
+    if (printStmts.nonEmpty || stopStmts.nonEmpty) {
+      writeLines(1, "if (done_reset && update_registers) {")
+      if (printStmts.nonEmpty) {
+        writeLines(2, "if(verbose) {")
+        writeLines(3, printStmts flatMap emitStmt(Set()))
+        writeLines(2, "}")
+      }
+      if (stopStmts.nonEmpty) {
+        writeLines(2, "if (assert_triggered) {")
+        writeLines(3, "exit(assert_exit_code);")
+        writeLines(2, "}")
+      }
+      writeLines(1, "}")
+    }
+    if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
+      writeLines(1, "if (update_registers) {")
+      writeLines(2, allMemWrites flatMap emitStmt(Set()))
+      writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, regResetOverrides(allRegDefs))
+      if (!simpleOnly)
+        writeLines(2, "regs_set = true;")
+      writeLines(1, "}")
+    }
+    writeLines(0, "}")
+    writeLines(0, "")
+  }
+
   def emit(circuit: Circuit) {
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
@@ -559,7 +651,8 @@ class EmitCpp(writer: Writer) {
     // writeLines(1, HarnessGenerator.harnessConnections(topModule))
     // writeLines(0, "}")
     writeLines(0, "")
-    emitEvalTail(topName, circuit)
+    // emitEvalTail(topName, circuit)
+    writeEvalOuter(circuit)
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
