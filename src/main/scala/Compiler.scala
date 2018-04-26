@@ -98,17 +98,19 @@ class EmitCpp(writer: Writer) {
     }
   }
 
-  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String] = Set()) {
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], optMuxes: Boolean, doNotShadow: Seq[String]=Seq()) {
     // TODO: trust others to perform opts to merge regs or mems
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    if (optMuxes)
+      sg.coarsenMuxShadows(doNotShadow)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case ms: MuxShadowed => {
         if (!doNotDec.contains(ms.name))
           writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
         writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, optMuxes, doNotShadow)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, optMuxes, doNotShadow)
         writeLines(indentLevel, "}")
       }
       case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
@@ -598,11 +600,9 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "int assert_exit_code;")
     }
     val sg = StatementGraph(noPrints)
-    if (optMuxes)
-      sg.coarsenMuxShadows(doNotShadow)
     val mergedRegs = if (optRegs) sg.mergeRegsSafe(safeRegs) else Seq()
     sg.updateMergedRegWrites(mergedRegs)
-    writeBodyInner(1, sg, doNotDec)
+    writeBodyInner(1, sg, doNotDec, optMuxes, doNotShadow)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
