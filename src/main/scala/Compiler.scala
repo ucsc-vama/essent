@@ -339,6 +339,109 @@ class EmitCpp(writer: Writer) {
     mergedRegs
   }
 
+  def writeZoningPredecs(
+      sg: StatementGraph,
+      topName: String,
+      memWrites: Seq[MemWrite],
+      extIOtypes: Map[String, Type],
+      regNames: Seq[String],
+      mergedRegs: Seq[String],
+      startingDoNotDec: Set[String],
+      keepAvail: Seq[String]) {
+    val zoneEvalFuncPredDecs = sg.getZoneNames() map {
+      zoneName => s"void ${genZoneFuncName(zoneName)}(bool update_registers);"
+    }
+    writeLines(1, zoneEvalFuncPredDecs)
+    writeLines(0, s"} $topName;")
+    // predeclare zone outputs
+    val outputPairs = sg.getZoneOutputTypes()
+    val outputConsumers = sg.getZoneInputMap()
+    writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
+    println(s"Output nodes: ${outputPairs.size}")
+    val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
+    val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
+    val otherInputs = sg.getExternalZoneInputs() diff regNames
+    val memNames = (memWrites map { _.memName }).toSet
+    val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
+    val nonMemCacheTypes = nonMemInputs.toSeq map {
+      name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
+    }
+    val nonMemCacheDecs = (nonMemCacheTypes zip nonMemInputs.toSeq) map {
+      case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    }
+    writeLines(0, nonMemCacheDecs)
+    val zoneNames = sg.getZoneNames()
+    writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+    writeLines(0, s"bool sim_cached = false;")
+    writeLines(0, s"bool regs_set = false;")
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case az: ActivityZone => {
+        writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
+        writeLines(1, s"${genFlagName(az.name)} = false;")
+        val cacheOldOutputs = az.outputTypes.toSeq map {
+          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+        }}
+        writeLines(1, cacheOldOutputs)
+        writeBodyInner(1, StatementGraph(az.memberStmts), doNotDec, true, keepAvail ++ doNotDec)
+        // writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
+        // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
+        val outputTriggers = az.outputConsumers.toSeq flatMap {
+          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+        }
+        writeLines(1, outputTriggers)
+        val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+        writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
+        writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+        // NOTE: not using RegUpdate since want to do reg change detection
+        writeLines(0, "}")
+      }
+      case _ => throw new Exception("Statement at top-level is not a zone")
+    }}
+  }
+
+  def writeZoningBody(sg: StatementGraph, regNames: Seq[String], unmergedRegs: Seq[String],
+                      memWrites: Seq[MemWrite], doNotDec: Set[String]) {
+    writeLines(1, "if (reset || !done_reset) {")
+    writeLines(2, "sim_cached = false;")
+    writeLines(2, "regs_set = false;")
+    writeLines(1, "}")
+    writeLines(1, "if (!sim_cached) {")
+    writeLines(2, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
+    writeLines(1, "}")
+    writeLines(1, "sim_cached = regs_set;")
+
+    val outputConsumers = sg.getZoneInputMap()
+    val memNames = memWrites map { _.memName }
+    val nonMemInputs = sg.getExternalZoneInputs() diff (regNames ++ memNames)
+    // do activity detection on other inputs (external IOs and resets)
+    writeLines(1, genAllTriggers(selectFromMap(nonMemInputs, outputConsumers), "$old", true))
+    // cache old versions
+    val nonMemCaches = nonMemInputs map { sigName => {
+      val oldVersion = s"${sigName.replace('.','$')}$$old"
+      s"$oldVersion = $sigName;"
+    }}
+    writeLines(1, nonMemCaches.toSeq)
+
+    // emit zone launches and unzoned statements
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case az: ActivityZone => {
+        writeLines(1, s"if (${genFlagName(az.name)}) {")
+        writeLines(2, s"${genZoneFuncName(az.name)}(update_registers);")
+        writeLines(1, "}")
+      }
+      case _ => writeLines(1, emitStmt(doNotDec)(stmt))
+    }}
+    // trigger zones based on mem writes
+    // NOTE: if mem has multiple write ports, either can trigger wakeups
+    val memWriteTriggerZones = memWrites flatMap { mw => {
+      val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
+      genDepZoneTriggers(outputConsumers(mw.memName), condition)
+    }}
+    writeLines(1, memWriteTriggerZones)
+    // trigger zone based on reg changes
+    writeLines(1, genAllTriggers(selectFromMap(unmergedRegs, outputConsumers), "$next"))
+  }
+
   def writeBodyZoneOptSGMem(
       bodies: Seq[Statement],
       topName: String,
@@ -558,9 +661,9 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeEvalOuter(circuit: Circuit) {
-    val simpleOnly = true
     val optRegs = true
     val optMuxes = true
+    val optZones = true
     val topName = circuit.main
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
@@ -588,21 +691,35 @@ class EmitCpp(writer: Writer) {
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
     val memWritePorts = allMemWrites map { _.nodeName }
     val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
+    val keepAvail = (memDeps ++ printDeps).distinct
     val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
     val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
-    writeLines(0, "")
-    if (simpleOnly) {
-      writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
-      writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-      writeLines(1, "bool assert_triggered = false;")
-      writeLines(1, "int assert_exit_code;")
-    }
     val sg = StatementGraph(noPrints)
-    val mergedRegs = if (optRegs) sg.mergeRegsSafe(safeRegs) else Seq()
-    sg.updateMergedRegWrites(mergedRegs)
-    writeBodyInner(1, sg, doNotDec, optMuxes, doNotShadow)
+    if (optZones)
+      sg.coarsenIntoZones(keepAvail)
+    val mergedRegs = if (optRegs) {
+                       if (optZones) sg.mergeRegUpdatesIntoZones(safeRegs)
+                       else sg.mergeRegsSafe(safeRegs)
+                     } else Seq()
+    val unmergedRegs = regNames diff mergedRegs
+    // FUTURE: worry about namespace collisions
+    writeLines(1, "bool assert_triggered = false;")
+    writeLines(1, "int assert_exit_code;")
+    if (optZones) {
+      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail)
+    } else
+      sg.updateMergedRegWrites(mergedRegs)
+    if (!optZones) {
+      writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
+    }
+    writeLines(0, "")
+    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    if (optZones)
+      writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec)
+    else
+      writeBodyInner(1, sg, doNotDec, optMuxes, doNotShadow)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
@@ -620,9 +737,9 @@ class EmitCpp(writer: Writer) {
     if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
       writeLines(1, "if (update_registers) {")
       writeLines(2, allMemWrites flatMap emitStmt(Set()))
-      writeLines(2, unsafeRegs ++ (safeRegs diff mergedRegs) map { regName => s"$regName = $regName$$next;" })
+      writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
-      if (!simpleOnly)
+      if (optZones)
         writeLines(2, "regs_set = true;")
       writeLines(1, "}")
     }
