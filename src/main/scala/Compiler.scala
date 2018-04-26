@@ -19,16 +19,6 @@ import firrtl.Utils._
 class EmitCpp(writer: Writer) {
   val tabs = "  "
 
-  // Graph Building
-  def buildGraph(hyperEdges: Seq[HyperedgeDep]) = {
-    val g = new Graph
-    hyperEdges foreach { he:HyperedgeDep =>
-      g.addNodeWithDeps(he.name, he.deps)
-    }
-    g
-  }
-
-
   // Writing methods
   def writeLines(indentLevel: Int, lines: String) {
     writeLines(indentLevel, Seq(lines))
@@ -80,22 +70,6 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"typedef struct $modName {")
     writeLines(1, m.ports flatMap emitPort(true))
     writeLines(0, s"} $modName;")
-  }
-
-  // Vanilla emitter with no optimizations
-  def writeBodyUnopt(indentLevel: Int, bodyEdges: Seq[HyperedgeDep], regNames: Seq[String]) {
-    // Simplified body, no mux shadowing
-    val g = buildGraph(bodyEdges)
-    // g.countChains()
-    // g.writeDegreeFile(regNames, "rocketchip.degrees")
-    // g.writeDotFile("rocketchip.dot")
-    // g.writeMetisFile("rocketchip.metis")
-    // g.scoutZones(regNames)
-    // g.writeCOOFile("rocketchip.rcm.coo", Option(g.RCMordering()))
-    val nameToStmt = (bodyEdges map { he:HyperedgeDep => (he.name, he.stmt) }).toMap
-    g.reorderNames foreach {
-      name => writeLines(indentLevel, emitStmt(Set())(nameToStmt(name)))
-    }
   }
 
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], optMuxes: Boolean, doNotShadow: Seq[String]=Seq()) {
