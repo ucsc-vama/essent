@@ -234,11 +234,6 @@ class EmitCpp(writer: Writer) {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(0, nonMemCacheDecs)
-    sg.getSourceZone foreach { az => {
-      println(s"There are ${az.memberNames.size} nodes in the SOURCE_ZONE")
-      writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
-      // writeBodyUnoptSG(1, az.memberStmts, doNotDec ++ regNames)
-    }}
     val zoneNames = sg.getZoneNames()
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
@@ -249,25 +244,23 @@ class EmitCpp(writer: Writer) {
     // emit zones
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        if (az.name != "SOURCE_ZONE") {
-          writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
-          writeLines(1, s"${genFlagName(az.name)} = false;")
-          val cacheOldOutputs = az.outputTypes.toSeq map {
-            case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
-          }}
-          writeLines(1, cacheOldOutputs)
-          writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
-          // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
-          val outputTriggers = az.outputConsumers.toSeq flatMap {
-            case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
-          }
-          writeLines(1, outputTriggers)
-          val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-          writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
-          writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
-          // NOTE: not using RegUpdate since want to do reg change detection
-          writeLines(0, "}")
+        writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
+        writeLines(1, s"${genFlagName(az.name)} = false;")
+        val cacheOldOutputs = az.outputTypes.toSeq map {
+          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+        }}
+        writeLines(1, cacheOldOutputs)
+        writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
+        // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
+        val outputTriggers = az.outputConsumers.toSeq flatMap {
+          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
         }
+        writeLines(1, outputTriggers)
+        val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+        writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
+        writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+        // NOTE: not using RegUpdate since want to do reg change detection
+        writeLines(0, "}")
       }
       case _ =>
     }}
@@ -306,11 +299,9 @@ class EmitCpp(writer: Writer) {
     // emit zone launches and unzoned statements
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        if (az.name != "SOURCE_ZONE") {
-          writeLines(1, s"if (${genFlagName(az.name)}) {")
-          writeLines(2, s"${genZoneFuncName(az.name)}(update_registers);")
-          writeLines(1, "}")
-        }
+        writeLines(1, s"if (${genFlagName(az.name)}) {")
+        writeLines(2, s"${genZoneFuncName(az.name)}(update_registers);")
+        writeLines(1, "}")
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}
@@ -362,11 +353,6 @@ class EmitCpp(writer: Writer) {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(0, nonMemCacheDecs)
-    sg.getSourceZone foreach { az => {
-      println(s"There are ${az.memberNames.size} nodes in the SOURCE_ZONE")
-      writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ regNames, doNotDec)
-      // writeBodyUnoptSG(1, az.memberStmts, doNotDec ++ regNames)
-    }}
     val zoneNames = sg.getZoneNames()
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
@@ -412,42 +398,40 @@ class EmitCpp(writer: Writer) {
     // emit zones (and unzoned statements)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        if (az.name != "SOURCE_ZONE") {
-          writeLines(1, s"if (${genFlagName(az.name)}) {")
-          writeLines(2, s"${genFlagName(az.name)} = false;")
-          if (trackActivity)
-            writeLines(2, s"${zoneActTrackerName(az.name)}++;")
-          val cacheOldOutputs = az.outputTypes.toSeq map {
-            case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
-          }}
-          writeLines(2, cacheOldOutputs)
-          writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
-          // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
-          val outputTriggers = az.outputConsumers.toSeq flatMap {
-            case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
-          }
-          writeLines(2, outputTriggers)
-          val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-          val regsTriggerZones = mergedRegsInZone flatMap {
-            regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
-          }
-          writeLines(2, regsTriggerZones)
-          writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
-          // NOTE: not using RegUpdate since want to do reg change detection
-          val memWritesInZone = az.memberStmts flatMap findInstancesOf[MemWrite]
-          val memsWrittenInZone = (memWritesInZone map { _.memName }).distinct
-          // trigger zones based on mem writes
-          // NOTE: if mem has multiple write ports, either can trigger wakeups
-          val memEnablesAndMasks = (memWritesInZone map {
-            mw => (mw.memName, Seq(emitExpr(mw.wrEn), emitExpr(mw.wrMask)))
-          }).toMap
-          val memWriteTriggerZones = memsWrittenInZone flatMap { flagName => {
-            val condition = memEnablesAndMasks(flagName).mkString(" && ")
-            genDepZoneTriggers(outputConsumers(flagName), condition)
-          }}
-          writeLines(2, memWriteTriggerZones)
-          writeLines(1, "}")
+        writeLines(1, s"if (${genFlagName(az.name)}) {")
+        writeLines(2, s"${genFlagName(az.name)} = false;")
+        if (trackActivity)
+          writeLines(2, s"${zoneActTrackerName(az.name)}++;")
+        val cacheOldOutputs = az.outputTypes.toSeq map {
+          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+        }}
+        writeLines(2, cacheOldOutputs)
+        writeBodyMuxOptSG(2, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
+        // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
+        val outputTriggers = az.outputConsumers.toSeq flatMap {
+          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
         }
+        writeLines(2, outputTriggers)
+        val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+        val regsTriggerZones = mergedRegsInZone flatMap {
+          regName => genDepZoneTriggers(outputConsumers(regName), s"$regName != $regName$$next")
+        }
+        writeLines(2, regsTriggerZones)
+        writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+        // NOTE: not using RegUpdate since want to do reg change detection
+        val memWritesInZone = az.memberStmts flatMap findInstancesOf[MemWrite]
+        val memsWrittenInZone = (memWritesInZone map { _.memName }).distinct
+        // trigger zones based on mem writes
+        // NOTE: if mem has multiple write ports, either can trigger wakeups
+        val memEnablesAndMasks = (memWritesInZone map {
+          mw => (mw.memName, Seq(emitExpr(mw.wrEn), emitExpr(mw.wrMask)))
+        }).toMap
+        val memWriteTriggerZones = memsWrittenInZone flatMap { flagName => {
+          val condition = memEnablesAndMasks(flagName).mkString(" && ")
+          genDepZoneTriggers(outputConsumers(flagName), condition)
+        }}
+        writeLines(2, memWriteTriggerZones)
+        writeLines(1, "}")
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}

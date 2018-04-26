@@ -2056,3 +2056,22 @@
 //   writeLines(2, s"""printf("Average Zones: %g\\n", (double) total_zones_active/cycles_ticked);""")
 // }
 
+
+// def consolidateSourceZones() {
+//   // TODO: need to filter our regNames and extIOs (but maybe no point to SOURCE_ZONE?)
+//   // val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
+//   val sourceIDs = Seq()
+//   println(s"Merging ${sourceIDs.size} source zones")
+//   addNodeWithDeps("SOURCE_ZONE", Seq())
+//   idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs flatMap grabStmts)
+//   mergeStmtsMutably(Seq(getID("SOURCE_ZONE")) ++ sourceIDs)
+// }
+
+// def getSourceZone(): Option[ActivityZone] = {
+//   if (nameToID.contains("SOURCE_ZONE")) {
+//     idToStmt(nameToID("SOURCE_ZONE")) match {
+//       case az: ActivityZone => Some(az)
+//       case _ => throw new Exception("Non-zone node called SOURCE_ZONE")
+//     }
+//   } else None
+// }

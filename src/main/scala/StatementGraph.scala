@@ -138,26 +138,14 @@ class StatementGraph extends Graph {
     }}
   }
 
-  def consolidateSourceZones() {
-    // TODO: need to filter our regNames and extIOs (but maybe no point to SOURCE_ZONE?)
-    // val sourceIDs = nodeRefIDs filter { id => inNeigh(id).isEmpty && !outNeigh(id).isEmpty }
-    val sourceIDs = Seq()
-    println(s"Merging ${sourceIDs.size} source zones")
-    addNodeWithDeps("SOURCE_ZONE", Seq())
-    idToStmt(getID("SOURCE_ZONE")) = Block(sourceIDs flatMap grabStmts)
-    mergeStmtsMutably(Seq(getID("SOURCE_ZONE")) ++ sourceIDs)
-  }
-
   def mergeSingleInputMFFCsToParents() {
-    val sourceZoneID = nameToID("SOURCE_ZONE")
-    def grabFirstParent(id: Int) = (inNeigh(id) - sourceZoneID).head
-    val singleInputIDs = nodeRefIDs filter { id => (inNeigh(id) - sourceZoneID).size == 1}
+    val singleInputIDs = nodeRefIDs filter { inNeigh(_).size == 1}
     val singleInputSet = singleInputIDs.toSet
-    val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(grabFirstParent(id)) }
+    val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(inNeigh(id).head) }
     if (baseSingleInputIDs.nonEmpty) {
       println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
       baseSingleInputIDs foreach { childID => {
-        val parentID = grabFirstParent(childID)
+        val parentID = inNeigh(childID).head
         idToStmt(parentID) = Block(grabStmts(parentID) ++ grabStmts(childID))
         mergeStmtsMutably(Seq(parentID, childID))
       }}
@@ -193,10 +181,9 @@ class StatementGraph extends Graph {
       (idSize > 0) && (idSize < smallZoneCutoff)
     }}
     def overlapSize(idA: Int, idB: Int): Int = inNeigh(idA).intersect(inNeigh(idB)).size
-    val sourceZoneID = nameToID("SOURCE_ZONE")
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
-      val siblings = ((inNeigh(id) - sourceZoneID) flatMap outNeigh).distinct - id
+      val siblings = (inNeigh(id) flatMap outNeigh).distinct - id
       val sibsScored = siblings map {
         sibID => (overlapSize(id, sibID) / numInputs, sibID)
       }
@@ -227,11 +214,8 @@ class StatementGraph extends Graph {
     }}).toMap
     val idToHE = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
     val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }
-    val sourceZoneMembers = if (idToName.contains("SOURCE_ZONE"))
-                              idToMemberNames(nameToID("SOURCE_ZONE")).toSeq
-                            else Seq[String]()
     val idToInputNames = idToHE map { case (id, zoneHE) => {
-      val zoneDepNames = (zoneHE flatMap { _.deps }).distinct diff sourceZoneMembers
+      val zoneDepNames = (zoneHE flatMap { _.deps }).distinct
       val externalDepNames = zoneDepNames diff idToMemberNames(id)
       (id -> externalDepNames)
     }}
@@ -244,7 +228,7 @@ class StatementGraph extends Graph {
       val requestedOutputs = memberSet.intersect(keepAvail)
       val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
       // NOTE: can be overlaps, but set addition removes differences
-      val outputNameSet = if (zoneName != "SOURCE_ZONE") requestedOutputs ++ consumedOutputs else Set[String]()
+      val outputNameSet = requestedOutputs ++ consumedOutputs
       val outputConsumers = outputNameSet map { outputName => {
         val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map idToName)
@@ -262,7 +246,6 @@ class StatementGraph extends Graph {
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
-      ("source", {sg: StatementGraph => sg.consolidateSourceZones()}),
       // ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
@@ -312,15 +295,6 @@ class StatementGraph extends Graph {
       case az: ActivityZone => Seq(az.name)
       case _ => Seq()
     }}
-  }
-
-  def getSourceZone(): Option[ActivityZone] = {
-    if (nameToID.contains("SOURCE_ZONE")) {
-      idToStmt(nameToID("SOURCE_ZONE")) match {
-        case az: ActivityZone => Some(az)
-        case _ => throw new Exception("Non-zone node called SOURCE_ZONE")
-      }
-    } else None
   }
 
   def analyzeZoningQuality() {
