@@ -19,3 +19,5 @@ object Util {
     }).toMap
   }
 }
+
+case class OptFlags(regUpdates: Boolean, muxShadows: Boolean, zoneAct: Boolean, trackAct: Boolean)

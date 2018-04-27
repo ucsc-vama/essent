@@ -72,19 +72,19 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $modName;")
   }
 
-  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], optMuxes: Boolean, doNotShadow: Seq[String]=Seq()) {
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, doNotShadow: Seq[String]=Seq()) {
     // TODO: trust others to perform opts to merge regs or mems
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
-    if (optMuxes)
+    if (opt.muxShadows)
       sg.coarsenMuxShadows(doNotShadow)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case ms: MuxShadowed => {
         if (!doNotDec.contains(ms.name))
           writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
         writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, optMuxes, doNotShadow)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, opt, doNotShadow)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, optMuxes, doNotShadow)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, opt, doNotShadow)
         writeLines(indentLevel, "}")
       }
       case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
@@ -321,7 +321,8 @@ class EmitCpp(writer: Writer) {
       regNames: Seq[String],
       mergedRegs: Seq[String],
       startingDoNotDec: Set[String],
-      keepAvail: Seq[String]) {
+      keepAvail: Seq[String],
+      opt: OptFlags) {
     val zoneEvalFuncPredDecs = sg.getZoneNames() map {
       zoneName => s"void ${genZoneFuncName(zoneName)}(bool update_registers);"
     }
@@ -356,7 +357,7 @@ class EmitCpp(writer: Writer) {
           case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
         }}
         writeLines(1, cacheOldOutputs)
-        writeBodyInner(1, StatementGraph(az.memberStmts), doNotDec, true, keepAvail ++ doNotDec)
+        writeBodyInner(1, StatementGraph(az.memberStmts), doNotDec, opt, keepAvail ++ doNotDec)
         // writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
         // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
         val outputTriggers = az.outputConsumers.toSeq flatMap {
@@ -641,10 +642,7 @@ class EmitCpp(writer: Writer) {
     writeLines(0, "")
   }
 
-  def writeEvalOuter(circuit: Circuit) {
-    val optRegs = true
-    val optMuxes = true
-    val optZones = true
+  def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
     val topName = circuit.main
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
@@ -681,29 +679,29 @@ class EmitCpp(writer: Writer) {
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     val sg = StatementGraph(noPrints)
     sg.mergeMemWritesIntoSG(allMemWrites)
-    if (optZones)
+    if (opt.zoneAct)
       sg.coarsenIntoZones(keepAvail)
-    val mergedRegs = if (optRegs) {
-                       if (optZones) sg.mergeRegUpdatesIntoZones(safeRegs)
+    val mergedRegs = if (opt.regUpdates) {
+                       if (opt.zoneAct) sg.mergeRegUpdatesIntoZones(safeRegs)
                        else sg.mergeRegsSafe(safeRegs)
                      } else Seq()
     val unmergedRegs = regNames diff mergedRegs
     // FUTURE: worry about namespace collisions
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
-    if (optZones) {
-      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail)
+    if (opt.zoneAct) {
+      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
     } else
       sg.updateMergedRegWrites(mergedRegs)
-    if (!optZones) {
+    if (!opt.zoneAct) {
       writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
     }
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (optZones)
+    if (opt.zoneAct)
       writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec)
     else
-      writeBodyInner(1, sg, doNotDec, optMuxes, doNotShadow)
+      writeBodyInner(1, sg, doNotDec, opt, doNotShadow)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
@@ -723,7 +721,7 @@ class EmitCpp(writer: Writer) {
       // writeLines(2, allMemWrites flatMap emitStmt(Set()))
       writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
-      if (optZones)
+      if (opt.zoneAct)
         writeLines(2, "regs_set = true;")
       writeLines(1, "}")
     }
@@ -753,7 +751,7 @@ class EmitCpp(writer: Writer) {
     // writeLines(0, "}")
     writeLines(0, "")
     // emitEvalTail(topName, circuit)
-    writeEvalOuter(circuit)
+    writeEvalOuter(circuit, OptFlags(true, true, true, false))
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
