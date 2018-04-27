@@ -349,10 +349,22 @@ class EmitCpp(writer: Writer) {
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
     writeLines(0, s"bool regs_set = false;")
+    if (opt.trackAct) {
+      writeLines(0, decZoneActTrackers(zoneNames))
+      val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
+        case az: ActivityZone => Some((az.name, az.memberStmts.size))
+        case _ => None
+      }}
+      writeLines(0, "void printZoneActivities() {")
+      writeLines(1, zoneActOutput(zoneNamesAndSizes))
+      writeLines(0, "}")
+    }
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
         writeLines(1, s"${genFlagName(az.name)} = false;")
+        if (opt.trackAct)
+          writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputTypes.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
         }}
