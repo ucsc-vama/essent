@@ -137,12 +137,14 @@ class EmitCpp(writer: Writer) {
     writeLines(1, zoneEvalFuncPredDecs)
     if (opt.trackAct) {
       writeLines(1, decZoneActTrackers(zoneNames))
+      writeLines(1, "uint64_t cycle_count = 0;")
       val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
         case az: ActivityZone => Some((az.name, az.memberStmts.size))
         case _ => None
       }}
       writeLines(1, "void printZoneActivities() {")
       writeLines(2, zoneActOutput(zoneNamesAndSizes))
+      writeLines(2, zoneEffActSummary(zoneNamesAndSizes))
       writeLines(1, "}")
       writeLines(1, s"~$topName() {")
       writeLines(2, "printZoneActivities();")
@@ -204,7 +206,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeZoningBody(sg: StatementGraph, regNames: Seq[String], unmergedRegs: Seq[String],
-                      memWrites: Seq[MemWrite], doNotDec: Set[String]) {
+                      memWrites: Seq[MemWrite], doNotDec: Set[String], opt: OptFlags) {
     writeLines(1, "if (reset || !done_reset) {")
     writeLines(2, "sim_cached = false;")
     writeLines(2, "regs_set = false;")
@@ -213,6 +215,8 @@ class EmitCpp(writer: Writer) {
     writeLines(2, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
     writeLines(1, "}")
     writeLines(1, "sim_cached = regs_set;")
+    if (opt.trackAct)
+      writeLines(1, "cycle_count++;")
 
     val outputConsumers = sg.getZoneInputMap()
     val memNames = memWrites map { _.memName }
@@ -256,6 +260,16 @@ class EmitCpp(writer: Writer) {
     zoneNamesAndSizes map {
       case (zoneName, zoneSize) => s"""printf("$zoneName %llu %d\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
     }
+  }
+
+  def zoneEffActSummary(zoneNamesAndSizes: Seq[(String,Int)]) = {
+    val sum = zoneNamesAndSizes map {
+      case (zoneName, zoneSize) => s"total += ${zoneActTrackerName(zoneName)} * $zoneSize;"
+    }
+    val totalSize = (zoneNamesAndSizes map { _._2 }).sum
+    val effAct = s"double eff_act = static_cast<double>(total) / $totalSize / cycle_count;"
+    val printEffAct = """printf("Effective Activity: %g\n", eff_act);"""
+    Seq("uint64_t total = 0;") ++ sum ++ Seq(effAct, printEffAct)
   }
 
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
@@ -315,7 +329,7 @@ class EmitCpp(writer: Writer) {
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.zoneAct)
-      writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec)
+      writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
     else
       writeBodyInner(1, sg, doNotDec, opt, doNotShadow)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
