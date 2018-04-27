@@ -367,6 +367,13 @@ class EmitCpp(writer: Writer) {
         writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
         writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
         // NOTE: not using RegUpdate since want to do reg change detection
+        // trigger zones based on mem writes
+        val memWritesInZone = az.memberStmts flatMap findInstancesOf[MemWrite]
+        val memWriteTriggerZones = memWritesInZone flatMap { mw => {
+          val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
+          genDepZoneTriggers(outputConsumers(mw.memName), condition)
+        }}
+        writeLines(1, memWriteTriggerZones)
         writeLines(0, "}")
       }
       case _ => throw new Exception("Statement at top-level is not a zone")
@@ -407,11 +414,11 @@ class EmitCpp(writer: Writer) {
     }}
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups
-    val memWriteTriggerZones = memWrites flatMap { mw => {
-      val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
-      genDepZoneTriggers(outputConsumers(mw.memName), condition)
-    }}
-    writeLines(1, memWriteTriggerZones)
+    // val memWriteTriggerZones = memWrites flatMap { mw => {
+    //   val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
+    //   genDepZoneTriggers(outputConsumers(mw.memName), condition)
+    // }}
+    // writeLines(1, memWriteTriggerZones)
     // trigger zone based on reg changes
     writeLines(1, genAllTriggers(selectFromMap(unmergedRegs, outputConsumers), "$next"))
   }
@@ -665,12 +672,15 @@ class EmitCpp(writer: Writer) {
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
     val memWritePorts = allMemWrites map { _.nodeName }
     val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
-    val keepAvail = (memDeps ++ printDeps).distinct
-    val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
+    val doNotShadow = (regNames ++ memWritePorts ++ printDeps).distinct
+    val keepAvail = printDeps.distinct
+    // val keepAvail = (memDeps ++ printDeps).distinct
+    // val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
     val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     val sg = StatementGraph(noPrints)
+    sg.mergeMemWritesIntoSG(allMemWrites)
     if (optZones)
       sg.coarsenIntoZones(keepAvail)
     val mergedRegs = if (optRegs) {
@@ -710,7 +720,7 @@ class EmitCpp(writer: Writer) {
     }
     if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
       writeLines(1, "if (update_registers) {")
-      writeLines(2, allMemWrites flatMap emitStmt(Set()))
+      // writeLines(2, allMemWrites flatMap emitStmt(Set()))
       writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
       if (optZones)
