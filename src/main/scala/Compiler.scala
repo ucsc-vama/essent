@@ -130,10 +130,24 @@ class EmitCpp(writer: Writer) {
       startingDoNotDec: Set[String],
       keepAvail: Seq[String],
       opt: OptFlags) {
-    val zoneEvalFuncPredDecs = sg.getZoneNames() map {
+    val zoneNames = sg.getZoneNames()
+    val zoneEvalFuncPredDecs = zoneNames map {
       zoneName => s"void ${genZoneFuncName(zoneName)}(bool update_registers);"
     }
     writeLines(1, zoneEvalFuncPredDecs)
+    if (opt.trackAct) {
+      writeLines(1, decZoneActTrackers(zoneNames))
+      val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
+        case az: ActivityZone => Some((az.name, az.memberStmts.size))
+        case _ => None
+      }}
+      writeLines(1, "void printZoneActivities() {")
+      writeLines(2, zoneActOutput(zoneNamesAndSizes))
+      writeLines(1, "}")
+      writeLines(1, s"~$topName() {")
+      writeLines(2, "printZoneActivities();")
+      writeLines(1, "}")
+    }
     writeLines(0, s"} $topName;")
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
@@ -152,20 +166,9 @@ class EmitCpp(writer: Writer) {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(0, nonMemCacheDecs)
-    val zoneNames = sg.getZoneNames()
     writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
     writeLines(0, s"bool sim_cached = false;")
     writeLines(0, s"bool regs_set = false;")
-    if (opt.trackAct) {
-      writeLines(0, decZoneActTrackers(zoneNames))
-      val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
-        case az: ActivityZone => Some((az.name, az.memberStmts.size))
-        case _ => None
-      }}
-      writeLines(0, "void printZoneActivities() {")
-      writeLines(1, zoneActOutput(zoneNamesAndSizes))
-      writeLines(0, "}")
-    }
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
