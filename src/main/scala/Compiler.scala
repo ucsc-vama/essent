@@ -139,6 +139,7 @@ class EmitCpp(writer: Writer) {
         case _ => None
       }}
       writeLines(1, "void printZoneActivities() {")
+      writeLines(2, """fprintf(stderr, "%llu\n", cycle_count);""")
       writeLines(2, zoneActOutput(zoneNamesAndSizes))
       writeLines(2, zoneEffActSummary(zoneNamesAndSizes))
       writeLines(1, "}")
@@ -246,7 +247,7 @@ class EmitCpp(writer: Writer) {
 
   def zoneActOutput(zoneNamesAndSizes: Seq[(String,Int)]) = {
     zoneNamesAndSizes map {
-      case (zoneName, zoneSize) => s"""printf("$zoneName %llu %d\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
+      case (zoneName, zoneSize) => s"""fprintf(stderr, "$zoneName %llu %d\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
     }
   }
 
