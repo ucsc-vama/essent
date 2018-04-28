@@ -131,10 +131,6 @@ class EmitCpp(writer: Writer) {
       keepAvail: Seq[String],
       opt: OptFlags) {
     val zoneNames = sg.getZoneNames()
-    val zoneEvalFuncPredDecs = zoneNames map {
-      zoneName => s"void ${genZoneFuncName(zoneName)}(bool update_registers);"
-    }
-    writeLines(1, zoneEvalFuncPredDecs)
     if (opt.trackAct) {
       writeLines(1, decZoneActTrackers(zoneNames))
       writeLines(1, "uint64_t cycle_count = 0;")
@@ -150,7 +146,6 @@ class EmitCpp(writer: Writer) {
       writeLines(2, "printZoneActivities();")
       writeLines(1, "}")
     }
-    writeLines(0, s"} $topName;")
     // predeclare zone outputs
     val outputPairs = sg.getZoneOutputTypes()
     val outputConsumers = sg.getZoneInputMap()
@@ -167,30 +162,30 @@ class EmitCpp(writer: Writer) {
     val nonMemCacheDecs = (nonMemCacheTypes zip nonMemInputs.toSeq) map {
       case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
-    writeLines(0, nonMemCacheDecs)
-    writeLines(0, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
-    writeLines(0, s"bool sim_cached = false;")
-    writeLines(0, s"bool regs_set = false;")
+    writeLines(1, nonMemCacheDecs)
+    writeLines(1, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+    writeLines(1, s"bool sim_cached = false;")
+    writeLines(1, s"bool regs_set = false;")
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        writeLines(0, s"void $topName::${genZoneFuncName(az.name)}(bool update_registers) {")
-        writeLines(1, s"${genFlagName(az.name)} = false;")
+        writeLines(1, s"void ${genZoneFuncName(az.name)}(bool update_registers) {")
+        writeLines(2, s"${genFlagName(az.name)} = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputTypes.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
         }}
-        writeLines(1, cacheOldOutputs)
-        writeBodyInner(1, StatementGraph(az.memberStmts), doNotDec, opt, keepAvail ++ doNotDec)
+        writeLines(2, cacheOldOutputs)
+        writeBodyInner(2, StatementGraph(az.memberStmts), doNotDec, opt, keepAvail ++ doNotDec)
         // writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
         // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
         val outputTriggers = az.outputConsumers.toSeq flatMap {
           case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
         }
-        writeLines(1, outputTriggers)
+        writeLines(2, outputTriggers)
         val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-        writeLines(1, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
-        writeLines(1, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+        writeLines(2, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
+        writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
         // NOTE: not using RegUpdate since want to do reg change detection
         // trigger zones based on mem writes
         val memWritesInZone = az.memberStmts flatMap findInstancesOf[MemWrite]
@@ -198,8 +193,8 @@ class EmitCpp(writer: Writer) {
           val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
           genDepZoneTriggers(outputConsumers(mw.memName), condition)
         }}
-        writeLines(1, memWriteTriggerZones)
-        writeLines(0, "}")
+        writeLines(2, memWriteTriggerZones)
+        writeLines(1, "}")
       }
       case _ => throw new Exception("Statement at top-level is not a zone")
     }}
@@ -323,9 +318,7 @@ class EmitCpp(writer: Writer) {
       writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
     } else
       sg.updateMergedRegWrites(mergedRegs)
-    if (!opt.zoneAct) {
-      writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
-    }
+    writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.zoneAct)
