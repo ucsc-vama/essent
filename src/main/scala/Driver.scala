@@ -31,9 +31,12 @@ object Driver {
     harnessWriter.close()
 
     val dutWriter = new FileWriter(new File(outputDir, s"$topName.h"))
-    val compiler = new CCCompiler(verbose, dutWriter)
+    val debugWriter = if (verbose) Some(new FileWriter(new File(outputDir, s"$topName.lo.fir")))
+                      else None
+    val compiler = new CCCompiler(dutWriter, debugWriter)
     compiler.compileAndEmit(CircuitState(circuit, firrtl.ChirrtlForm))
     dutWriter.close()
+    debugWriter map { _.close() }
   }
 
   def compileCPP(dutName: String, buildDir: String): ProcessBuilder = {

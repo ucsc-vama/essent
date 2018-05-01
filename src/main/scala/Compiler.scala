@@ -406,16 +406,16 @@ class FinalCleanups extends SeqTransform {
 }
 
 // TODO: use functionality within newer firrtl
-class PrintCircuit extends Transform {
+class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
   def inputForm = MidForm
   def outputForm = LowForm
   def execute(state: CircuitState): CircuitState = {
-    println(state.circuit.serialize)
+    loFirWriter foreach { _.write(state.circuit.serialize) }
     state
   }
 }
 
-class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
+class CCCompiler(writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
   def emitter = new CCEmitter(writer)
   def transforms: Seq[Transform] = Seq(
     new firrtl.ChirrtlToHighFirrtl,
@@ -427,6 +427,7 @@ class CCCompiler(verbose: Boolean, writer: Writer) extends Compiler {
     new firrtl.MiddleFirrtlToLowFirrtl,
     // new firrtl.passes.InlineInstances,
     new firrtl.LowFirrtlOptimization,
-    new FinalCleanups
-  ) ++ (if (verbose) Seq(new PrintCircuit) else Seq())
+    new FinalCleanups,
+    new DumpLowFIRRTL(loFirWriter)
+  )
 }
