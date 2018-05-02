@@ -105,8 +105,12 @@ object Extract {
     val result = e match {
       case w: WRef => Seq(w.name)
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
-      case w: WSubField => Seq(emitExpr(w))
-      case w: WSubAccess => Seq(emitExpr(w.expr), emitExpr(w.index))
+      case w: WSubField => {
+        val innerResult = findDependencesExpr(w.expr)
+        if (innerResult.isEmpty) Seq()
+        else Seq(s"${innerResult.head}.${w.name}")
+      }
+      case w: WSubAccess => Seq(w.expr, w.index) flatMap findDependencesExpr
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
       case s: SIntLiteral => Seq()

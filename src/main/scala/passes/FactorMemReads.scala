@@ -22,25 +22,24 @@ import firrtl.Utils._
 object FactorMemReads extends Pass {
   def desc = "Transforms mem read ports into SubAccesses for easier emission"
 
-  def findReadPortAddrs(readPorts: Set[String])(s: Statement): Seq[(String,String)] = s match {
+  def findReadPortAddrs(readPorts: Set[String])(s: Statement): Seq[(String,Expression)] = s match {
     case b: Block => b.stmts flatMap findReadPortAddrs(readPorts)
     case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "addr", _, _), rhs) =>
       val fullPortName = memName + "." + portName
-      if (readPorts.contains(fullPortName)) Seq((fullPortName, emitExpr(rhs)))
+      if (readPorts.contains(fullPortName)) Seq((fullPortName, rhs))
       else Seq()
     case _ => Seq()
   }
 
-  def replaceReadConnects(readPortAddrs: Map[String,String],
+  def replaceReadConnects(readPortAddrs: Map[String,Expression],
                           readPortTypes: Map[String,Type])(s: Statement): Statement = {
     val readConnectsReplaced = s match {
       case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), suffix, addrType, addrGender), rhs) =>
         val fullPortName = memName + "." + portName
         if (readPortAddrs.contains(fullPortName)) {
           if (suffix == "addr") {
-            val addrSig = WRef(readPortAddrs(fullPortName), addrType, firrtl.MemKind, addrGender)
             val memRef = WRef(memName, readPortTypes(fullPortName), firrtl.MemKind, FEMALE)
-            val memRead = WSubAccess(memRef, addrSig, readPortTypes(fullPortName), MALE)
+            val memRead = WSubAccess(memRef, readPortAddrs(fullPortName), readPortTypes(fullPortName), MALE)
             DefNode(NoInfo, fullPortName, memRead)
           } else if (suffix == "en") EmptyStmt
           else s
@@ -50,11 +49,11 @@ object FactorMemReads extends Pass {
     readConnectsReplaced map replaceReadConnects(readPortAddrs, readPortTypes)
   }
 
-  def replaceReadPortRefsStmt(readPortAddrs: Map[String,String])(s: Statement): Statement = {
+  def replaceReadPortRefsStmt(readPortAddrs: Map[String,Expression])(s: Statement): Statement = {
     s map replaceReadPortRefsStmt(readPortAddrs) map replaceReadPortRefsExpr(readPortAddrs)
   }
 
-  def replaceReadPortRefsExpr(readPortAddrs: Map[String,String])(e: Expression): Expression = {
+  def replaceReadPortRefsExpr(readPortAddrs: Map[String,Expression])(e: Expression): Expression = {
     val refsReplaced = e match {
       case WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "data", dataType, dataGender) => {
         val fullPortName = memName + "." + portName
