@@ -7,18 +7,14 @@ import firrtl.passes._
 import firrtl.Utils._
 
 
-object NoResetsOrClockConnects extends Pass {
-  def desc = "Removes connects to .clock or .reset"
+object NoClockConnects extends Pass {
+  def desc = "Removes Connects or DefNodes to anything that is ClockType"
+  // FUTURE: remove this pass and properly support multi-clock
 
   def cutConnectsStmt(s: Statement): Statement = {
     val noConnects = s match {
-      case c: Connect => c.loc match {
-        case w: WSubField => {
-          if (w.name == "clock" || w.name == "clk") EmptyStmt
-          else c
-        }
-        case _ => c
-      }
+      case c: Connect if (c.expr.tpe == ClockType || c.loc.tpe == ClockType) => EmptyStmt
+      case d: DefNode if (d.value.tpe == ClockType) => EmptyStmt
       case _ => s
     }
     noConnects map cutConnectsStmt
