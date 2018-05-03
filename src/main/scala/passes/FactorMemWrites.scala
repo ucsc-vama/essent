@@ -47,7 +47,6 @@ object FactorMemWrites extends Pass {
     case _ => s
   }
 
-  // TODO: make sure all sigs set for each MemWrite
   def generateMemWrites(memories: Seq[DefMemory],
                         writePortSigs: Map[String, Expression]): Seq[Statement] = {
     memories flatMap { mem => {
