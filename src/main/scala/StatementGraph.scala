@@ -127,7 +127,6 @@ class StatementGraph extends Graph {
   def coarsenToMFFCs() {
     val idToMFFC = findMFFCs()
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
-    // TODO: shouldn't need to do anything here because invalid nodes all in component -3?
     // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
       if (mffcID > 0) {
@@ -383,6 +382,7 @@ class StatementGraph extends Graph {
 
   // MemWrite merging
   //----------------------------------------------------------------------------
+  // NOTE: if used, will need to add if (update_registers) to Emitter for MemWrite
   def mergeMemWritesIntoSG(memWrites: Seq[MemWrite]): Seq[MemWrite] = {
     // FUTURE: may be able to include MemWrites in body when sg is built, and just read edges later
     val unmergedMemWrites = memWrites flatMap { mw => {

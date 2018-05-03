@@ -73,7 +73,6 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, doNotShadow: Seq[String]=Seq()) {
-    // TODO: trust others to perform opts to merge regs or mems
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
     if (opt.muxShadows)
       sg.coarsenMuxShadows(doNotShadow)
@@ -405,7 +404,7 @@ class FinalCleanups extends SeqTransform {
     // passes.VerilogPrep)
 }
 
-// TODO: use functionality within newer firrtl
+// FUTURE: use functionality within newer firrtl
 class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
   def inputForm = MidForm
   def outputForm = LowForm
