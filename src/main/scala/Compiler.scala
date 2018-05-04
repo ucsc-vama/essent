@@ -72,18 +72,18 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $modName;")
   }
 
-  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, doNotShadow: Seq[String]=Seq()) {
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String]=Seq()) {
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
     if (opt.muxShadows)
-      sg.coarsenMuxShadows(doNotShadow)
+      sg.coarsenMuxShadows(keepAvail)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case ms: MuxShadowed => {
         if (!doNotDec.contains(ms.name))
           writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
         writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, opt, doNotShadow)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, opt, keepAvail)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, opt, doNotShadow)
+        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, opt, keepAvail)
         writeLines(indentLevel, "}")
       }
       case _ => writeLines(indentLevel, emitStmt(doNotDec)(stmt))
@@ -288,7 +288,6 @@ class EmitCpp(writer: Writer) {
     val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
     val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
     val keepAvail = (memDeps ++ printDeps).distinct
-    val doNotShadow = (regNames ++ memDeps ++ printDeps).distinct
     val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
@@ -313,7 +312,7 @@ class EmitCpp(writer: Writer) {
     if (opt.zoneAct)
       writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
     else
-      writeBodyInner(1, sg, doNotDec, opt, doNotShadow)
+      writeBodyInner(1, sg, doNotDec, opt, keepAvail)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       if (printStmts.nonEmpty) {
