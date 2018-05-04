@@ -233,7 +233,6 @@ class Graph {
     val shadows = muxMap.keys flatMap {name =>
       val muxExpr = muxMap(name)
       val muxNameID = nameToID(name)
-      // FUTURE: check to make sure not equal
       val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxNameID)
       val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, muxNameID)
       Seq((name, tShadow, fShadow))

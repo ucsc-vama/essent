@@ -89,7 +89,6 @@ class StatementGraph extends Graph {
       val muxOutputName = findResultName(idToStmt(muxID))
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       val muxOutputStmt = idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)
-      // FUTURE: consider adding connects for output within shadows
       idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr,
                           convToStmts(tShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)),
                           convToStmts(fShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.fval)))
@@ -330,7 +329,6 @@ class StatementGraph extends Graph {
   // Register merging
   //----------------------------------------------------------------------------
   def mergeRegUpdatesIntoZones(regsToConsider: Seq[String]): Seq[String] = {
-    // FUTURE: consider converting to ids internally to speed up
     val inputNameToConsumers = getZoneInputMap()
     val regNamesSet = regsToConsider.toSet
     val regNameToZoneName = (nodeRefIDs flatMap { id => idToStmt(id) match {
@@ -384,7 +382,7 @@ class StatementGraph extends Graph {
   //----------------------------------------------------------------------------
   // NOTE: if used, will need to add if (update_registers) to Emitter for MemWrite
   def mergeMemWritesIntoSG(memWrites: Seq[MemWrite]): Seq[MemWrite] = {
-    // FUTURE: may be able to include MemWrites in body when sg is built, and just read edges later
+    // FUTURE: may be able to include MemWrites in body when sg is built, and just add edges later
     val unmergedMemWrites = memWrites flatMap { mw => {
       val memID = nameToID(mw.memName)
       val memReaderNames = outNeigh(memID) map idToName
