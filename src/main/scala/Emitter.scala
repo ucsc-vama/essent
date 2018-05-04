@@ -244,13 +244,13 @@ object Emitter {
       }
       val printfArgs = Seq(s""""$formatString"""") ++
                         (p.args map {arg => s"${emitExpr(arg)}.as_single_word()"})
-      Seq(s"if (${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
+      Seq(s"if (done_reset && update_registers && verbose && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => {
       Seq(s"if (${emitExpr(st.en)}) {assert_triggered = true; assert_exit_code = ${st.ret};}")
     }
     case mw: MemWrite => {
-      Seq(s"if (${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
+      Seq(s"if (update_registers && ${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
     case ru: RegUpdate => Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${emitExpr(ru.expr)};")
     case r: DefRegister => Seq()

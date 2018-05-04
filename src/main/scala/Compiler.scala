@@ -291,7 +291,7 @@ class EmitCpp(writer: Writer) {
     val unsafeDepSet = (memDeps ++ printDeps).toSet
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
-    val sg = StatementGraph(noPrints)
+    val sg = StatementGraph(allBodies)
     if (opt.zoneAct)
       sg.coarsenIntoZones(keepAvail)
     val mergedRegs = if (opt.regUpdates) {
@@ -315,11 +315,11 @@ class EmitCpp(writer: Writer) {
       writeBodyInner(1, sg, doNotDec, opt, keepAvail)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
-      if (printStmts.nonEmpty) {
-        writeLines(2, "if(verbose) {")
-        writeLines(3, printStmts flatMap emitStmt(Set()))
-        writeLines(2, "}")
-      }
+      // if (printStmts.nonEmpty) {
+      //   writeLines(2, "if(verbose) {")
+      //   writeLines(3, printStmts flatMap emitStmt(Set()))
+      //   writeLines(2, "}")
+      // }
       if (stopStmts.nonEmpty) {
         writeLines(2, "if (assert_triggered) {")
         writeLines(3, "exit(assert_exit_code);")
@@ -329,7 +329,7 @@ class EmitCpp(writer: Writer) {
     }
     if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
       writeLines(1, "if (update_registers) {")
-      writeLines(2, allMemWrites flatMap emitStmt(Set()))
+      // writeLines(2, allMemWrites flatMap emitStmt(Set()))
       writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
       if (opt.zoneAct)
@@ -362,7 +362,7 @@ class EmitCpp(writer: Writer) {
     // writeLines(0, "}")
     writeLines(0, "")
     // emitEvalTail(topName, circuit)
-    writeEvalOuter(circuit, OptFlags(true, true, true, false))
+    writeEvalOuter(circuit, OptFlags(false, false, false, false))
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
