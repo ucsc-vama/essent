@@ -18,6 +18,11 @@ object Util {
       k => if (targetMap.contains(k)) Seq(k -> targetMap(k)) else Seq()
     }).toMap
   }
+
+  def tidyString(str: String): String = {
+    val charsToRemove = Set(' ', ',', '.', '(', ')')
+    str filter { !charsToRemove.contains(_) }
+  }
 }
 
 case class OptFlags(regUpdates: Boolean, muxShadows: Boolean, zoneAct: Boolean, trackAct: Boolean)

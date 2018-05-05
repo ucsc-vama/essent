@@ -128,9 +128,14 @@ object Extract {
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
       Seq(HyperedgeDep(mw.nodeName, deps, s))
     }
-    case p: Print =>
-      Seq(HyperedgeDep("printf", findDependencesExpr(p.en) ++
-                                 (p.args flatMap findDependencesExpr), s))
+    case p: Print => {
+      val deps = findDependencesExpr(p.en) ++ (p.args flatMap findDependencesExpr)
+      val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
+      // FUTURE: more efficient unique name (perhaps line number?)
+      if (uniqueName == "PRINTFdut$NastiIOTileLinkIOConverter_1$clk")
+        println(p)
+      Seq(HyperedgeDep(uniqueName, deps, p))
+    }
     case st: Stop => {
       val deps = findDependencesExpr(st.en)
       val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
