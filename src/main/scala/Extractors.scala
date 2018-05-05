@@ -123,7 +123,7 @@ object Extract {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
-    case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$next", findDependencesExpr(ru.expr), s))
+    case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
     case mw: MemWrite => {
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
       Seq(HyperedgeDep(mw.nodeName, deps, s))
@@ -137,9 +137,9 @@ object Extract {
       // FUTURE: more unique name (perhaps line number?)
       Seq(HyperedgeDep(uniqueName, deps, st))
     }
-    case r: DefRegister => Seq()
+    case r: DefRegister => Seq(HyperedgeDep(r.name, Seq(), r))
     case w: DefWire => Seq()
-    case m: DefMemory => Seq()
+    case m: DefMemory => Seq(HyperedgeDep(m.name, Seq(), m))
     case i: WDefInstance => Seq()
     case EmptyStmt => Seq()
     case _ => throw new Exception(s"unexpected statement type! $s")

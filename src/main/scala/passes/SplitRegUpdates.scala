@@ -1,5 +1,7 @@
 package essent.passes
 
+import essent.ir._
+
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
@@ -26,10 +28,22 @@ object SplitRegUpdates extends Pass {
     replaced map renameRegStmt
   }
 
+  // FUTURE: what if reg is dead? should update be generated for connect?
+  def generateRegUpdates(s: Statement): Seq[Statement] = s match {
+    case b: Block => b.stmts flatMap generateRegUpdates
+    case r: DefRegister => {
+      Seq(RegUpdate(NoInfo, WRef(r.name, r.tpe, RegKind), WRef(r.name + "$next", r.tpe, RegKind)))
+    }
+    case _ => Seq()
+  }
+
   def run(c: Circuit): Circuit = {
     val modulesx = c.modules.map {
       case m: ExtModule => m
-      case m: Module => m.copy(body = renameRegStmt(m.body))
+      case m: Module => {
+        val newBody = squashEmpty(Block(Seq(renameRegStmt(m.body)) ++ generateRegUpdates(m.body)))
+        m.copy(body = newBody)
+      }
     }
     Circuit(c.info, modulesx, c.main)
   }

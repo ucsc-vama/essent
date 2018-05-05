@@ -30,6 +30,8 @@ class StatementGraph extends Graph {
     bodyHE foreach { he => {
       addNodeWithDeps(he.name, he.deps)
       idToStmt(getID(he.name)) = he.stmt
+      if ((he.stmt.isInstanceOf[DefRegister]) || (he.stmt.isInstanceOf[DefMemory]))
+        validNodes -= getID(he.name)
     }}
   }
 
@@ -393,6 +395,21 @@ class StatementGraph extends Graph {
     // returns mem writes it was unable to merge (why couldn't it merge all?)
     unmergedMemWrites
   }
+
+  def addOrderingDepsForStateUpdates() {
+    def addOrderingEdges(writerName: String, readerTarget: String) {
+      val readerNames = outNeigh(nameToID(readerTarget)) map idToName
+      readerNames foreach { readerName => addEdge(readerName, writerName) }
+    }
+    idToStmt foreach { stmt => stmt match {
+      case ru: RegUpdate => {
+        val regName = emitExpr(ru.regRef)
+        addOrderingEdges(regName + "$final", regName)
+      }
+      case mw: MemWrite => addOrderingEdges(mw.nodeName, mw.memName)
+      case _ =>
+    }}
+  }
 }
 
 
@@ -400,6 +417,7 @@ object StatementGraph {
   def apply(bodies: Seq[Statement]) = {
     val sg = new StatementGraph
     sg.buildFromBodies(bodies)
+    sg.addOrderingDepsForStateUpdates()
     sg
   }
 }

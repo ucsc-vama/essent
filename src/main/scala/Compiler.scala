@@ -330,7 +330,7 @@ class EmitCpp(writer: Writer) {
     if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
       writeLines(1, "if (update_registers) {")
       // writeLines(2, allMemWrites flatMap emitStmt(Set()))
-      writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
+      // writeLines(2, unsafeRegs ++ unmergedRegs map { regName => s"$regName = $regName$$next;" })
       writeLines(2, regResetOverrides(allRegDefs))
       if (opt.zoneAct)
         writeLines(2, "regs_set = true;")
