@@ -399,7 +399,7 @@ class StatementGraph extends Graph {
   def addOrderingDepsForStateUpdates() {
     def addOrderingEdges(writerName: String, readerTarget: String) {
       val readerNames = outNeigh(nameToID(readerTarget)) map idToName
-      readerNames foreach { readerName => addEdge(readerName, writerName) }
+      readerNames foreach { readerName => addEdgeIfNew(readerName, writerName) }
     }
     idToStmt foreach { stmt => stmt match {
       case ru: RegUpdate => {
@@ -409,6 +409,30 @@ class StatementGraph extends Graph {
       case mw: MemWrite => addOrderingEdges(mw.nodeName, mw.memName)
       case _ =>
     }}
+  }
+
+  def elideIntermediateRegUpdates() {
+    def safeToMergeWithParentNextNode(id: Int): Boolean = {
+      (inNeigh(id).nonEmpty) &&                              // node id isn't floating (parentless)
+      (idToName(inNeigh(id).head).endsWith("$next")) &&      // first parent assigns $next
+      safeToMerge(idToName(id), idToName(inNeigh(id).head))  // no external paths between them
+    }
+    val regUpdateIDs = idToStmt.zipWithIndex collect { case (ru: RegUpdate, id: Int) => id }
+    // WARNING: following filter will have side-effects on StatementGraph
+    val elidedRegIDs = regUpdateIDs collect { case id if (safeToMergeWithParentNextNode(id)) => {
+      val nextID = inNeigh(id).head
+      val nextConnect = idToStmt(nextID) match {
+        case c: Connect => c
+        case _ => throw new Exception("$next statement is not a Connect")
+      }
+      val finalRegUpdate = idToStmt(id) match {
+        case ru: RegUpdate => ru
+        case _ => throw new Exception("$final statement is not a RegUpdate")
+      }
+      idToStmt(id) = finalRegUpdate.copy(expr = nextConnect.expr)
+      mergeStmtsMutably(Seq(id, nextID))
+    }}
+    println(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
   }
 }
 

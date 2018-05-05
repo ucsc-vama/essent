@@ -292,27 +292,29 @@ class EmitCpp(writer: Writer) {
     val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     val sg = StatementGraph(allBodies)
+    if (opt.regUpdates)
+      sg.elideIntermediateRegUpdates
     if (opt.zoneAct)
       sg.coarsenIntoZones(keepAvail)
-    val mergedRegs = if (opt.regUpdates) {
-                       if (opt.zoneAct) sg.mergeRegUpdatesIntoZones(safeRegs)
-                       else sg.mergeRegsSafe(safeRegs)
-                     } else Seq()
-    val unmergedRegs = regNames diff mergedRegs
+    // val mergedRegs = if (opt.regUpdates) {
+    //                    if (opt.zoneAct) sg.mergeRegUpdatesIntoZones(safeRegs)
+    //                    else sg.mergeRegsSafe(safeRegs)
+    //                  } else Seq()
+    // val unmergedRegs = regNames diff mergedRegs
     // FUTURE: worry about namespace collisions
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
-    if (opt.zoneAct) {
-      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
-    } else
-      sg.updateMergedRegWrites(mergedRegs)
+    // if (opt.zoneAct) {
+    //   writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
+    // } else
+    //   sg.updateMergedRegWrites(mergedRegs)
     writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.zoneAct)
-      writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
-    else
-      writeBodyInner(1, sg, doNotDec, opt, keepAvail)
+    // if (opt.zoneAct)
+    //   writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
+    // else
+    writeBodyInner(1, sg, doNotDec, opt, keepAvail)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       // if (printStmts.nonEmpty) {
@@ -362,7 +364,7 @@ class EmitCpp(writer: Writer) {
     // writeLines(0, "}")
     writeLines(0, "")
     // emitEvalTail(topName, circuit)
-    writeEvalOuter(circuit, OptFlags(false, false, false, false))
+    writeEvalOuter(circuit, OptFlags(true, false, false, false))
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }

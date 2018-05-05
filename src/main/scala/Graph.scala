@@ -50,6 +50,12 @@ class Graph {
     inNeigh(getID(dest)) += getID(source)
   }
 
+  // automatically filters out duplicates
+  def addEdgeIfNew(source: String, dest: String) {
+    if (!outNeigh(getID(source)).contains(getID(dest)))
+      addEdge(source, dest)
+  }
+
   def addNodeWithDeps(result: String, deps: Seq[String]) = {
     val potentiallyNewDestID = getID(result)
     validNodes += potentiallyNewDestID
