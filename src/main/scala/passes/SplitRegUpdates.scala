@@ -13,18 +13,13 @@ object SplitRegUpdates extends Pass {
 
   def renameRegStmt(s: Statement): Statement = {
     val replaced = s match {
-      case c: Connect => {
-        firrtl.Utils.kind(c.loc) match {
-          case firrtl.RegKind => { 
-            val newLoc = c.loc match {
-              case w: WRef => w.copy(name = w.name + "$next")
-              case w: WSubField => w.copy(name = w.name + "$next")
-              case _ => c.loc
-            }
-            c.copy(loc = newLoc)
-          }
-          case _ => c
+      case c: Connect if (firrtl.Utils.kind(c.loc) == firrtl.RegKind) => {
+        val newLoc = c.loc match {
+          case w: WRef => w.copy(name = w.name + "$next")
+          case w: WSubField => w.copy(name = w.name + "$next")
+          case _ => c.loc
         }
+        c.copy(loc = newLoc)
       }
       case _ => s
     }
