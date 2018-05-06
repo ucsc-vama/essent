@@ -314,7 +314,7 @@ class EmitCpp(writer: Writer) {
     // if (opt.zoneAct)
     //   writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
     // else
-    writeBodyInner(1, sg, doNotDec, opt, keepAvail)
+    writeBodyInner(1, sg, doNotDec, opt, Seq())
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       // if (printStmts.nonEmpty) {
@@ -364,7 +364,7 @@ class EmitCpp(writer: Writer) {
     // writeLines(0, "}")
     writeLines(0, "")
     // emitEvalTail(topName, circuit)
-    writeEvalOuter(circuit, OptFlags(true, false, false, false))
+    writeEvalOuter(circuit, OptFlags(true, true, false, false))
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
