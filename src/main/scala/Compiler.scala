@@ -72,10 +72,12 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $modName;")
   }
 
-  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String]=Seq()) {
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String] = Seq()) {
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
     if (opt.muxShadows)
       sg.coarsenMuxShadows(keepAvail)
+    // NOTE: keepAvail not needed because potentially dangerous statements won't be found bottom-up
+    //   potentially dangerous statements have hidden side effects (regs, mem writes, prints, stops)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case ms: MuxShadowed => {
         if (!doNotDec.contains(ms.name))
@@ -314,7 +316,7 @@ class EmitCpp(writer: Writer) {
     // if (opt.zoneAct)
     //   writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
     // else
-    writeBodyInner(1, sg, doNotDec, opt, Seq())
+    writeBodyInner(1, sg, doNotDec, opt)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       // if (printStmts.nonEmpty) {
