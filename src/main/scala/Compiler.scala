@@ -166,11 +166,15 @@ class EmitCpp(writer: Writer) {
     }
     writeLines(1, nonMemCacheDecs)
     writeLines(1, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+    // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
     writeLines(1, s"bool regs_set = false;")
+    writeLines(1, s"bool update_registers;")
+    writeLines(1, s"bool done_reset;")
+    writeLines(1, s"bool verbose;")
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        writeLines(1, s"void ${genZoneFuncName(az.name)}(bool update_registers) {")
+        writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
         writeLines(2, s"${genFlagName(az.name)} = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
@@ -205,6 +209,9 @@ class EmitCpp(writer: Writer) {
     writeLines(2, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
     writeLines(1, "}")
     writeLines(1, "sim_cached = regs_set;")
+    writeLines(1, "this->update_registers = update_registers;")
+    writeLines(1, "this->done_reset = done_reset;")
+    writeLines(1, "this->verbose = verbose;")
     if (opt.trackAct)
       writeLines(1, "cycle_count++;")
 
@@ -224,7 +231,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(1, s"if (${genFlagName(az.name)}) {")
-        writeLines(2, s"${genZoneFuncName(az.name)}(update_registers);")
+        writeLines(2, s"${genZoneFuncName(az.name)}();")
         writeLines(1, "}")
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
