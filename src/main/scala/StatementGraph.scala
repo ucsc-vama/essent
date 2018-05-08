@@ -223,7 +223,7 @@ class StatementGraph extends Graph {
       case (id, inputNames) => inputNames map { (_, id) }
     })
     blockIDs foreach { id => {
-      val zoneName = idToName(id)
+      val zoneName = id.toString
       val memberSet = idToMemberNames(id).toSet
       val requestedOutputs = memberSet.intersect(keepAvail)
       val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
@@ -231,7 +231,7 @@ class StatementGraph extends Graph {
       val outputNameSet = requestedOutputs ++ consumedOutputs
       val outputConsumers = outputNameSet map { outputName => {
         val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
-        (outputName, consumerIDs map idToName)
+        (outputName, consumerIDs map { _.toString })
       }}
       val outputTypes = idToHE(id) flatMap {
         he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
@@ -284,7 +284,7 @@ class StatementGraph extends Graph {
 
   def getZoneInputMap(): Map[String,Seq[String]] = {
     val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.inputs map { (_, idToName(id)) }
+      case az: ActivityZone => az.inputs map { (_, id.toString) }
       case _ => Seq()
     }}
     Util.groupByFirst(allZoneInputs)
