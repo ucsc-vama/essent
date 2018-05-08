@@ -249,11 +249,14 @@ class Graph {
 
   // Partitioning via MFFCs (for zoning)
   //----------------------------------------------------------------------------
-  def findMFFCs(priorMFFC: ArrayBuffer[Int] = ArrayBuffer.fill(numNodeRefs)(-1)): ArrayBuffer[Int] = {
-    // seed new layer
-    val visited = nodeRefIDs filter { priorMFFC(_) != -1 }
-    if (visited.isEmpty)
-      nodeRefIDs filterNot validNodes foreach { priorMFFC(_) = -3 }
+  def initialMFFCs(): ArrayBuffer[Int] = {
+    val mffcs = ArrayBuffer.fill(numNodeRefs)(-1)
+    nodeRefIDs filterNot validNodes foreach { mffcs(_) = -3 }
+    mffcs
+  }
+
+  def findMFFCs(priorMFFC: ArrayBuffer[Int] = initialMFFCs()): ArrayBuffer[Int] = {
+    val visited = nodeRefIDs filter { id => priorMFFC(id) != -1 && priorMFFC(id) != -3 }
     val fringe = visited flatMap(inNeigh) filter { priorMFFC(_) == -1 }
     val unvisitedSinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
     val newMFFCseeds = if (visited.isEmpty) unvisitedSinks else fringe.distinct
