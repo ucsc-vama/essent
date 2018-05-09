@@ -196,7 +196,7 @@ class EmitCpp(writer: Writer) {
         // }
         writeLines(2, outputTriggers.toSeq)
         // TODO: triggers for RegUpdates
-        val regUpdateNamesInZone = az.memberNames filter regNamesFinalSet
+        val regUpdateNamesInZone = (az.memberNames filter regNamesFinalSet) map { _.replaceAllLiterally("$final","") }
         // val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
         writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, outputConsumers), "$next"))
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
@@ -207,7 +207,7 @@ class EmitCpp(writer: Writer) {
           val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
           genDepZoneTriggers(outputConsumers(mw.memName), condition)
         }}
-        writeLines(1, memWriteTriggerZones)
+        writeLines(2, memWriteTriggerZones)
         // NOTE: not using RegUpdate since want to do reg change detection
         writeLines(1, "}")
       }
