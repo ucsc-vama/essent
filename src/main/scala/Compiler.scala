@@ -149,7 +149,8 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "}")
     }
     // predeclare zone outputs
-    val outputPairs = sg.getZoneOutputTypes()
+    val regNamesNextSet = (regNames map { _ + "$next"}).toSet
+    val outputPairs = sg.getZoneOutputTypes() filter { case (name, tpe) => !regNamesNextSet.contains(name) }
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
@@ -179,19 +180,24 @@ class EmitCpp(writer: Writer) {
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputTypes.toSeq map {
-          case (name, tpe) => { s"${genCppType(tpe)} $name$$old = $name;"
+          case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
         }}
         writeLines(2, cacheOldOutputs)
         writeBodyInner(2, StatementGraph(az.memberStmts), doNotDec, opt, keepAvail ++ doNotDec)
         // writeBodyMuxOptSG(1, az.memberStmts, keepAvail ++ doNotDec, doNotDec)
         // writeBodyUnoptSG(2, az.memberStmts, doNotDec ++ regNames)
-        val outputTriggers = az.outputConsumers.toSeq flatMap {
-          case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+        val outputTriggers = az.outputTypes flatMap {
+          case (name, tpe) => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$old")
         }
-        writeLines(2, outputTriggers)
-        val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-        writeLines(2, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
-        writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
+        // val outputTriggers = az.outputConsumers.toSeq flatMap {
+        //   case (name, consumers) => genDepZoneTriggers(consumers, s"$name != $name$$old")
+        // }
+        writeLines(2, outputTriggers.toSeq)
+        // TODO: triggers for RegUpdates
+        // TODO: triggers for MemWrites
+        // val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
+        // writeLines(2, genAllTriggers(selectFromMap(mergedRegsInZone, outputConsumers), "$next"))
+        // writeLines(2, mergedRegsInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
         // NOTE: not using RegUpdate since want to do reg change detection
         writeLines(1, "}")
       }
@@ -238,13 +244,13 @@ class EmitCpp(writer: Writer) {
     }}
     // trigger zones based on mem writes
     // NOTE: if mem has multiple write ports, either can trigger wakeups
-    val memWriteTriggerZones = memWrites flatMap { mw => {
-      val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
-      genDepZoneTriggers(outputConsumers(mw.memName), condition)
-    }}
-    writeLines(1, memWriteTriggerZones)
+    // val memWriteTriggerZones = memWrites flatMap { mw => {
+    //   val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
+    //   genDepZoneTriggers(outputConsumers(mw.memName), condition)
+    // }}
+    // writeLines(1, memWriteTriggerZones)
     // trigger zone based on reg changes
-    writeLines(1, genAllTriggers(selectFromMap(unmergedRegs, outputConsumers), "$next"))
+    // writeLines(1, genAllTriggers(selectFromMap(unmergedRegs, outputConsumers), "$next"))
   }
 
   def zoneActTrackerName(zoneName: String) = s"ACT${zoneName.replace('.', '$')}"
@@ -304,26 +310,27 @@ class EmitCpp(writer: Writer) {
     if (opt.regUpdates)
       sg.elideIntermediateRegUpdates
     if (opt.zoneAct)
-      sg.coarsenIntoZones(keepAvail)
+      sg.coarsenIntoZones()
     // val mergedRegs = if (opt.regUpdates) {
     //                    if (opt.zoneAct) sg.mergeRegUpdatesIntoZones(safeRegs)
     //                    else sg.mergeRegsSafe(safeRegs)
     //                  } else Seq()
-    // val unmergedRegs = regNames diff mergedRegs
+    val mergedRegs = Seq()
+    val unmergedRegs = regNames diff mergedRegs
     // FUTURE: worry about namespace collisions
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
-    // if (opt.zoneAct) {
-    //   writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
+    if (opt.zoneAct)
+      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, mergedRegs, doNotDec, keepAvail, opt)
     // } else
     //   sg.updateMergedRegWrites(mergedRegs)
     writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
-    // if (opt.zoneAct)
-    //   writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
-    // else
-    writeBodyInner(1, sg, doNotDec, opt)
+    if (opt.zoneAct)
+      writeZoningBody(sg, regNames, unmergedRegs, allMemWrites, doNotDec, opt)
+    else
+      writeBodyInner(1, sg, doNotDec, opt)
     if (printStmts.nonEmpty || stopStmts.nonEmpty) {
       writeLines(1, "if (done_reset && update_registers) {")
       // if (printStmts.nonEmpty) {
@@ -373,7 +380,7 @@ class EmitCpp(writer: Writer) {
     // writeLines(0, "}")
     writeLines(0, "")
     // emitEvalTail(topName, circuit)
-    writeEvalOuter(circuit, OptFlags(true, true, false, false))
+    writeEvalOuter(circuit, OptFlags(false, false, true, false))
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
