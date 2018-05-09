@@ -411,8 +411,10 @@ class StatementGraph extends Graph {
 
   def addOrderingDepsForStateUpdates() {
     def addOrderingEdges(writerName: String, readerTarget: String) {
-      val readerNames = outNeigh(nameToID(readerTarget)) map idToName
-      readerNames foreach { readerName => addEdgeIfNew(readerName, writerName) }
+      if (nameToID.contains(readerTarget)) {
+        val readerNames = outNeigh(nameToID(readerTarget)) map idToName
+        readerNames foreach { readerName => if (readerName != writerName) addEdgeIfNew(readerName, writerName) }
+      }
     }
     idToStmt foreach { stmt => stmt match {
       case ru: RegUpdate => {
