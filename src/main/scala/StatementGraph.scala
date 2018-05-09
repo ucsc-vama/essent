@@ -9,6 +9,8 @@ import essent.ir._
 import essent.Util._
 
 import collection.mutable.{ArrayBuffer, BitSet}
+import scala.reflect.ClassTag
+
 
 class StatementGraph extends Graph {
   // Vertex ID -> firrtl statement (Block used for aggregates)
@@ -126,7 +128,15 @@ class StatementGraph extends Graph {
   // Zoning
   //----------------------------------------------------------------------------
   def coarsenToMFFCs() {
-    val idToMFFC = findMFFCs()
+    val startingMFFCs = initialMFFCs()
+    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]) {
+      val matchingIDs = idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
+      val newMFFCID = matchingIDs.min
+      matchingIDs foreach { startingMFFCs(_) = newMFFCID }
+    }
+    clumpByStmtType[RegUpdate]()
+    clumpByStmtType[Print]()
+    val idToMFFC = findMFFCs(startingMFFCs)
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
