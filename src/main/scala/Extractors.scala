@@ -126,15 +126,13 @@ object Extract {
     case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
     case mw: MemWrite => {
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
-      Seq(HyperedgeDep(mw.nodeName, deps, s))
+      Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
     }
     case p: Print => {
-      val deps = findDependencesExpr(p.en) ++ (p.args flatMap findDependencesExpr)
+      val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
       val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
       // FUTURE: more efficient unique name (perhaps line number?)
-      if (uniqueName == "PRINTFdut$NastiIOTileLinkIOConverter_1$clk")
-        println(p)
-      Seq(HyperedgeDep(uniqueName, deps, p))
+      Seq(HyperedgeDep(uniqueName, deps.distinct, p))
     }
     case st: Stop => {
       val deps = findDependencesExpr(st.en)
