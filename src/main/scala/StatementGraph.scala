@@ -146,6 +146,7 @@ class StatementGraph extends Graph {
         mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
       }
     }}
+    assert(idToMFFC forall { _ != -1 }) // all nodes reached
   }
 
   def mergeSingleInputMFFCsToParents() {
