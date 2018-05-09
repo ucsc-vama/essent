@@ -220,10 +220,7 @@ class StatementGraph extends Graph {
         case b: Block => b.stmts
         case _ => throw new Exception("matched a non-block statement")
       }
-      val membersWithoutDecs = members filter {
-        s => (!s.isInstanceOf[DefRegister]) && (!s.isInstanceOf[DefMemory])
-      }
-      (id -> membersWithoutDecs)
+      (id -> members)
     }}).toMap
     val idToHE = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
     val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }

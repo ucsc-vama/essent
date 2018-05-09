@@ -97,6 +97,8 @@ object Extract {
   def findResultType(stmt: Statement) = stmt match {
     case d: DefNode => d.value.tpe
     case c: Connect => c.loc.tpe
+    case r: DefRegister => r.tpe
+    case m: DefMemory => m.dataType
     case _ => throw new Exception("not a connect or defnode")
   }
 
