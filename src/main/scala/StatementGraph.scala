@@ -214,7 +214,7 @@ class StatementGraph extends Graph {
     }
   }
 
-  def translateBlocksIntoZones(keepAvail: Set[String]) {
+  def translateBlocksIntoZones(alreadyDeclared: Set[String]) {
     val blockIDs = nodeRefIDs filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map { id => {
       val members = idToStmt(id) match {
@@ -236,16 +236,15 @@ class StatementGraph extends Graph {
     blockIDs foreach { id => {
       val zoneName = id.toString
       val memberSet = idToMemberNames(id).toSet
-      val requestedOutputs = memberSet.intersect(keepAvail)
       val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
       // NOTE: can be overlaps, but set addition removes differences
-      val outputNameSet = requestedOutputs ++ consumedOutputs
-      val outputConsumers = outputNameSet map { outputName => {
+      val outputConsumers = consumedOutputs map { outputName => {
         val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map { _.toString })
       }}
+      val decOutputNameSet = consumedOutputs -- alreadyDeclared
       val outputTypes = idToHE(id) flatMap {
-        he => if (outputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
+        he => if (decOutputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
       idToStmt(id) = ActivityZone(zoneName, idToInputNames(id), idToMemberStmts(id),
@@ -253,7 +252,12 @@ class StatementGraph extends Graph {
     }}
   }
 
-  def coarsenIntoZones(keepAvail: Seq[String] = Seq()) {
+  def coarsenIntoZones() {
+    val alreadyDeclared = idToStmt flatMap { _ match {
+      case dr: DefRegister => Seq(dr.name)
+      case dm: DefMemory => Seq(dm.name)
+      case _ => Seq()
+    }}
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
@@ -261,7 +265,7 @@ class StatementGraph extends Graph {
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
-      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(keepAvail.toSet)})
+      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(alreadyDeclared.toSet)})
     )
     toApply foreach { case(label, func) => {
       val startTime = System.currentTimeMillis()
