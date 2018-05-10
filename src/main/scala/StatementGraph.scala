@@ -127,15 +127,18 @@ class StatementGraph extends Graph {
 
   // Zoning
   //----------------------------------------------------------------------------
+  val blacklistedZoneIDs = ArrayBuffer[Int]()
+
   def coarsenToMFFCs() {
     val startingMFFCs = initialMFFCs()
-    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]) {
+    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Int = {
       val matchingIDs = idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
       val newMFFCID = matchingIDs.min
       matchingIDs foreach { startingMFFCs(_) = newMFFCID }
+      newMFFCID
     }
-    // clumpByStmtType[RegUpdate]()
-    clumpByStmtType[Print]()
+    // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
+    blacklistedZoneIDs += clumpByStmtType[Print]()
     val idToMFFC = findMFFCs(startingMFFCs)
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     mffcMap foreach { case (mffcID, memberIDs) => {
@@ -149,6 +152,7 @@ class StatementGraph extends Graph {
     assert(idToMFFC forall { _ != -1 }) // all nodes reached
   }
 
+  // TODO: respect blacklist
   def mergeSingleInputMFFCsToParents() {
     val singleInputIDs = validNodes filter { inNeigh(_).size == 1}
     val singleInputSet = singleInputIDs.toSet
@@ -167,7 +171,7 @@ class StatementGraph extends Graph {
   def mergeSmallSiblings(smallZoneCutoff: Int = 10) {
     val smallZoneIDs = validNodes filter { id => {
       val idSize = nodeSize(id)
-      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff) && !blacklistedZoneIDs.contains(id)
     }}
     val inputsAndIDPairs = smallZoneIDs map { id => {
       val inputsCanonicalized = inNeigh(id).toSeq.sorted
@@ -194,7 +198,8 @@ class StatementGraph extends Graph {
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
       val siblings = (inNeigh(id) flatMap outNeigh).distinct - id
-      val sibsScored = siblings map {
+      val legalSiblings = siblings filter { !blacklistedZoneIDs.contains(_) }
+      val sibsScored = legalSiblings map {
         sibID => (overlapSize(id, sibID) / numInputs, sibID)
       }
       val choices = sibsScored filter { _._1 >= mergeThreshold }
