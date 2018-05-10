@@ -167,7 +167,7 @@ class StatementGraph extends Graph {
   def mergeSmallSiblings(smallZoneCutoff: Int = 10) {
     val smallZoneIDs = nodeRefIDs filter { id => {
       val idSize = nodeSize(id)
-      (idSize > 0) && (idSize < smallZoneCutoff)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
     }}
     val inputsAndIDPairs = smallZoneIDs map { id => {
       val inputsCanonicalized = inNeigh(id).toSeq.sorted
@@ -189,7 +189,7 @@ class StatementGraph extends Graph {
   def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
     val smallZoneIDs = nodeRefIDs filter { id => {
       val idSize = nodeSize(id)
-      (idSize > 0) && (idSize < smallZoneCutoff)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
     }}
     def overlapSize(idA: Int, idB: Int): Int = inNeigh(idA).intersect(inNeigh(idB)).size
     val mergesToConsider = smallZoneIDs flatMap { id => {
