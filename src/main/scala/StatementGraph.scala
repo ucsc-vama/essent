@@ -237,13 +237,16 @@ class StatementGraph extends Graph {
     val inputNameToConsumingZoneIDs = Util.groupByFirst(idToInputNames.toSeq flatMap {
       case (id, inputNames) => inputNames map { (_, id) }
     })
+    val cleanInputNameToConsumingZoneIDs = inputNameToConsumingZoneIDs mapValues {
+      zoneIDs => zoneIDs filter { !blacklistedZoneIDs.contains(_) }
+    }
     blockIDs foreach { id => {
       val zoneName = id.toString
       val memberSet = idToMemberNames(id).toSet
-      val consumedOutputs = memberSet.intersect(inputNameToConsumingZoneIDs.keys.toSet)
+      val consumedOutputs = memberSet.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
       // NOTE: can be overlaps, but set addition removes differences
       val outputConsumers = consumedOutputs map { outputName => {
-        val consumerIDs = inputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
+        val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map { _.toString })
       }}
       val decOutputNameSet = consumedOutputs -- alreadyDeclared
@@ -300,6 +303,7 @@ class StatementGraph extends Graph {
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
+  // is this needed?
   def getZoneInputMap(): Map[String,Seq[String]] = {
     val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.inputs map { (_, id.toString) }

@@ -152,7 +152,7 @@ class EmitCpp(writer: Writer) {
     val regNamesFinalSet = (regNames map { _ + "$final" }).toSet
     val regNamesNextSet = (regNames map { _ + "$next"}).toSet
     val outputPairs = sg.getZoneOutputTypes() filter { case (name, tpe) => !regNamesNextSet.contains(name) }
-    val outputConsumers = sg.getZoneInputMap()
+    // val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
     val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
@@ -198,14 +198,14 @@ class EmitCpp(writer: Writer) {
         // TODO: triggers for RegUpdates
         val regUpdateNamesInZone = (az.memberNames filter regNamesFinalSet) map { _.replaceAllLiterally("$final","") }
         // val mergedRegsInZone = az.memberNames filter mergedRegsSet map { _.replaceAllLiterally("$next","") }
-        writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, outputConsumers), "$next"))
+        writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, az.outputConsumers), "$next"))
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
         // writeLines(2, regUpdateNamesInZone map { regName => s"if (update_registers) $regName = $regName$$next;" })
         // TODO: triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggerZones = memWritesInZone flatMap { mw => {
           val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
-          genDepZoneTriggers(outputConsumers(mw.memName), condition)
+          genDepZoneTriggers(az.outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }}
         writeLines(2, memWriteTriggerZones)
         // NOTE: not using RegUpdate since want to do reg change detection
