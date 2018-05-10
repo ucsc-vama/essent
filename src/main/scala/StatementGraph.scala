@@ -174,10 +174,9 @@ class StatementGraph extends Graph {
       (inputsCanonicalized, id)
     }}
     val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
-    val mergesToConsider = inputsToSiblings.toSeq flatMap { case (inputIDs, siblingIDs) => {
-      if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) Seq(siblingIDs)
-      else Seq()
-    }}
+    val mergesToConsider = inputsToSiblings.toSeq collect {
+      case (inputIDs, siblingIDs) if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) => siblingIDs
+    }
     if (mergesToConsider.nonEmpty) {
       println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
       mergeNodesSafe(mergesToConsider)
@@ -253,11 +252,10 @@ class StatementGraph extends Graph {
   }
 
   def coarsenIntoZones() {
-    val alreadyDeclared = idToStmt flatMap { _ match {
-      case dr: DefRegister => Seq(dr.name)
-      case dm: DefMemory => Seq(dm.name)
-      case _ => Seq()
-    }}
+    val alreadyDeclared = idToStmt collect {
+      case dr: DefRegister => dr.name
+      case dm: DefMemory => dm.name
+    }
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
