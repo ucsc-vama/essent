@@ -150,7 +150,7 @@ class StatementGraph extends Graph {
   }
 
   def mergeSingleInputMFFCsToParents() {
-    val singleInputIDs = nodeRefIDs filter { inNeigh(_).size == 1}
+    val singleInputIDs = validNodes filter { inNeigh(_).size == 1}
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(inNeigh(id).head) }
     if (baseSingleInputIDs.nonEmpty) {
@@ -165,7 +165,7 @@ class StatementGraph extends Graph {
   }
 
   def mergeSmallSiblings(smallZoneCutoff: Int = 10) {
-    val smallZoneIDs = nodeRefIDs filter { id => {
+    val smallZoneIDs = validNodes filter { id => {
       val idSize = nodeSize(id)
       idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
     }}
@@ -173,7 +173,7 @@ class StatementGraph extends Graph {
       val inputsCanonicalized = inNeigh(id).toSeq.sorted
       (inputsCanonicalized, id)
     }}
-    val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs)
+    val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
     val mergesToConsider = inputsToSiblings.toSeq flatMap { case (inputIDs, siblingIDs) => {
       if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) Seq(siblingIDs)
       else Seq()
@@ -187,7 +187,7 @@ class StatementGraph extends Graph {
 
   // merges small zones based on fraction of shared inputs
   def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
-    val smallZoneIDs = nodeRefIDs filter { id => {
+    val smallZoneIDs = validNodes filter { id => {
       val idSize = nodeSize(id)
       idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
     }}
@@ -209,13 +209,13 @@ class StatementGraph extends Graph {
     println(s"Small zones: ${smallZoneIDs.size}")
     println(s"Worthwhile merges: ${mergesToConsider.size}")
     if (mergesToConsider.nonEmpty) {
-      mergeNodesSafe(mergesToConsider)
+      mergeNodesSafe(mergesToConsider.toSeq)
       mergeSmallZones(smallZoneCutoff, mergeThreshold)
     }
   }
 
   def translateBlocksIntoZones(alreadyDeclared: Set[String]) {
-    val blockIDs = nodeRefIDs filter { idToStmt(_).isInstanceOf[Block] }
+    val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map { id => {
       val members = idToStmt(id) match {
         case b: Block => b.stmts
