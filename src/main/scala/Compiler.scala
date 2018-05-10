@@ -177,7 +177,8 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
-        writeLines(2, s"${genFlagName(az.name)} = false;")
+        if (!az.name.contains("always"))
+          writeLines(2, s"${genFlagName(az.name)} = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputTypes.toSeq map {
@@ -246,9 +247,12 @@ class EmitCpp(writer: Writer) {
     // emit zone launches and unzoned statements
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        writeLines(1, s"if (${genFlagName(az.name)}) {")
-        writeLines(2, s"${genZoneFuncName(az.name)}();")
-        writeLines(1, "}")
+        if (!az.name.contains("always")) {
+          writeLines(1, s"if (${genFlagName(az.name)}) {")
+          writeLines(2, s"${genZoneFuncName(az.name)}();")
+          writeLines(1, "}")
+        } else
+        writeLines(1, s"${genZoneFuncName(az.name)}();")
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}

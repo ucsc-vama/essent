@@ -241,7 +241,7 @@ class StatementGraph extends Graph {
       zoneIDs => zoneIDs filter { !blacklistedZoneIDs.contains(_) }
     }
     blockIDs foreach { id => {
-      val zoneName = id.toString
+      val zoneName = if (!blacklistedZoneIDs.contains(id)) id.toString else "always" + id
       val memberSet = idToMemberNames(id).toSet
       val consumedOutputs = memberSet.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
       // NOTE: can be overlaps, but set addition removes differences
@@ -254,7 +254,8 @@ class StatementGraph extends Graph {
         he => if (decOutputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
-      idToStmt(id) = ActivityZone(zoneName, idToInputNames(id), idToMemberStmts(id),
+      val myInputs = if (!blacklistedZoneIDs.contains(id)) idToInputNames(id) else Seq()
+      idToStmt(id) = ActivityZone(zoneName, myInputs, idToMemberStmts(id),
                                   idToMemberNames(id), outputConsumers.toMap, outputTypes.toMap)
     }}
   }
