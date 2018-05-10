@@ -318,9 +318,11 @@ class EmitCpp(writer: Writer) {
     println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     val sg = StatementGraph(allBodies)
     if (opt.regUpdates)
-      sg.elideIntermediateRegUpdates
-    if (opt.zoneAct)
+      sg.elideIntermediateRegUpdates()
+    if (opt.zoneAct) {
       sg.coarsenIntoZones()
+      sg.printMergedRegStats()
+    }
     // val mergedRegs = if (opt.regUpdates) {
     //                    if (opt.zoneAct) sg.mergeRegUpdatesIntoZones(safeRegs)
     //                    else sg.mergeRegsSafe(safeRegs)

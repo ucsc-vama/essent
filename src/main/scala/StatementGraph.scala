@@ -134,16 +134,16 @@ class StatementGraph extends Graph {
       val newMFFCID = matchingIDs.min
       matchingIDs foreach { startingMFFCs(_) = newMFFCID }
     }
-    clumpByStmtType[RegUpdate]()
+    // clumpByStmtType[RegUpdate]()
     clumpByStmtType[Print]()
     val idToMFFC = findMFFCs(startingMFFCs)
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
-    // NOTE: not all MFFC IDs are validNodes because they weren't originally statements (e.g. regs)
     mffcMap foreach { case (mffcID, memberIDs) => {
       if (mffcID > 0) {
         idToStmt(mffcID) = Block(memberIDs flatMap grabStmts)
         val idsToRemove = memberIDs diff Seq(mffcID)
         mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
+        assert(validNodes(mffcID))   // otherwise, MFFC incorporated exclusively invalid nodes
       }
     }}
     assert(idToMFFC forall { _ != -1 }) // all nodes reached
@@ -310,6 +310,20 @@ class StatementGraph extends Graph {
       case az: ActivityZone => Seq(az.name)
       case _ => Seq()
     }}
+  }
+
+  def printMergedRegStats() {
+    val numRegs = idToStmt count { _.isInstanceOf[DefRegister] }
+    val numMergedRegs = (idToStmt flatMap { _ match {
+      case az: ActivityZone => {
+        val regUpdatesInZone = az.memberStmts collect { case ru: RegUpdate => ru }
+        val regUpdateNames = regUpdatesInZone map { ru: RegUpdate => emitExpr(ru.regRef) }
+        val mergedRegsInZone = (regUpdateNames map { _ + "$next" }).intersect(az.memberNames)
+        Seq(mergedRegsInZone.size)
+      }
+      case _ => Seq(0)
+    }}).sum
+    println(s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone")
   }
 
   def analyzeZoningQuality() {
