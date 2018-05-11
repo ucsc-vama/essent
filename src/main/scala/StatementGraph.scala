@@ -220,17 +220,13 @@ class StatementGraph extends Graph {
 
   def translateBlocksIntoZones(alreadyDeclared: Set[String]) {
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
-    val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map { id => {
-      val members = idToStmt(id) match {
-        case b: Block => b.stmts
-        case _ => throw new Exception("matched a non-block statement")
-      }
-      (id -> members)
-    }}).toMap
-    val idToHE = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
-    val idToMemberNames = idToHE mapValues { zoneHE => zoneHE map { _.name } }
-    val idToInputNames = idToHE map { case (id, zoneHE) => {
-      val zoneDepNames = (zoneHE flatMap { _.deps }).distinct
+    val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map {
+      id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
+    }).toMap
+    val idToHEs = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
+    val idToMemberNames = idToHEs mapValues { zoneHEs => zoneHEs map { _.name } }
+    val idToInputNames = idToHEs map { case (id, zoneHEs) => {
+      val zoneDepNames = (zoneHEs flatMap { _.deps }).distinct
       val externalDepNames = zoneDepNames diff idToMemberNames(id)
       (id -> externalDepNames)
     }}
@@ -244,13 +240,12 @@ class StatementGraph extends Graph {
       val zoneName = if (!blacklistedZoneIDs.contains(id)) id.toString else "always" + id
       val memberSet = idToMemberNames(id).toSet
       val consumedOutputs = memberSet.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
-      // NOTE: can be overlaps, but set addition removes differences
       val outputConsumers = consumedOutputs map { outputName => {
         val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map { _.toString })
       }}
       val decOutputNameSet = consumedOutputs -- alreadyDeclared
-      val outputTypes = idToHE(id) flatMap {
+      val outputTypes = idToHEs(id) flatMap {
         he => if (decOutputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
               else Seq()
       }
