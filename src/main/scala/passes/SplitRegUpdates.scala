@@ -1,5 +1,6 @@
 package essent.passes
 
+import essent.Emitter._
 import essent.ir._
 
 import firrtl._
@@ -11,18 +12,11 @@ import firrtl.Utils._
 
 object SplitRegUpdates extends Pass {
   def desc = "Appends $next to the name of any reg being assigned to"
-  // Assumes registers are assigned to via Connect (and not DefNode)
-  // FUTURE: just replace Connect with DefNode and remove need for DefWire
 
   def renameRegStmt(s: Statement): Statement = {
     val replaced = s match {
       case c: Connect if (firrtl.Utils.kind(c.loc) == firrtl.RegKind) => {
-        val newLoc = c.loc match {
-          case w: WRef => w.copy(name = w.name + "$next")
-          case w: WSubField => w.copy(name = w.name + "$next")
-          case _ => c.loc
-        }
-        c.copy(loc = newLoc)
+        DefNode(c.info, emitExpr(c.loc) + "$next", c.expr)
       }
       case _ => s
     }
@@ -30,11 +24,10 @@ object SplitRegUpdates extends Pass {
   }
 
   // FUTURE: what if reg is dead? should update be generated for connect?
-  def generateRegUpdatesAndWires(s: Statement): Seq[Statement] = s match {
-    case b: Block => b.stmts flatMap generateRegUpdatesAndWires
+  def generateRegUpdates(s: Statement): Seq[Statement] = s match {
+    case b: Block => b.stmts flatMap generateRegUpdates
     case r: DefRegister => {
-      Seq(RegUpdate(NoInfo, WRef(r.name, r.tpe, RegKind), WRef(r.name + "$next", r.tpe, RegKind)),
-          DefWire(NoInfo, r.name + "$next", r.tpe))
+      Seq(RegUpdate(NoInfo, WRef(r.name, r.tpe, RegKind), WRef(r.name + "$next", r.tpe, RegKind)))
     }
     case _ => Seq()
   }
@@ -43,8 +36,7 @@ object SplitRegUpdates extends Pass {
     val modulesx = c.modules.map {
       case m: ExtModule => m
       case m: Module => {
-        val newBody = squashEmpty(Block(Seq(renameRegStmt(m.body)) ++
-                                            generateRegUpdatesAndWires(m.body)))
+        val newBody = squashEmpty(Block(Seq(renameRegStmt(m.body)) ++ generateRegUpdates(m.body)))
         m.copy(body = newBody)
       }
     }
