@@ -345,15 +345,15 @@ class StatementGraph extends Graph {
 
   def printMergedRegStats() {
     val numRegs = idToStmt count { _.isInstanceOf[DefRegister] }
-    val numMergedRegs = (idToStmt flatMap { _ match {
+    val numMergedRegs = (idToStmt collect {
       case az: ActivityZone => {
         val regUpdatesInZone = az.memberStmts collect { case ru: RegUpdate => ru }
         val regUpdateNames = regUpdatesInZone map { ru: RegUpdate => emitExpr(ru.regRef) }
-        val mergedRegsInZone = (regUpdateNames map { _ + "$next" }).intersect(az.memberNames)
-        Seq(mergedRegsInZone.size)
+        val potentialNextRegNames = regUpdateNames map { _.replace('.','$') + "$next" }
+        val mergedRegsInZone = potentialNextRegNames.intersect(az.memberNames)
+        mergedRegsInZone.size
       }
-      case _ => Seq(0)
-    }}).sum
+    }).sum
     println(s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone")
   }
 
