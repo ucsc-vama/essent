@@ -124,11 +124,8 @@ class EmitCpp(writer: Writer) {
   def writeZoningPredecs(
       sg: StatementGraph,
       topName: String,
-      memWrites: Seq[MemWrite],
       extIOtypes: Map[String, Type],
-      regNames: Seq[String],
       startingDoNotDec: Set[String],
-      keepAvail: Seq[String],
       opt: OptFlags) {
     val zoneNames = sg.getZoneNames()
     if (opt.trackAct) {
@@ -148,7 +145,6 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "}")
     }
     // predeclare zone outputs
-    val regNamesFinalSet = (regNames map { _ + "$final" }).toSet
     val outputPairs = sg.getZoneOutputTypes()
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
@@ -176,8 +172,8 @@ class EmitCpp(writer: Writer) {
           case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
         }}
         writeLines(2, cacheOldOutputs)
-        val (noRegUpdates, regUpdates) = az.memberStmts partition { !_.isInstanceOf[RegUpdate] }
-        writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, keepAvail ++ doNotDec)
+        val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
+        writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt)
         // FUTURE: may be able to remove replace when $next is local
         val outputTriggers = az.outputTypes flatMap {
           case (name, tpe) => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$old")
@@ -304,7 +300,7 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
     if (opt.zoneAct)
-      writeZoningPredecs(sg, topName, allMemWrites, extIOs.toMap, regNames, doNotDec, keepAvail, opt)
+      writeZoningPredecs(sg, topName, extIOs.toMap, doNotDec, opt)
     writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
     writeLines(0, "")
     writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
