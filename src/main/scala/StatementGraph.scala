@@ -286,6 +286,7 @@ class StatementGraph extends Graph {
       println(s"Down to ${nonEmptyStmts()} statement blocks")
     }}
     analyzeZoningQuality()
+    printMergedRegStats()
   }
 
 
