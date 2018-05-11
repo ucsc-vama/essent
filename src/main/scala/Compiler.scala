@@ -184,11 +184,11 @@ class EmitCpp(writer: Writer) {
         }
         writeLines(2, outputTriggers.toSeq)
         // triggers for RegUpdates
-        val regUpdateNamesInZone = (az.memberNames filter regNamesFinalSet) map { _.replaceAllLiterally("$final","") }
+        val regUpdateNamesInZone = regUpdates map findResultName
         val regOutputTriggers = regUpdateNamesInZone flatMap {
           name => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$next")
         }
-        writeLines(2, regOutputTriggers.toSeq)
+        writeLines(2, regOutputTriggers)
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }

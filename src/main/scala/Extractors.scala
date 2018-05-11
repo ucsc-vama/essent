@@ -83,6 +83,7 @@ object Extract {
     case d: DefNode => d.name
     case c: Connect => emitExpr(c.loc)
     case ms: MuxShadowed => ms.name
+    case ru: RegUpdate => emitExpr(ru.regRef)
     case _ => throw new Exception("Don't know how to find result name")
   }
 
