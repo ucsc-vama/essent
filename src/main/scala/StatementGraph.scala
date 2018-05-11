@@ -90,7 +90,7 @@ class StatementGraph extends Graph {
     muxesWorthShadowing foreach { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
       val muxStmtName = idToName(muxID)
-      val muxOutputName = findResultName(idToStmt(muxID))
+      val muxOutputName = findResultName(idToStmt(muxID)).get
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       val muxOutputStmt = idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)
       idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr,
@@ -238,16 +238,7 @@ class StatementGraph extends Graph {
     }
     blockIDs foreach { id => {
       val zoneName = if (!blacklistedZoneIDs.contains(id)) id.toString else "always" + id
-      val stateRenames = (idToMemberStmts(id) collect {
-        case ru: RegUpdate => {
-          val regName = emitExpr(ru.regRef)
-          (regName + "$final" -> regName)
-        }
-        case mw: MemWrite => (mw.nodeName -> mw.memName)
-      }).toMap
-      val producedOutputs = (idToMemberNames(id) map {
-        name => stateRenames.getOrElse(name, name)
-      }).toSet
+      val producedOutputs = (idToMemberStmts(id) flatMap findResultName).toSet
       val consumedOutputs = producedOutputs.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
       val outputConsumers = consumedOutputs map { outputName => {
         val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
@@ -421,7 +412,7 @@ class StatementGraph extends Graph {
     def updateConnect(targName: String)(s: Statement): Statement = {
       val result = s match {
         case c: Connect => {
-          if (findResultName(c) == targName + "$next") {
+          if (findResultName(c).get == targName + "$next") {
             val regNameWithoutNext = c.loc match {
               case w: WRef => w.copy(name = w.name.replaceAllLiterally("$next",""))
               case w: WSubField => w.copy(name = w.name.replaceAllLiterally("$next",""))

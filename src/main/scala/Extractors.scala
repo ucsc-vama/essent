@@ -79,12 +79,15 @@ object Extract {
     }
   }
 
-  def findResultName(stmt: Statement): String = stmt match {
-    case d: DefNode => d.name
-    case c: Connect => emitExpr(c.loc)
-    case ms: MuxShadowed => ms.name
-    case ru: RegUpdate => emitExpr(ru.regRef)
-    case _ => throw new Exception("Don't know how to find result name")
+  def findResultName(stmt: Statement): Option[String] = stmt match {
+    case d: DefNode => Some(d.name)
+    case c: Connect => Some(emitExpr(c.loc))
+    case ms: MuxShadowed => Some(ms.name)
+    case ru: RegUpdate => Some(emitExpr(ru.regRef))
+    case mw: MemWrite => Some(mw.memName)
+    case p: Print => None
+    case s: Stop => None
+    case _ => throw new Exception(s"Don't know how to find result name of ${stmt.serialize}")
   }
 
   def findMuxExpr(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {

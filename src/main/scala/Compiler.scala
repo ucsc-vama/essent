@@ -180,7 +180,7 @@ class EmitCpp(writer: Writer) {
         }
         writeLines(2, outputTriggers.toSeq)
         // triggers for RegUpdates
-        val regUpdateNamesInZone = regUpdates map findResultName
+        val regUpdateNamesInZone = regUpdates flatMap findResultName
         val regOutputTriggers = regUpdateNamesInZone flatMap {
           name => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$next")
         }
