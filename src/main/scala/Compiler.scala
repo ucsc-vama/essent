@@ -157,14 +157,8 @@ class EmitCpp(writer: Writer) {
     println(s"Output nodes: ${outputPairs.size}")
     val mergedRegsSet = (mergedRegs map { _ + "$next"}).toSet
     val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
-    val otherInputs = sg.getExternalZoneInputs() diff regNames
-    val memNames = (memWrites map { _.memName }).toSet
-    val (memInputs, nonMemInputs) = otherInputs partition { memNames.contains(_) }
-    val nonMemCacheTypes = nonMemInputs.toSeq map {
-      name => if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name)
-    }
-    val nonMemCacheDecs = (nonMemCacheTypes zip nonMemInputs.toSeq) map {
-      case (tpe, name) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    val nonMemCacheDecs = sg.getExternalZoneInputTypes(extIOtypes) map {
+      case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(1, nonMemCacheDecs)
     writeLines(1, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
@@ -233,12 +227,11 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "cycle_count++;")
 
     val outputConsumers = sg.getZoneInputMap()
-    val memNames = memWrites map { _.memName }
-    val nonMemInputs = sg.getExternalZoneInputs() diff (regNames ++ memNames)
+    val externalZoneInputNames = sg.getExternalZoneInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(1, genAllTriggers(selectFromMap(nonMemInputs, outputConsumers), "$old", true))
+    writeLines(1, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old", true))
     // cache old versions
-    val nonMemCaches = nonMemInputs map { sigName => {
+    val nonMemCaches = externalZoneInputNames map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
       s"$oldVersion = $sigName;"
     }}

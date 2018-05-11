@@ -238,8 +238,17 @@ class StatementGraph extends Graph {
     }
     blockIDs foreach { id => {
       val zoneName = if (!blacklistedZoneIDs.contains(id)) id.toString else "always" + id
-      val memberSet = idToMemberNames(id).toSet
-      val consumedOutputs = memberSet.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
+      val stateRenames = (idToMemberStmts(id) collect {
+        case ru: RegUpdate => {
+          val regName = emitExpr(ru.regRef)
+          (regName + "$final" -> regName)
+        }
+        case mw: MemWrite => (mw.nodeName -> mw.memName)
+      }).toMap
+      val producedOutputs = (idToMemberNames(id) map {
+        name => stateRenames.getOrElse(name, name)
+      }).toSet
+      val consumedOutputs = producedOutputs.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
       val outputConsumers = consumedOutputs map { outputName => {
         val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map { _.toString })
@@ -297,6 +306,24 @@ class StatementGraph extends Graph {
     }}).toSet
     val allZoneOutputs = (getZoneOutputTypes() map { _._1 }).toSet
     (allZoneInputs -- allZoneOutputs).toSeq
+  }
+
+  def getExternalZoneInputNames(): Seq[String] = {
+    val allZoneInputs = (idToStmt flatMap { _ match {
+      case az: ActivityZone => az.inputs
+      case _ => Seq()
+    }}).toSet
+    val allZoneOutputs = (idToStmt flatMap { _ match {
+      case az: ActivityZone => az.outputConsumers.keys
+      case _ => Seq()
+    }}).toSet
+    (allZoneInputs -- allZoneOutputs).toSeq
+  }
+
+  def getExternalZoneInputTypes(extIOtypes: Map[String, Type]): Seq[(String,Type)] = {
+    getExternalZoneInputNames() map {
+      name => (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
+    }
   }
 
   // is this needed?
