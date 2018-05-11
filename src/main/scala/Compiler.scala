@@ -236,6 +236,8 @@ class EmitCpp(writer: Writer) {
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}
+
+    writeLines(1, "regs_set = true;")
   }
 
   def zoneActTrackerName(zoneName: String) = s"ACT${zoneName.replace('.', '$')}"
@@ -281,16 +283,6 @@ class EmitCpp(writer: Writer) {
     val allRegDefs = allBodies flatMap findRegisters
     val regNames = allRegDefs map { _.name }
     val doNotDec = (regNames ++ (extIOs map { _._1 })).toSet
-    val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
-    val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
-    val stopStmts = noPrints flatMap findInstancesOf[Stop]
-    val otherDeps = noPrints flatMap findDependencesStmt
-    val memDeps = allMemWrites flatMap findDependencesStmt flatMap { _.deps }
-    val printDeps = printStmts flatMap findDependencesStmt flatMap { _.deps }
-    val keepAvail = (memDeps ++ printDeps).distinct
-    val unsafeDepSet = (memDeps ++ printDeps).toSet
-    val (unsafeRegs, safeRegs) = regNames partition { unsafeDepSet.contains(_) }
-    println(s"${unsafeRegs.size} registers are deps for unmovable ops")
     val sg = StatementGraph(allBodies)
     if (opt.zoneAct)
       sg.coarsenIntoZones()
@@ -308,26 +300,11 @@ class EmitCpp(writer: Writer) {
       writeZoningBody(sg, doNotDec, opt)
     else
       writeBodyInner(1, sg, doNotDec, opt)
-    if (printStmts.nonEmpty || stopStmts.nonEmpty) {
-      writeLines(1, "if (done_reset && update_registers) {")
-      // if (printStmts.nonEmpty) {
-      //   writeLines(2, "if(verbose) {")
-      //   writeLines(3, printStmts flatMap emitStmt(Set()))
-      //   writeLines(2, "}")
-      // }
-      if (stopStmts.nonEmpty) {
-        writeLines(2, "if (assert_triggered) {")
-        writeLines(3, "exit(assert_exit_code);")
-        writeLines(2, "}")
-      }
-      writeLines(1, "}")
-    }
-    if (allRegDefs.nonEmpty || allMemWrites.nonEmpty) {
+    writeLines(1, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+    if (regResetOverrides(allRegDefs).nonEmpty) {
       writeLines(1, "if (update_registers) {")
       // FUTURE: will overrides need triggers if zoned?
       writeLines(2, regResetOverrides(allRegDefs))
-      if (opt.zoneAct)
-        writeLines(2, "regs_set = true;")
       writeLines(1, "}")
     }
     writeLines(0, "}")
