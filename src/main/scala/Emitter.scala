@@ -99,7 +99,7 @@ object Emitter {
   def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
     def initVal(name: String, tpe:Type) = s"$name.rand_init();"
     val regInits = registers map {
-      r: DefRegister => initVal(r.name + "$next", r.tpe)
+      r: DefRegister => initVal(r.name, r.tpe)
     }
     val memInits = memories map { m: DefMemory => {
       s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"

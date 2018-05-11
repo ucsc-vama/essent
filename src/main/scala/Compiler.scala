@@ -34,7 +34,7 @@ class EmitCpp(writer: Writer) {
     val registerDecs = registers flatMap {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name
-      Seq(s"$typeStr $regName;", s"$typeStr $regName$$next;")
+      Seq(s"$typeStr $regName;")
     }}
     val memDecs = memories map {m: DefMemory => {
       s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
@@ -188,7 +188,10 @@ class EmitCpp(writer: Writer) {
         writeLines(2, outputTriggers.toSeq)
         // triggers for RegUpdates
         val regUpdateNamesInZone = (az.memberNames filter regNamesFinalSet) map { _.replaceAllLiterally("$final","") }
-        writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, outputConsumers), "$next"))
+        val regOutputTriggers = regUpdateNamesInZone flatMap {
+          name => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$next")
+        }
+        writeLines(2, regOutputTriggers.toSeq)
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
@@ -285,7 +288,7 @@ class EmitCpp(writer: Writer) {
     }
     val allRegDefs = allBodies flatMap findRegisters
     val regNames = allRegDefs map { _.name }
-    val doNotDec = (regNames ++ (regNames map { _ + "$next" }) ++ (extIOs map { _._1 })).toSet
+    val doNotDec = (regNames ++ (extIOs map { _._1 })).toSet
     val (allMemWrites, noMemWrites) = partitionByType[MemWrite](allBodies)
     val (printStmts, noPrints) = partitionByType[Print](noMemWrites)
     val stopStmts = noPrints flatMap findInstancesOf[Stop]
