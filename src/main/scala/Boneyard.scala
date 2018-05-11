@@ -2499,3 +2499,74 @@
 //   writeLines(0, "}")
 //   writeLines(0, "")
 // }
+
+
+
+// from StatementGraph.scala
+// Register merging
+//----------------------------------------------------------------------------
+// def mergeRegUpdatesIntoZones(regsToConsider: Seq[String]): Seq[String] = {
+//   val inputNameToConsumers = getZoneInputMap()
+//   val regNamesSet = regsToConsider.toSet
+//   val regNameToZoneName = (nodeRefIDs flatMap { id => idToStmt(id) match {
+//     case az: ActivityZone => {
+//       val zoneName = idToName(id)
+//       val regsInZone = az.memberNames map { _.replaceAllLiterally("$next","") } filter regNamesSet
+//       regsInZone map { (_, zoneName) }
+//     }
+//     case _ => Seq()
+//   }}).toMap
+//   val mergedRegs = regsToConsider flatMap { regName => {
+//     val regWriterZoneID = nameToID(regNameToZoneName(regName))
+//     val regReaderZoneIDs = inputNameToConsumers(regName) map nameToID
+//     val okToMerge = regReaderZoneIDs forall { readerID => !pathExists(regWriterZoneID, readerID) }
+//     if (okToMerge) {
+//       regReaderZoneIDs filter { _ != regWriterZoneID } foreach { readerID => {
+//         if (!outNeigh(readerID).contains(regWriterZoneID))
+//           addEdge(idToName(readerID), idToName(regWriterZoneID))
+//       }}
+//       Seq(regName)
+//     } else Seq()
+//   }}
+//   println(s"Was able to merge ${mergedRegs.size}/${regsToConsider.size} of mergeable regs")
+//   mergedRegs
+// }
+
+// def updateMergedRegWrites(mergedRegs: Seq[String]) {
+//   def updateConnect(targName: String)(s: Statement): Statement = {
+//     val result = s match {
+//       case c: Connect => {
+//         if (findResultName(c).get == targName + "$next") {
+//           val regNameWithoutNext = c.loc match {
+//             case w: WRef => w.copy(name = w.name.replaceAllLiterally("$next",""))
+//             case w: WSubField => w.copy(name = w.name.replaceAllLiterally("$next",""))
+//           }
+//           RegUpdate(NoInfo, regNameWithoutNext, c.expr)
+//         } else c
+//       }
+//       case _ => s
+//     }
+//     result mapStmt updateConnect(targName)
+//   }
+//   mergedRegs foreach { regName => {
+//     val regWriteID = nameToID(regName + "$next")
+//     idToStmt(regWriteID) = updateConnect(regName)(idToStmt(regWriteID))
+//   }}
+// }
+
+
+// MemWrite merging
+//----------------------------------------------------------------------------
+// NOTE: if used, will need to add if (update_registers) to Emitter for MemWrite
+// def mergeMemWritesIntoSG(memWrites: Seq[MemWrite]): Seq[MemWrite] = {
+//   // FUTURE: may be able to include MemWrites in body when sg is built, and just add edges later
+//   val unmergedMemWrites = memWrites flatMap { mw => {
+//     val memID = nameToID(mw.memName)
+//     val memReaderNames = outNeigh(memID) map idToName
+//     buildFromBodies(Seq(mw))
+//     memReaderNames foreach { readerName => addEdge(readerName, mw.nodeName) }
+//     Seq()
+//   }}
+//   // returns mem writes it was unable to merge (why couldn't it merge all?)
+//   unmergedMemWrites
+// }
