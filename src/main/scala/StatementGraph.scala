@@ -218,18 +218,19 @@ class StatementGraph extends Graph {
     }
   }
 
-  def translateBlocksIntoZones(alreadyDeclared: Set[String]) {
+  def translateBlocksIntoZones(stateElemNames: Set[String]) {
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map {
       id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
     }).toMap
+    val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
     val idToHEs = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
     val idToMemberNames = idToHEs mapValues { zoneHEs => zoneHEs map { _.name } }
-    val idToInputNames = idToHEs map { case (id, zoneHEs) => {
-      val zoneDepNames = (zoneHEs flatMap { _.deps }).distinct
-      val externalDepNames = zoneDepNames diff idToMemberNames(id)
-      (id -> externalDepNames)
-    }}
+    val idToInputNames = (blockIDs map { id => {
+      val zoneDepNames = (idToHEs(id) flatMap { _.deps }).toSet
+      val externalDepNames = zoneDepNames -- (idToProducedOutputs(id).toSet -- stateElemNames)
+      (id -> externalDepNames.toSeq)
+    }}).toMap
     val inputNameToConsumingZoneIDs = Util.groupByFirst(idToInputNames.toSeq flatMap {
       case (id, inputNames) => inputNames map { (_, id) }
     })
@@ -238,16 +239,14 @@ class StatementGraph extends Graph {
     }
     blockIDs foreach { id => {
       val zoneName = if (!blacklistedZoneIDs.contains(id)) id.toString else "always" + id
-      val producedOutputs = (idToMemberStmts(id) flatMap findResultName).toSet
-      val consumedOutputs = producedOutputs.intersect(cleanInputNameToConsumingZoneIDs.keys.toSet)
+      val consumedOutputs = idToProducedOutputs(id).toSet.intersect(cleanInputNameToConsumingZoneIDs.keySet)
       val outputConsumers = consumedOutputs map { outputName => {
         val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
         (outputName, consumerIDs map { _.toString })
       }}
-      val decOutputNameSet = consumedOutputs -- alreadyDeclared
-      val outputTypes = idToHEs(id) flatMap {
-        he => if (decOutputNameSet.contains(he.name)) Seq((he.name -> findResultType(he.stmt)))
-              else Seq()
+      val outputNamesToDeclare = consumedOutputs -- stateElemNames
+      val outputTypes = idToHEs(id) collect {
+        case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
       }
       val myInputs = if (!blacklistedZoneIDs.contains(id)) idToInputNames(id) else Seq()
       idToStmt(id) = ActivityZone(zoneName, myInputs, idToMemberStmts(id),
@@ -256,7 +255,7 @@ class StatementGraph extends Graph {
   }
 
   def coarsenIntoZones() {
-    val alreadyDeclared = idToStmt collect {
+    val stateElemNames = idToStmt collect {
       case dr: DefRegister => dr.name
       case dm: DefMemory => dm.name
     }
@@ -267,7 +266,7 @@ class StatementGraph extends Graph {
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
-      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(alreadyDeclared.toSet)})
+      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(stateElemNames.toSet)})
     )
     toApply foreach { case(label, func) => {
       val startTime = System.currentTimeMillis()
