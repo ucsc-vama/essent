@@ -176,13 +176,13 @@ class EmitCpp(writer: Writer) {
         writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, az.outputConsumers.keys.toSeq)
         // FUTURE: may be able to remove replace when $next is local
         val outputTriggers = az.outputTypes flatMap {
-          case (name, tpe) => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$old")
+          case (name, tpe) => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$old")
         }
         writeLines(2, outputTriggers.toSeq)
         // triggers for RegUpdates
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         val regOutputTriggers = regUpdateNamesInZone flatMap {
-          name => genDepZoneTriggers(az.outputConsumers(name), s"$name != ${name.replace('.','$')}$$next")
+          name => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$next")
         }
         writeLines(2, regOutputTriggers)
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
