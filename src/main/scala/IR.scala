@@ -39,6 +39,7 @@ case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow:
 
 case class ActivityZone(
     name:String,
+    alwaysActive: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
     memberNames: Seq[String],

@@ -164,7 +164,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
-        if (!az.name.contains("always"))
+        if (!az.alwaysActive)
           writeLines(2, s"${genFlagName(az.name)} = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
@@ -227,12 +227,10 @@ class EmitCpp(writer: Writer) {
 
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        if (!az.name.contains("always")) {
-          writeLines(1, s"if (${genFlagName(az.name)}) {")
-          writeLines(2, s"${genZoneFuncName(az.name)}();")
-          writeLines(1, "}")
-        } else
-        writeLines(1, s"${genZoneFuncName(az.name)}();")
+        if (!az.alwaysActive)
+          writeLines(1, s"if (${genFlagName(az.name)}) ${genZoneFuncName(az.name)}();")
+        else
+          writeLines(1, s"${genZoneFuncName(az.name)}();")
       }
       case _ => writeLines(1, emitStmt(doNotDec)(stmt))
     }}
