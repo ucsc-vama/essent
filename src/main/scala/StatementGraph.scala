@@ -276,6 +276,16 @@ class StatementGraph extends Graph {
 
   // Zone info
   //----------------------------------------------------------------------------
+  def getZoneNames(): Seq[String] = idToStmt collect { case az: ActivityZone => az.name }
+
+  def getZoneInputMap(): Map[String,Seq[String]] = {
+    val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
+      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.name) }
+      case _ => Seq()
+    }}
+    Util.groupByFirst(allZoneInputs)
+  }
+
   def getZoneOutputsToDeclare(): Seq[(String,Type)] = {
     val allZoneOutputTypes = validNodes.toSeq flatMap { id => idToStmt(id) match {
       case az: ActivityZone => az.outputsToDeclare.toSeq
@@ -297,6 +307,7 @@ class StatementGraph extends Graph {
       case az: ActivityZone => az.outputsToDeclare.keys
       case _ => Seq()
     }}).toSet ++ stateElemNames.toSet
+    // FUTURE: safe to assume zones produce all state elements?
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
@@ -304,22 +315,6 @@ class StatementGraph extends Graph {
     getExternalZoneInputNames() map {
       name => (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
     }
-  }
-
-  // is this needed?
-  def getZoneInputMap(): Map[String,Seq[String]] = {
-    val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.name) }
-      case _ => Seq()
-    }}
-    Util.groupByFirst(allZoneInputs)
-  }
-
-  def getZoneNames(): Seq[String] = {
-    validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Seq(az.name)
-      case _ => Seq()
-    }}
   }
 
   def printMergedRegStats() {
