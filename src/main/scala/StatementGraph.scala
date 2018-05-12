@@ -224,19 +224,19 @@ class StatementGraph extends Graph {
       id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
     }).toMap
     val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
-    val idToHEs = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
     val idToInputNames = (blockIDs map { id => {
-      val zoneDepNames = (idToHEs(id) flatMap { _.deps }).toSet
-      val externalDepNames = zoneDepNames -- (idToProducedOutputs(id).toSet -- stateElemNames)
+      val zoneDepNames = idToMemberStmts(id) flatMap findDependencesStmt flatMap { _.deps }
+      val externalDepNames = zoneDepNames.toSet -- (idToProducedOutputs(id).toSet -- stateElemNames)
       (id -> externalDepNames.toSeq)
     }}).toMap
     val allInputs = idToInputNames.values.flatten.toSet
     blockIDs foreach { id => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
-      val outputNamesToDeclare = consumedOutputs -- stateElemNames
-      val outputsToDeclare = idToHEs(id) collect {
-        case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
+      val namesToDeclare = consumedOutputs -- stateElemNames
+      val nameToStmts = idToMemberStmts(id) map { stmt => (findResultName(stmt) -> stmt) }
+      val outputsToDeclare = nameToStmts collect {
+        case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
       }
       idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), idToInputNames(id),
                                   idToMemberStmts(id), outputsToDeclare.toMap)
