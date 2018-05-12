@@ -240,12 +240,12 @@ class StatementGraph extends Graph {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(cleanInputNameToConsumingZoneIDs.keySet)
       val outputNamesToDeclare = consumedOutputs -- stateElemNames
-      val outputTypes = idToHEs(id) collect {
+      val outputsToDeclare = idToHEs(id) collect {
         case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
       }
       val myInputs = if (!blacklistedZoneIDs.contains(id)) idToInputNames(id) else Seq()
       idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), myInputs,
-                                  idToMemberStmts(id), outputTypes.toMap)
+                                  idToMemberStmts(id), outputsToDeclare.toMap)
     }}
   }
 
@@ -277,9 +277,9 @@ class StatementGraph extends Graph {
 
   // Zone info
   //----------------------------------------------------------------------------
-  def getZoneOutputTypes(): Seq[(String,Type)] = {
+  def getZoneOutputsToDeclare(): Seq[(String,Type)] = {
     val allZoneOutputTypes = validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.outputTypes.toSeq
+      case az: ActivityZone => az.outputsToDeclare.toSeq
       case _ => Seq()
     }}
     allZoneOutputTypes
@@ -290,7 +290,7 @@ class StatementGraph extends Graph {
       case az: ActivityZone => az.inputs
       case _ => Seq()
     }}).toSet
-    val allZoneOutputs = (getZoneOutputTypes() map { _._1 }).toSet
+    val allZoneOutputs = (getZoneOutputsToDeclare() map { _._1 }).toSet
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
@@ -304,7 +304,7 @@ class StatementGraph extends Graph {
       case _ => Seq()
     }}).toSet
     val allZoneOutputs = (idToStmt flatMap { _ match {
-      case az: ActivityZone => az.outputTypes.keys
+      case az: ActivityZone => az.outputsToDeclare.keys
       case _ => Seq()
     }}).toSet ++ stateElemNames.toSet
     (allZoneInputs -- allZoneOutputs).toSeq

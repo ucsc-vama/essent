@@ -145,7 +145,7 @@ class EmitCpp(writer: Writer) {
       writeLines(1, "}")
     }
     // predeclare zone outputs
-    val outputPairs = sg.getZoneOutputTypes()
+    val outputPairs = sg.getZoneOutputsToDeclare()
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
     println(s"Output nodes: ${outputPairs.size}")
@@ -168,14 +168,14 @@ class EmitCpp(writer: Writer) {
           writeLines(2, s"${genFlagName(az.name)} = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
-        val cacheOldOutputs = az.outputTypes.toSeq map {
+        val cacheOldOutputs = az.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
         }}
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
         writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, outputConsumers.keys.toSeq)
         // FUTURE: may be able to remove replace when $next is local
-        val outputTriggers = az.outputTypes flatMap {
+        val outputTriggers = az.outputsToDeclare flatMap {
           case (name, tpe) => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$old")
         }
         writeLines(2, outputTriggers.toSeq)

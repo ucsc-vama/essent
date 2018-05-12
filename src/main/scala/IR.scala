@@ -42,7 +42,7 @@ case class ActivityZone(
     alwaysActive: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
-    outputTypes: Map[String,firrtl.ir.Type]) extends Statement {
+    outputsToDeclare: Map[String,firrtl.ir.Type]) extends Statement {
   def serialize: String =  "activity zone"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
   def mapExpr(f: Expression => Expression): Statement = this
