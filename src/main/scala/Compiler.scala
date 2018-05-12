@@ -173,7 +173,7 @@ class EmitCpp(writer: Writer) {
         }}
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
-        writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, az.outputConsumers.keys.toSeq)
+        writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, outputConsumers.keys.toSeq)
         // FUTURE: may be able to remove replace when $next is local
         val outputTriggers = az.outputTypes flatMap {
           case (name, tpe) => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$old")

@@ -300,14 +300,18 @@ class StatementGraph extends Graph {
   }
 
   def getExternalZoneInputNames(): Seq[String] = {
+    val stateElemNames = idToStmt collect {
+      case dr: DefRegister => dr.name
+      case dm: DefMemory => dm.name
+    }
     val allZoneInputs = (idToStmt flatMap { _ match {
       case az: ActivityZone => az.inputs
       case _ => Seq()
     }}).toSet
     val allZoneOutputs = (idToStmt flatMap { _ match {
-      case az: ActivityZone => az.outputConsumers.keys
+      case az: ActivityZone => az.outputTypes.keys
       case _ => Seq()
-    }}).toSet
+    }}).toSet ++ stateElemNames.toSet
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
@@ -337,10 +341,10 @@ class StatementGraph extends Graph {
     val numRegs = idToStmt count { _.isInstanceOf[DefRegister] }
     val numMergedRegs = (idToStmt collect {
       case az: ActivityZone => {
-        val regUpdatesInZone = az.memberStmts collect { case ru: RegUpdate => ru }
-        val regUpdateNames = regUpdatesInZone map { ru: RegUpdate => emitExpr(ru.regRef) }
+        val regUpdateNames = az.memberStmts collect { case ru: RegUpdate => emitExpr(ru.regRef) }
         val potentialNextRegNames = regUpdateNames map { _.replace('.','$') + "$next" }
-        val mergedRegsInZone = potentialNextRegNames.intersect(az.memberNames)
+        val internalOutputs = az.memberStmts flatMap findResultName
+        val mergedRegsInZone = potentialNextRegNames.intersect(internalOutputs)
         mergedRegsInZone.size
       }
     }).sum
@@ -364,10 +368,7 @@ class StatementGraph extends Graph {
         stmt => findDependencesStmt(stmt) map { _.deps.size }
       }
     }).sum
-    val allOutputMaps = nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.outputConsumers.toSeq
-      case _ => None
-    }}
+    val allOutputMaps = getZoneInputMap()
     val numOutputsUnique = allOutputMaps.size
     val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
     val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
