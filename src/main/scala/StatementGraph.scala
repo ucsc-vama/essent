@@ -50,6 +50,11 @@ class StatementGraph extends Graph {
     stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
   }
 
+  def stateElemNames(): Seq[String] = idToStmt collect {
+    case dr: DefRegister => dr.name
+    case dm: DefMemory => dm.name
+  }
+
   def stmtsOrdered(): Seq[Statement] = topologicalSort filter validNodes map idToStmt
 
 
@@ -218,7 +223,8 @@ class StatementGraph extends Graph {
     }
   }
 
-  def translateBlocksIntoZones(stateElemNames: Set[String]) {
+  def translateBlocksIntoZones() {
+    val alreadyDeclared = stateElemNames().toSet
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map {
       id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
@@ -233,7 +239,7 @@ class StatementGraph extends Graph {
     blockIDs foreach { id => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
-      val namesToDeclare = consumedOutputs -- stateElemNames
+      val namesToDeclare = consumedOutputs -- alreadyDeclared
       val nameToStmts = idToMemberStmts(id) map { stmt => (findResultName(stmt) -> stmt) }
       val outputsToDeclare = nameToStmts collect {
         case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
@@ -244,10 +250,6 @@ class StatementGraph extends Graph {
   }
 
   def coarsenIntoZones() {
-    val stateElemNames = idToStmt collect {
-      case dr: DefRegister => dr.name
-      case dm: DefMemory => dm.name
-    }
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
@@ -255,7 +257,7 @@ class StatementGraph extends Graph {
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
-      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones(stateElemNames.toSet)})
+      ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
     )
     toApply foreach { case(label, func) => {
       val startTime = System.currentTimeMillis()
@@ -290,10 +292,7 @@ class StatementGraph extends Graph {
   }
 
   def getExternalZoneInputNames(): Seq[String] = {
-    val stateElemNames = idToStmt collect {
-      case dr: DefRegister => dr.name
-      case dm: DefMemory => dm.name
-    }
+    val alreadyDeclared = stateElemNames().toSet
     val allZoneInputs = (idToStmt flatMap { _ match {
       case az: ActivityZone => az.inputs
       case _ => Seq()
@@ -301,8 +300,7 @@ class StatementGraph extends Graph {
     val allZoneOutputs = (idToStmt flatMap { _ match {
       case az: ActivityZone => az.outputsToDeclare.keys
       case _ => Seq()
-    }}).toSet ++ stateElemNames.toSet
-    // FUTURE: safe to assume zones produce all state elements?
+    }}).toSet ++ alreadyDeclared.toSet
     (allZoneInputs -- allZoneOutputs).toSeq
   }
 
