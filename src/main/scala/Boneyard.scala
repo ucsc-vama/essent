@@ -2570,3 +2570,12 @@
 //   // returns mem writes it was unable to merge (why couldn't it merge all?)
 //   unmergedMemWrites
 // }
+
+// def getExternalZoneInputs(): Seq[String] = {
+//   val allZoneInputs = (validNodes.toSeq flatMap { id => idToStmt(id) match {
+//     case az: ActivityZone => az.inputs
+//     case _ => Seq()
+//   }}).toSet
+//   val allZoneOutputs = (getZoneOutputsToDeclare() map { _._1 }).toSet
+//   (allZoneInputs -- allZoneOutputs).toSeq
+// }

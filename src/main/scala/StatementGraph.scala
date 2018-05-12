@@ -243,8 +243,7 @@ class StatementGraph extends Graph {
       val outputsToDeclare = idToHEs(id) collect {
         case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
       }
-      val myInputs = if (!blacklistedZoneIDs.contains(id)) idToInputNames(id) else Seq()
-      idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), myInputs,
+      idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), idToInputNames(id),
                                   idToMemberStmts(id), outputsToDeclare.toMap)
     }}
   }
@@ -285,15 +284,6 @@ class StatementGraph extends Graph {
     allZoneOutputTypes
   }
 
-  def getExternalZoneInputs(): Seq[String] = {
-    val allZoneInputs = (validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.inputs
-      case _ => Seq()
-    }}).toSet
-    val allZoneOutputs = (getZoneOutputsToDeclare() map { _._1 }).toSet
-    (allZoneInputs -- allZoneOutputs).toSeq
-  }
-
   def getExternalZoneInputNames(): Seq[String] = {
     val stateElemNames = idToStmt collect {
       case dr: DefRegister => dr.name
@@ -319,7 +309,7 @@ class StatementGraph extends Graph {
   // is this needed?
   def getZoneInputMap(): Map[String,Seq[String]] = {
     val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => az.inputs map { (_, id.toString) }
+      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.name) }
       case _ => Seq()
     }}
     Util.groupByFirst(allZoneInputs)
