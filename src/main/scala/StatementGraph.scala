@@ -230,15 +230,10 @@ class StatementGraph extends Graph {
       val externalDepNames = zoneDepNames -- (idToProducedOutputs(id).toSet -- stateElemNames)
       (id -> externalDepNames.toSeq)
     }}).toMap
-    val inputNameToConsumingZoneIDs = Util.groupByFirst(idToInputNames.toSeq flatMap {
-      case (id, inputNames) => inputNames map { (_, id) }
-    })
-    val cleanInputNameToConsumingZoneIDs = inputNameToConsumingZoneIDs mapValues {
-      zoneIDs => zoneIDs filter { !blacklistedZoneIDs.contains(_) }
-    }
+    val allInputs = idToInputNames.values.flatten.toSet
     blockIDs foreach { id => {
       val zoneName = id.toString
-      val consumedOutputs = idToProducedOutputs(id).toSet.intersect(cleanInputNameToConsumingZoneIDs.keySet)
+      val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
       val outputNamesToDeclare = consumedOutputs -- stateElemNames
       val outputsToDeclare = idToHEs(id) collect {
         case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
