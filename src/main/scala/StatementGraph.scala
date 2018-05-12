@@ -225,7 +225,6 @@ class StatementGraph extends Graph {
     }).toMap
     val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
     val idToHEs = idToMemberStmts mapValues { members => members flatMap findDependencesStmt }
-    val idToMemberNames = idToHEs mapValues { zoneHEs => zoneHEs map { _.name } }
     val idToInputNames = (blockIDs map { id => {
       val zoneDepNames = (idToHEs(id) flatMap { _.deps }).toSet
       val externalDepNames = zoneDepNames -- (idToProducedOutputs(id).toSet -- stateElemNames)
@@ -240,17 +239,13 @@ class StatementGraph extends Graph {
     blockIDs foreach { id => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(cleanInputNameToConsumingZoneIDs.keySet)
-      val outputConsumers = consumedOutputs map { outputName => {
-        val consumerIDs = cleanInputNameToConsumingZoneIDs.getOrElse(outputName, Seq())
-        (outputName, consumerIDs map { _.toString })
-      }}
       val outputNamesToDeclare = consumedOutputs -- stateElemNames
       val outputTypes = idToHEs(id) collect {
         case he if (outputNamesToDeclare.contains(he.name)) => (he.name -> findResultType(he.stmt))
       }
       val myInputs = if (!blacklistedZoneIDs.contains(id)) idToInputNames(id) else Seq()
-      idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), myInputs, idToMemberStmts(id),
-                                  idToMemberNames(id), outputConsumers.toMap, outputTypes.toMap)
+      idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), myInputs,
+                                  idToMemberStmts(id), outputTypes.toMap)
     }}
   }
 
