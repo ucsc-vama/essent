@@ -91,19 +91,6 @@ class EmitCpp(writer: Writer) {
     }}
   }
 
-  def regResetOverrides(allRegDefs: Seq[DefRegister]): Seq[String] = {
-    val updatesWithResets = allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
-    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
-    resetGroups.toSeq flatMap {
-      case (resetName, regDefs) => {
-        val body = regDefs map {
-          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
-        }
-        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
-      }
-    }
-  }
-
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
   def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
@@ -259,6 +246,25 @@ class EmitCpp(writer: Writer) {
     Seq("uint64_t total = 0;") ++ sum ++ Seq(effAct, printEffAct)
   }
 
+  def writeRegResetOverrides(sg: StatementGraph) {
+    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
+    val overridesToWrite = resetGroups.toSeq flatMap {
+      case (resetName, regDefs) => {
+        val body = regDefs map {
+          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
+        }
+        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+      }
+    }
+    if (overridesToWrite.nonEmpty) {
+      writeLines(2, "if (update_registers) {")
+      // FUTURE: will overrides need triggers if zoned?
+      writeLines(3, overridesToWrite)
+      writeLines(2, "}")
+    }
+  }
+
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
@@ -276,15 +282,12 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
-    val allRegDefs = allBodies flatMap findRegisters
-    val regNames = allRegDefs map { _.name }
-    val doNotDec = (regNames ++ (extIOs map { _._1 })).toSet
     val sg = StatementGraph(allBodies)
+    val doNotDec = (sg.stateElemNames ++ (extIOs map { _._1 })).toSet
     if (opt.zoneAct)
       sg.coarsenIntoZones()
     else if (opt.regUpdates)
       sg.elideIntermediateRegUpdates()
-    // FUTURE: worry about namespace collisions
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
     if (opt.zoneAct)
@@ -296,12 +299,7 @@ class EmitCpp(writer: Writer) {
     else
       writeBodyInner(2, sg, doNotDec, opt)
     writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-    if (regResetOverrides(allRegDefs).nonEmpty) {
-      writeLines(2, "if (update_registers) {")
-      // FUTURE: will overrides need triggers if zoned?
-      writeLines(3, regResetOverrides(allRegDefs))
-      writeLines(2, "}")
-    }
+    writeRegResetOverrides(sg)
     writeLines(1, "}")
   }
 

@@ -50,6 +50,10 @@ class StatementGraph extends Graph {
     stmtsPossiblyWithEmpty filter { _ != EmptyStmt }
   }
 
+  def allRegDefs(): Seq[DefRegister] = idToStmt collect {
+    case dr: DefRegister => dr
+  }
+
   def stateElemNames(): Seq[String] = idToStmt collect {
     case dr: DefRegister => dr.name
     case dm: DefMemory => dm.name
