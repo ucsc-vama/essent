@@ -57,7 +57,6 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "}")
     if (modName == topName) {
       writeLines(0, "")
-      writeLines(1, "void eval(bool update_registers, bool verbose, bool done_reset);")
       // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     } else {
       writeLines(0, s"} $modName;")
@@ -200,42 +199,42 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeZoningBody(sg: StatementGraph, doNotDec: Set[String], opt: OptFlags) {
-    writeLines(1, "if (reset || !done_reset) {")
-    writeLines(2, "sim_cached = false;")
-    writeLines(2, "regs_set = false;")
-    writeLines(1, "}")
-    writeLines(1, "if (!sim_cached) {")
-    writeLines(2, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
-    writeLines(1, "}")
-    writeLines(1, "sim_cached = regs_set;")
-    writeLines(1, "this->update_registers = update_registers;")
-    writeLines(1, "this->done_reset = done_reset;")
-    writeLines(1, "this->verbose = verbose;")
+    writeLines(2, "if (reset || !done_reset) {")
+    writeLines(3, "sim_cached = false;")
+    writeLines(3, "regs_set = false;")
+    writeLines(2, "}")
+    writeLines(2, "if (!sim_cached) {")
+    writeLines(3, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
+    writeLines(2, "}")
+    writeLines(2, "sim_cached = regs_set;")
+    writeLines(2, "this->update_registers = update_registers;")
+    writeLines(2, "this->done_reset = done_reset;")
+    writeLines(2, "this->verbose = verbose;")
     if (opt.trackAct)
-      writeLines(1, "cycle_count++;")
+      writeLines(2, "cycle_count++;")
 
     val outputConsumers = sg.getZoneInputMap()
     val externalZoneInputNames = sg.getExternalZoneInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(1, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old", true))
+    writeLines(2, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old", true))
     // cache old versions
     val nonMemCaches = externalZoneInputNames map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
       s"$oldVersion = $sigName;"
     }}
-    writeLines(1, nonMemCaches.toSeq)
+    writeLines(2, nonMemCaches.toSeq)
 
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
-          writeLines(1, s"if (${genFlagName(az.name)}) ${genZoneFuncName(az.name)}();")
+          writeLines(2, s"if (${genFlagName(az.name)}) ${genZoneFuncName(az.name)}();")
         else
-          writeLines(1, s"${genZoneFuncName(az.name)}();")
+          writeLines(2, s"${genZoneFuncName(az.name)}();")
       }
-      case _ => writeLines(1, emitStmt(doNotDec)(stmt))
+      case _ => writeLines(2, emitStmt(doNotDec)(stmt))
     }}
 
-    writeLines(1, "regs_set = true;")
+    writeLines(2, "regs_set = true;")
   }
 
   def zoneActTrackerName(zoneName: String) = s"ACT${zoneName.replace('.', '$')}"
@@ -261,7 +260,6 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
-    val topName = circuit.main
     val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
     val allInstances = Seq((topModule.name, "")) ++
       findAllModuleInstances("", circuit)(topModule.body)
@@ -290,23 +288,21 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
     if (opt.zoneAct)
-      writeZoningPredecs(sg, topName, extIOs.toMap, doNotDec, opt)
-    writeLines(0, s"} $topName;") //closing module dec (was done to enable predecs for zones)
+      writeZoningPredecs(sg, circuit.main, extIOs.toMap, doNotDec, opt)
     writeLines(0, "")
-    writeLines(0, s"void $topName::eval(bool update_registers, bool verbose, bool done_reset) {")
+    writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.zoneAct)
       writeZoningBody(sg, doNotDec, opt)
     else
-      writeBodyInner(1, sg, doNotDec, opt)
-    writeLines(1, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+      writeBodyInner(2, sg, doNotDec, opt)
+    writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     if (regResetOverrides(allRegDefs).nonEmpty) {
-      writeLines(1, "if (update_registers) {")
+      writeLines(2, "if (update_registers) {")
       // FUTURE: will overrides need triggers if zoned?
-      writeLines(2, regResetOverrides(allRegDefs))
-      writeLines(1, "}")
+      writeLines(3, regResetOverrides(allRegDefs))
+      writeLines(2, "}")
     }
-    writeLines(0, "}")
-    writeLines(0, "")
+    writeLines(1, "}")
   }
 
   def emit(circuit: Circuit) {
@@ -330,8 +326,9 @@ class EmitCpp(writer: Writer) {
     // writeLines(1, HarnessGenerator.harnessConnections(topModule))
     // writeLines(0, "}")
     writeLines(0, "")
-    // emitEvalTail(topName, circuit)
     writeEvalOuter(circuit, OptFlags(true, true, true, false))
+    writeLines(0, s"} $topName;") //closing top module dec
+    writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
   }
 }
