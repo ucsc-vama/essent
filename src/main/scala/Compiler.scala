@@ -265,7 +265,28 @@ class EmitCpp(writer: Writer) {
     }
   }
 
-  def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
+  def emit(circuit: Circuit) {
+    val opt = OptFlags(true, true, true, false)
+    val topName = circuit.main
+    val headerGuardName = topName.toUpperCase + "_H_"
+    writeLines(0, s"#ifndef $headerGuardName")
+    writeLines(0, s"#define $headerGuardName")
+    writeLines(0, "")
+    writeLines(0, "#include <cstdint>")
+    writeLines(0, "#include <cstdlib>")
+    writeLines(0, "#include <uint.h>")
+    writeLines(0, "#include <sint.h>")
+    circuit.modules foreach {
+      case m: Module => declareModule(m, topName)
+      case m: ExtModule => declareExtModule(m)
+    }
+    val topModule = findModule(topName, circuit) match {case m: Module => m}
+    writeLines(0, "")
+    // writeLines(0, "")
+    // writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
+    // writeLines(1, HarnessGenerator.harnessConnections(topModule))
+    // writeLines(0, "}")
+    writeLines(0, "")
     val sg = StatementGraph(circuit)
     val extIOMap = findExternalPorts(circuit)
     val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
@@ -286,30 +307,6 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     writeRegResetOverrides(sg)
     writeLines(1, "}")
-  }
-
-  def emit(circuit: Circuit) {
-    val topName = circuit.main
-    val headerGuardName = topName.toUpperCase + "_H_"
-    writeLines(0, s"#ifndef $headerGuardName")
-    writeLines(0, s"#define $headerGuardName")
-    writeLines(0, "")
-    writeLines(0, "#include <cstdint>")
-    writeLines(0, "#include <cstdlib>")
-    writeLines(0, "#include <uint.h>")
-    writeLines(0, "#include <sint.h>")
-    circuit.modules foreach {
-      case m: Module => declareModule(m, topName)
-      case m: ExtModule => declareExtModule(m)
-    }
-    val topModule = findModule(topName, circuit) match {case m: Module => m}
-    writeLines(0, "")
-    writeLines(0, "")
-    // writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
-    // writeLines(1, HarnessGenerator.harnessConnections(topModule))
-    // writeLines(0, "}")
-    writeLines(0, "")
-    writeEvalOuter(circuit, OptFlags(true, true, true, false))
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
