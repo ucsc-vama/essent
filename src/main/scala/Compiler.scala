@@ -267,12 +267,6 @@ class EmitCpp(writer: Writer) {
 
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
     val allInstances = findAllModuleInstances(circuit)
-    val allBodies = allInstances flatMap {
-      case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Some(flattenBodies(m, circuit, prefix))
-        case em: ExtModule => None
-      }
-    }
     // FUTURE: handle top-level external inputs (other than reset)
     val extIOs = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
@@ -280,7 +274,7 @@ class EmitCpp(writer: Writer) {
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
-    val sg = StatementGraph(allBodies)
+    val sg = StatementGraph(circuit)
     val doNotDec = (sg.stateElemNames ++ (extIOs map { _._1 })).toSet
     if (opt.zoneAct)
       sg.coarsenIntoZones()

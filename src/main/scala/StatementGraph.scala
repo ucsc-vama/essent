@@ -402,10 +402,21 @@ class StatementGraph extends Graph {
 
 
 object StatementGraph {
-  def apply(bodies: Seq[Statement]) = {
+  def apply(bodies: Seq[Statement]): StatementGraph = {
     val sg = new StatementGraph
     sg.buildFromBodies(bodies)
     sg.addOrderingDepsForStateUpdates()
     sg
+  }
+
+  def apply(circuit: Circuit): StatementGraph = {
+    val allInstances = findAllModuleInstances(circuit)
+    val allBodies = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => Some(flattenBodies(m, circuit, prefix))
+        case em: ExtModule => None
+      }
+    }
+    apply(allBodies)
   }
 }
