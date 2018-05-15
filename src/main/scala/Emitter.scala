@@ -15,15 +15,33 @@ import scala.util.Random
 object Emitter {
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
-  // Declaration Methods
+  // Type Declaration & Initialization
+  //----------------------------------------------------------------------------
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
     case SIntType(IntWidth(w)) => s"SInt<$w>"
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
+  def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
+    def initVal(name: String, tpe:Type) = s"$name.rand_init();"
+    val regInits = registers map {
+      r: DefRegister => initVal(r.name, r.tpe)
+    }
+    val memInits = memories map { m: DefMemory => {
+      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"
+    }}
+    val portInits = m.ports flatMap { p => p.tpe match {
+      case ClockType => Seq()
+      case _ => if ((p.name != "reset") && !topLevel) Seq()
+                else Seq(initVal(p.name, p.tpe))
+    }}
+    regInits ++ memInits ++ portInits
+  }
 
-  // Replacement methods
+
+  // Prefixing & Replacement
+  //----------------------------------------------------------------------------
   def addPrefixToNameStmt(prefix: String)(s: Statement): Statement = {
     val replaced = s match {
       case n: DefNode => n.copy(name = prefix + n.name)
@@ -44,93 +62,43 @@ object Emitter {
     replaced map addPrefixToNameExpr(prefix)
   }
 
-  def findRootKind(e: Expression): Kind = e match {
-    case w: WRef => w.kind
-    case w: WSubField => findRootKind(w.expr)
-  }
-
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
     val nodeReplaced = s match {
-      case n: DefNode => {
-        if (renames.contains(n.name)) n.copy(name = renames(n.name))
-        else n
-      }
-      case ms: MuxShadowed => {
-        if (renames.contains(ms.name)) ms.copy(name = renames(ms.name))
-        else ms
-      }
-      case mw: MemWrite => {
-        if (renames.contains(mw.memName)) mw.copy(memName = renames(mw.memName))
-        else mw
-      }
+      case n: DefNode if (renames.contains(n.name)) => n.copy(name = renames(n.name))
+      case ms: MuxShadowed if (renames.contains(ms.name)) => ms.copy(name = renames(ms.name))
+      case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName))
       case _ => s
     }
     nodeReplaced map replaceNamesStmt(renames) map replaceNamesExpr(renames)
   }
 
-  def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = e match {
-    case w: WRef => {
-      if (renames.contains(w.name)) w.copy(name = renames(w.name))
-      else w
+  def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = {
+    def findRootKind(e: Expression): Kind = e match {
+      case w: WRef => w.kind
+      case w: WSubField => findRootKind(w.expr)
     }
-    case w: WSubField => {
-      val fullName = emitExpr(w)
-      // flattens out nested WSubFields
-      if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
-      else w
+    e match {
+      case w: WRef => {
+        if (renames.contains(w.name)) w.copy(name = renames(w.name))
+        else w
+      }
+      case w: WSubField => {
+        val fullName = emitExpr(w)
+        // flattens out nested WSubFields
+        if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
+        else w
+      }
+      case _ => e map replaceNamesExpr(renames)
     }
-    case _ => e map replaceNamesExpr(renames)
   }
 
 
-  // State initialization methods
-  def makeRegisterUpdate(prefix: String)(r: DefRegister): String = {
-    val regName = prefix + r.name
-    val resetName = emitExpr(r.reset)
-    val resetVal = r.init match {
-      case l: Literal => emitExpr(r.init)
-      case _ => if (resetName != "UInt<1>(0x0)")
-        throw new Exception("register reset isn't a literal " + r.init)
-    }
-    if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
-    else s"$regName = $resetName ? $resetVal : $regName$$next;"
-  }
-
-  def initializeVals(topLevel: Boolean)(m: Module, registers: Seq[DefRegister], memories: Seq[DefMemory]) = {
-    def initVal(name: String, tpe:Type) = s"$name.rand_init();"
-    val regInits = registers map {
-      r: DefRegister => initVal(r.name, r.tpe)
-    }
-    val memInits = memories map { m: DefMemory => {
-      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"
-    }}
-    val portInits = m.ports flatMap { p => p.tpe match {
-      case ClockType => Seq()
-      case _ => if ((p.name != "reset") && !topLevel) Seq()
-                else Seq(initVal(p.name, p.tpe))
-    }}
-    regInits ++ memInits ++ portInits
-  }
-
-
-  // Emission methods
+  // Emission
+  //----------------------------------------------------------------------------
   def emitPort(topLevel: Boolean)(p: Port): Seq[String] = p.tpe match {
     case ClockType => Seq()
     case _ => if ((p.name != "reset") && !topLevel) Seq()
               else Seq(genCppType(p.tpe) + " " + p.name + ";")
-  }
-
-  def emitRegUpdate(r: DefRegister): String = {
-    val regName = r.name
-    val resetName = emitExpr(r.reset)
-    if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
-    else {
-      val resetVal = r.init match {
-        case l: Literal => emitExpr(r.init)
-        case _ => throw new Exception("register reset isn't a literal " + r.init)
-      }
-      s"$regName = $resetName ? $resetVal : $regName$$next;"
-    }
   }
 
   def chunkLitString(litStr: String, chunkWidth:Int = 16): Seq[String] = {

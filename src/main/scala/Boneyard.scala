@@ -1827,6 +1827,31 @@
 //   case _ => Seq()
 // }
 
+// def makeRegisterUpdate(prefix: String)(r: DefRegister): String = {
+//   val regName = prefix + r.name
+//   val resetName = emitExpr(r.reset)
+//   val resetVal = r.init match {
+//     case l: Literal => emitExpr(r.init)
+//     case _ => if (resetName != "UInt<1>(0x0)")
+//       throw new Exception("register reset isn't a literal " + r.init)
+//   }
+//   if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
+//   else s"$regName = $resetName ? $resetVal : $regName$$next;"
+// }
+
+// def emitRegUpdate(r: DefRegister): String = {
+//   val regName = r.name
+//   val resetName = emitExpr(r.reset)
+//   if (resetName == "UInt<1>(0x0)") s"$regName = $regName$$next;"
+//   else {
+//     val resetVal = r.init match {
+//       case l: Literal => emitExpr(r.init)
+//       case _ => throw new Exception("register reset isn't a literal " + r.init)
+//     }
+//     s"$regName = $resetName ? $resetVal : $regName$$next;"
+//   }
+// }
+
 
 
 
