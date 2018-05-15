@@ -61,7 +61,7 @@ object FactorMemWrites extends Pass {
   }
 
   def FactorMemWritesModule(m: Module): Module = {
-    val memsInModule = findMemory(m.body)
+    val memsInModule = findInstancesOf[DefMemory](m.body)
     memsInModule foreach {m =>
       if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
     val writePortNames = (memsInModule flatMap { mem => mem.writers map { mem.name + "." +  _ }}).toSet

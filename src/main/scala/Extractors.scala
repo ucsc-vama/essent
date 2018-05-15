@@ -21,14 +21,6 @@ object Extract {
     case _ => Seq()
   }
 
-  def findRegisters(s: Statement) = findInstancesOf[DefRegister](s)
-
-  def findWires(s: Statement) = findInstancesOf[DefWire](s)
-
-  def findMemory(s: Statement) = findInstancesOf[DefMemory](s)
-
-  def findNodes(s: Statement) = findInstancesOf[DefNode](s)
-
   def findPortNames(dm: DefModule): Seq[String] = dm match {
     case m: Module => m.ports.map{_.name}.filter{s => s != "clock"}
     case em: ExtModule => Seq()
@@ -169,8 +161,8 @@ object Extract {
 
   def flattenModuleBody(m: Module, prefix: String, circuit: Circuit) = {
     val body = addPrefixToNameStmt(prefix)(m.body)
-    val nodeNames = findNodes(body) map { _.name }
-    val wireNames = findWires(body) map { _.name }
+    val nodeNames = findInstancesOf[DefNode](body) map { _.name }
+    val wireNames = findInstancesOf[DefWire](body) map { _.name }
     val externalPortNames = findPortNames(m) map { prefix + _ }
     val internalPortNames = findModuleInstances(m.body) flatMap {
       case (moduleType, moduleName) =>

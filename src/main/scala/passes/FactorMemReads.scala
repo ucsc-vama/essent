@@ -67,7 +67,7 @@ object FactorMemReads extends Pass {
   }
 
   def FactorMemReadsModule(m: Module): Module = {
-    val memsInModule = findMemory(m.body)
+    val memsInModule = findInstancesOf[DefMemory](m.body)
     val readPortTypes = (memsInModule flatMap {
       mem => mem.readers map { readPortName => (mem.name + "." + readPortName, mem.dataType) }
     }).toMap

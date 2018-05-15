@@ -29,8 +29,8 @@ class EmitCpp(writer: Writer) {
   }
 
   def declareModule(m: Module, topName: String) {
-    val registers = findRegisters(m.body)
-    val memories = findMemory(m.body)
+    val registers = findInstancesOf[DefRegister](m.body)
+    val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
       val regName = d.name

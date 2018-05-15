@@ -72,7 +72,7 @@ object RegFromMem1 extends Pass {
   }
 
   def memReplaceModule(m: Module): Module = {
-    val allMems = essent.Extract.findMemory(m.body)
+    val allMems = essent.Extract.findInstancesOf[DefMemory](m.body)
     // FUTURE: need to explicitly handle read enables?
     val singleElementMems = allMems filter memHasRightParams
     if (singleElementMems.isEmpty) m
