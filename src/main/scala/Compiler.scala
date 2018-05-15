@@ -266,16 +266,9 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
-    val allInstances = findAllModuleInstances(circuit)
-    // FUTURE: handle top-level external inputs (other than reset)
-    val extIOs = allInstances flatMap {
-      case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => None
-        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
-      }
-    }
     val sg = StatementGraph(circuit)
-    val doNotDec = (sg.stateElemNames ++ (extIOs map { _._1 })).toSet
+    val extIOMap = findExternalPorts(circuit)
+    val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
     if (opt.zoneAct)
       sg.coarsenIntoZones()
     else if (opt.regUpdates)
@@ -283,7 +276,7 @@ class EmitCpp(writer: Writer) {
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
     if (opt.zoneAct)
-      writeZoningPredecs(sg, circuit.main, extIOs.toMap, doNotDec, opt)
+      writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
     writeLines(0, "")
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.zoneAct)

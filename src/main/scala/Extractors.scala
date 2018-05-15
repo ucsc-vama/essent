@@ -180,4 +180,18 @@ object Extract {
     val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
     replaceNamesStmt(renames)(body)
   }
+
+  def findExternalPorts(circuit: Circuit): Map[String,Type] = {
+    val allInstances = findAllModuleInstances(circuit)
+    val extIOs = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => {
+          if (m.name == circuit.main) m.ports map { port => (s"$prefix${port.name}", port.tpe) }
+          else None
+        }
+        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
+      }
+    }
+    extIOs.toMap
+  }
 }
