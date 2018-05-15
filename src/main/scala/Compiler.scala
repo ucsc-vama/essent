@@ -266,9 +266,7 @@ class EmitCpp(writer: Writer) {
   }
 
   def writeEvalOuter(circuit: Circuit, opt: OptFlags) {
-    val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
-    val allInstances = Seq((topModule.name, "")) ++
-      findAllModuleInstances("", circuit)(topModule.body)
+    val allInstances = findAllModuleInstances(circuit)
     val allBodies = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
         case m: Module => Some(flattenBodies(m, circuit, prefix))

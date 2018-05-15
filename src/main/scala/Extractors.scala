@@ -40,18 +40,23 @@ object Extract {
     case _ => Seq()
   }
 
-  def findAllModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] =
-    s match {
-      case b: Block => b.stmts flatMap findAllModuleInstances(prefix, circuit)
-      case i: WDefInstance => {
-        val nestedModules = findModule(i.module, circuit) match {
-          case m: Module => findAllModuleInstances(s"$prefix${i.name}.", circuit)(m.body)
-          case em: ExtModule => Seq()
+  def findAllModuleInstances(circuit: Circuit): Seq[(String,String)] = {
+    def crawlModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] = {
+      s match {
+        case b: Block => b.stmts flatMap crawlModuleInstances(prefix, circuit)
+        case i: WDefInstance => {
+          val nestedModules = findModule(i.module, circuit) match {
+            case m: Module => crawlModuleInstances(s"$prefix${i.name}.", circuit)(m.body)
+            case em: ExtModule => Seq()
+          }
+          Seq((i.module, s"$prefix${i.name}.")) ++ nestedModules
         }
-        Seq((i.module, s"$prefix${i.name}.")) ++ nestedModules
+        case _ => Seq()
       }
-      case _ => Seq()
     }
+    val topModule = findModule(circuit.main, circuit) match {case m: Module => m}
+    Seq((circuit.main, "")) ++ crawlModuleInstances("", circuit)(topModule.body)
+  }
 
   def findModule(name: String, circuit: Circuit) =
     circuit.modules.find(_.name == name).get
