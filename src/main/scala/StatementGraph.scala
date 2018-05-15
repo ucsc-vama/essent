@@ -411,12 +411,12 @@ object StatementGraph {
 
   def apply(circuit: Circuit): StatementGraph = {
     val allInstances = findAllModuleInstances(circuit)
-    val allBodies = allInstances flatMap {
+    val allBodiesFlattened = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Some(flattenBodies(m, circuit, prefix))
+        case m: Module => Some(flattenModuleBody(m, prefix, circuit))
         case em: ExtModule => None
       }
     }
-    apply(allBodies)
+    apply(allBodiesFlattened)
   }
 }
