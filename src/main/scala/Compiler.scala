@@ -19,7 +19,8 @@ import firrtl.Utils._
 class EmitCpp(writer: Writer) {
   val tabs = "  "
 
-  // Writing methods
+  // Writing To File
+  //----------------------------------------------------------------------------
   def writeLines(indentLevel: Int, lines: String) {
     writeLines(indentLevel, Seq(lines))
   }
@@ -28,6 +29,9 @@ class EmitCpp(writer: Writer) {
     lines foreach { s => writer write tabs*indentLevel + s + "\n" }
   }
 
+
+  // Declaring Modules
+  //----------------------------------------------------------------------------
   def declareModule(m: Module, topName: String) {
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
@@ -71,6 +75,9 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $modName;")
   }
 
+
+  // Write General-purpose Eval
+  //----------------------------------------------------------------------------
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String] = Seq()) {
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
     if (opt.muxShadows)
@@ -91,6 +98,28 @@ class EmitCpp(writer: Writer) {
     }}
   }
 
+  def writeRegResetOverrides(sg: StatementGraph) {
+    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
+    val overridesToWrite = resetGroups.toSeq flatMap {
+      case (resetName, regDefs) => {
+        val body = regDefs map {
+          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
+        }
+        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+      }
+    }
+    if (overridesToWrite.nonEmpty) {
+      writeLines(2, "if (update_registers) {")
+      // FUTURE: will overrides need triggers if zoned?
+      writeLines(3, overridesToWrite)
+      writeLines(2, "}")
+    }
+  }
+
+
+  // Write Zoning Optimzed Eval
+  //----------------------------------------------------------------------------
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
   def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
@@ -246,25 +275,9 @@ class EmitCpp(writer: Writer) {
     Seq("uint64_t total = 0;") ++ sum ++ Seq(effAct, printEffAct)
   }
 
-  def writeRegResetOverrides(sg: StatementGraph) {
-    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
-    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
-    val overridesToWrite = resetGroups.toSeq flatMap {
-      case (resetName, regDefs) => {
-        val body = regDefs map {
-          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
-        }
-        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
-      }
-    }
-    if (overridesToWrite.nonEmpty) {
-      writeLines(2, "if (update_registers) {")
-      // FUTURE: will overrides need triggers if zoned?
-      writeLines(3, overridesToWrite)
-      writeLines(2, "}")
-    }
-  }
 
+  // General Structure (and Compiler Boilerplate)
+  //----------------------------------------------------------------------------
   def emit(circuit: Circuit) {
     val opt = OptFlags(true, true, true, false)
     val topName = circuit.main
