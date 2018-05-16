@@ -128,10 +128,9 @@ class EmitCpp(writer: Writer) {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
   }
 
-  def genAllTriggers(signalToConsumers: Map[String, Seq[String]], suffix: String,
-                     localTarg: Boolean = false): Seq[String] = {
+  def genAllTriggers(signalToConsumers: Map[String, Seq[String]], suffix: String): Seq[String] = {
     signalToConsumers.toSeq flatMap { case (name, consumers) => {
-      val localName = if (localTarg) name.replace('.','$') else name
+      val localName = name.replace('.','$')
       genDepZoneTriggers(consumers, s"$name != $localName$suffix")
     }}
   }
@@ -189,17 +188,9 @@ class EmitCpp(writer: Writer) {
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
         writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, outputConsumers.keys.toSeq)
-        // FUTURE: may be able to remove replace when $next is local
-        val outputTriggers = az.outputsToDeclare flatMap {
-          case (name, tpe) => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$old")
-        }
-        writeLines(2, outputTriggers.toSeq)
-        // triggers for RegUpdates
+        writeLines(2, genAllTriggers(selectFromMap(az.outputsToDeclare.keys.toSeq, outputConsumers), "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
-        val regOutputTriggers = regUpdateNamesInZone flatMap {
-          name => genDepZoneTriggers(outputConsumers.getOrElse(name, Seq()), s"$name != ${name.replace('.','$')}$$next")
-        }
-        writeLines(2, regOutputTriggers)
+        writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, outputConsumers), "$next"))
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
@@ -228,18 +219,16 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "this->verbose = verbose;")
     if (opt.trackAct)
       writeLines(2, "cycle_count++;")
-
     val outputConsumers = sg.getZoneInputMap()
     val externalZoneInputNames = sg.getExternalZoneInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old", true))
+    writeLines(2, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old"))
     // cache old versions
     val nonMemCaches = externalZoneInputNames map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
       s"$oldVersion = $sigName;"
     }}
     writeLines(2, nonMemCaches.toSeq)
-
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
