@@ -1853,6 +1853,24 @@
 // }
 
 
+// from Extractor.scala
+// def findMuxOutputNames(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
+//   he: HyperedgeDep => he.stmt match {
+//     case DefNode(_, _, Mux(_, _, _, _)) => Seq(he.name)
+//     case Connect(_, _, Mux(_, _, _, _)) => Seq(he.name)
+//     case _ => Seq()
+//   }
+// }
+
+// def findMuxExpr(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
+//   he: HyperedgeDep => he.stmt match {
+//     case DefNode(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
+//     case Connect(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
+//     case _ => Seq()
+//   }
+// }
+
+
 
 
 // from Compiler.scala (for tracking mem write activities)

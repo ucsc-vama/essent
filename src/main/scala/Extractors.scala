@@ -10,10 +10,10 @@ import firrtl.Utils._
 
 import scala.reflect.ClassTag
 
-// Find methods
-// assumption: registers can only appear in blocks since whens expanded
 
 object Extract {
+  // Finding Statements by Type
+  //----------------------------------------------------------------------------
   // https://medium.com/@sinisalouc/overcoming-type-erasure-in-scala-8f2422070d20
   def findInstancesOf[T <: Statement](s: Statement)(implicit tag: ClassTag[T]): Seq[T] = s match {
     case t: T => Seq(t)
@@ -21,10 +21,19 @@ object Extract {
     case _ => Seq()
   }
 
-  def findPortNames(dm: DefModule): Seq[String] = dm match {
-    case m: Module => m.ports.map{_.name}.filter{s => s != "clock"}
-    case em: ExtModule => Seq()
+  def partitionByType[T <: Statement](stmts: Seq[Statement])(implicit tag: ClassTag[T]): (Seq[T], Seq[Statement]) = {
+    def filterOutType(s: Statement): Seq[Statement] = s match {
+      case t: T => Seq[Statement]()
+      case b: Block => b.stmts flatMap filterOutType
+      case _ => Seq(s)
+    }
+    (stmts flatMap findInstancesOf[T], stmts flatMap filterOutType)
   }
+
+
+  // Searching Module Instance Hierarchy
+  //----------------------------------------------------------------------------
+  def findModule(name: String, circuit: Circuit) = circuit.modules.find(_.name == name).get
 
   def findModuleInstances(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findModuleInstances
@@ -50,30 +59,31 @@ object Extract {
     Seq((circuit.main, "")) ++ crawlModuleInstances("", circuit)(topModule.body)
   }
 
-  def findModule(name: String, circuit: Circuit) =
-    circuit.modules.find(_.name == name).get
-
-  def partitionByType[T <: Statement](stmts: Seq[Statement])(implicit tag: ClassTag[T]): (Seq[T], Seq[Statement]) = {
-    def filterOutType(s: Statement): Seq[Statement] = s match {
-      case t: T => Seq[Statement]()
-      case b: Block => b.stmts flatMap filterOutType
-      case _ => Seq(s)
-    }
-    (stmts flatMap findInstancesOf[T], stmts flatMap filterOutType)
+  def findPortNames(dm: DefModule): Seq[String] = dm match {
+    case m: Module => m.ports.map{_.name}.filter{s => s != "clock"}
+    case em: ExtModule => Seq()
   }
 
+  def findExternalPorts(circuit: Circuit): Map[String,Type] = {
+    val allInstances = findAllModuleInstances(circuit)
+    val extIOs = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => {
+          if (m.name == circuit.main) m.ports map { port => (s"$prefix${port.name}", port.tpe) }
+          else None
+        }
+        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
+      }
+    }
+    extIOs.toMap
+  }
+
+  // Extracting Outcomes or Dependencies
+  //----------------------------------------------------------------------------
   def grabMux(stmt: Statement) = stmt match {
     case DefNode(_, _, m: Mux) => m
     case Connect(_, _, m: Mux) => m
     case _ => throw new Exception("not an defnode or connect")
-  }
-
-  def findMuxOutputNames(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
-    he: HyperedgeDep => he.stmt match {
-      case DefNode(_, _, Mux(_, _, _, _)) => Seq(he.name)
-      case Connect(_, _, Mux(_, _, _, _)) => Seq(he.name)
-      case _ => Seq()
-    }
   }
 
   def findResultName(stmt: Statement): Option[String] = stmt match {
@@ -87,14 +97,6 @@ object Extract {
     case _ => throw new Exception(s"Don't know how to find result name of ${stmt.serialize}")
   }
 
-  def findMuxExpr(hyperEdges: Seq[HyperedgeDep]) = hyperEdges flatMap {
-    he: HyperedgeDep => he.stmt match {
-      case DefNode(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
-      case Connect(_, _, muxExpr: Mux) => Seq((he.name, muxExpr))
-      case _ => Seq()
-    }
-  }
-
   def findResultType(stmt: Statement) = stmt match {
     case d: DefNode => d.value.tpe
     case c: Connect => c.loc.tpe
@@ -103,7 +105,6 @@ object Extract {
     case _ => throw new Exception("not a connect or defnode")
   }
 
-  // Graph dependency building
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
@@ -151,6 +152,9 @@ object Extract {
     case _ => throw new Exception(s"unexpected statement type! $s")
   }
 
+
+  // Flattening out Hierarchy
+  //----------------------------------------------------------------------------
   def flattenStmts(s: Statement): Seq[Statement] = s match {
     case b: Block => b.stmts flatMap flattenStmts
     case az: ActivityZone => az.memberStmts flatMap flattenStmts
@@ -171,19 +175,5 @@ object Extract {
     val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
     val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
     replaceNamesStmt(renames)(body)
-  }
-
-  def findExternalPorts(circuit: Circuit): Map[String,Type] = {
-    val allInstances = findAllModuleInstances(circuit)
-    val extIOs = allInstances flatMap {
-      case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => {
-          if (m.name == circuit.main) m.ports map { port => (s"$prefix${port.name}", port.tpe) }
-          else None
-        }
-        case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
-      }
-    }
-    extIOs.toMap
   }
 }
