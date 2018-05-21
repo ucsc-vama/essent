@@ -39,7 +39,9 @@ class StatementGraph extends Graph {
 
   def nodeSize(id: Int) = flattenStmts(idToStmt(id)).size
 
-  def nonEmptyStmts() = (idToStmt filter { _ != EmptyStmt }).size
+  def nonEmptyStmts() = (idToStmt filter {
+    s => s != EmptyStmt && !s.isInstanceOf[DefRegister] && !s.isInstanceOf[DefMemory]
+  }).size
 
   def grabStmts(id: Int) = {
     val stmtsPossiblyWithEmpty = idToStmt(id) match {
