@@ -128,8 +128,9 @@ class EmitCpp(writer: Writer) {
     consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
   }
 
-  def genAllTriggers(signalToConsumers: Map[String, Seq[String]], suffix: String): Seq[String] = {
-    signalToConsumers.toSeq flatMap { case (name, consumers) => {
+  def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[String]],
+      suffix: String): Seq[String] = {
+    selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumers) => {
       val localName = name.replace('.','$')
       genDepZoneTriggers(consumers, s"$name != $localName$suffix")
     }}
@@ -188,9 +189,9 @@ class EmitCpp(writer: Writer) {
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
         writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, outputConsumers.keys.toSeq)
-        writeLines(2, genAllTriggers(selectFromMap(az.outputsToDeclare.keys.toSeq, outputConsumers), "$old"))
+        writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
-        writeLines(2, genAllTriggers(selectFromMap(regUpdateNamesInZone, outputConsumers), "$next"))
+        writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
         writeLines(2, regUpdates flatMap emitStmt(doNotDec))
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
@@ -222,7 +223,7 @@ class EmitCpp(writer: Writer) {
     val outputConsumers = sg.getZoneInputMap()
     val externalZoneInputNames = sg.getExternalZoneInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(selectFromMap(externalZoneInputNames, outputConsumers), "$old"))
+    writeLines(2, genAllTriggers(externalZoneInputNames, outputConsumers, "$old"))
     // cache old versions
     val nonMemCaches = externalZoneInputNames map { sigName => {
       val oldVersion = s"${sigName.replace('.','$')}$$old"
