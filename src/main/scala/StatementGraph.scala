@@ -385,15 +385,16 @@ class StatementGraph extends Graph {
     // WARNING: following filter will have side-effects on StatementGraph
     val elidedRegIDs = regUpdateIDs collect { case id if (safeToMergeWithParentNextNode(id)) => {
       val nextID = inNeigh(id).head
-      val nextConnect = idToStmt(nextID) match {
-        case c: Connect => c
-        case _ => throw new Exception("$next statement is not a Connect")
+      val nextExpr = idToStmt(nextID) match {
+        case c: Connect => c.expr
+        case dn: DefNode => dn.value
+        case _ => throw new Exception("$next statement is not a Connect or DefNode")
       }
       val finalRegUpdate = idToStmt(id) match {
         case ru: RegUpdate => ru
         case _ => throw new Exception("$final statement is not a RegUpdate")
       }
-      idToStmt(id) = finalRegUpdate.copy(expr = nextConnect.expr)
+      idToStmt(id) = finalRegUpdate.copy(expr = nextExpr)
       mergeStmtsMutably(Seq(id, nextID))
     }}
     println(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
