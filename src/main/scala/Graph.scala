@@ -261,7 +261,7 @@ class Graph {
     val unvisitedSinks = nodeRefIDs filter { id => priorMFFC(id) == -1 && outNeigh(id).isEmpty }
     val newMFFCseeds = unvisitedSinks ++ fringe.distinct
     if (newMFFCseeds.isEmpty) {
-      val skipUnreached = priorMFFC filter { _ != -1 }
+      val skipUnreached = priorMFFC filter { mffc => mffc != -1 && mffc != -3 }
       val mffcGrouped = skipUnreached groupBy { identity }
       println(s"# nodes reached: ${skipUnreached.size}")
       println(s"# MFFC's: ${mffcGrouped.size}")
