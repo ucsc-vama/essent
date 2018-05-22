@@ -83,7 +83,7 @@ object Extract {
   def grabMux(stmt: Statement) = stmt match {
     case DefNode(_, _, m: Mux) => m
     case Connect(_, _, m: Mux) => m
-    case _ => throw new Exception("not an defnode or connect")
+    case _ => throw new Exception("not a defnode or connect")
   }
 
   def findResultName(stmt: Statement): Option[String] = stmt match {
@@ -94,6 +94,8 @@ object Extract {
     case mw: MemWrite => Some(mw.memName)
     case p: Print => None
     case s: Stop => None
+    case r: DefRegister => None
+    case m: DefMemory => None
     case _ => throw new Exception(s"Don't know how to find result name of ${stmt.serialize}")
   }
 
@@ -102,7 +104,8 @@ object Extract {
     case c: Connect => c.loc.tpe
     case r: DefRegister => r.tpe
     case m: DefMemory => m.dataType
-    case _ => throw new Exception("not a connect or defnode")
+    case ru: RegUpdate => ru.regRef.tpe
+    case _ => throw new Exception(s"not a connect or defnode: ${stmt.serialize}")
   }
 
   def findDependencesExpr(e: Expression): Seq[String] = {
