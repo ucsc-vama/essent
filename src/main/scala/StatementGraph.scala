@@ -209,7 +209,9 @@ class StatementGraph extends Graph {
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
       val siblings = (inNeigh(id) flatMap outNeigh).distinct - id
-      val legalSiblings = siblings filter { !blacklistedZoneIDs.contains(_) }
+      val legalSiblings = siblings filter {
+        sibID => !blacklistedZoneIDs.contains(sibID) && idToStmt(sibID).isInstanceOf[Block]
+      }
       val sibsScored = legalSiblings map {
         sibID => (overlapSize(id, sibID) / numInputs, sibID)
       }
@@ -334,7 +336,7 @@ class StatementGraph extends Graph {
     val numZones = getZoneNames().size
     println(s"Zones: $numZones")
     val zoneSizes = nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Some(az.memberStmts.size)
+      case az: ActivityZone => Some(nodeSize(id))
       case _ => None
     }}
     val numStmtsInZones = zoneSizes.sum
