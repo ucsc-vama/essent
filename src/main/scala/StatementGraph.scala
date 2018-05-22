@@ -165,14 +165,19 @@ class StatementGraph extends Graph {
   }
 
   // TODO: respect blacklist
-  def mergeSingleInputMFFCsToParents() {
-    val singleInputIDs = validNodes filter { inNeigh(_).size == 1}
+  def mergeSingleInputMFFCsToParents(smallZoneCutoff: Int = 20) {
+    val singleInputIDs = validNodes filter {
+      id => inNeigh(id).size == 1 && nodeSize(id) < smallZoneCutoff
+    }
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(inNeigh(id).head) }
-    if (baseSingleInputIDs.nonEmpty) {
-      println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
-      baseSingleInputIDs foreach { childID => {
-        val parentID = inNeigh(childID).head
+    val baseIDsWithParentID = baseSingleInputIDs map { id => (id, inNeigh(id).head) }
+    val basePairsWithValidParents = baseIDsWithParentID filter {
+      case (id, parentID) => validNodes.contains(parentID)
+    }
+    if (basePairsWithValidParents.nonEmpty) {
+      println(s"Merging up ${basePairsWithValidParents.size} single-input zones")
+      basePairsWithValidParents foreach { case (childID, parentID) => {
         idToStmt(parentID) = Block(grabStmts(parentID) ++ grabStmts(childID))
         mergeStmtsMutably(Seq(parentID, childID))
       }}
@@ -262,7 +267,7 @@ class StatementGraph extends Graph {
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
-      // ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
+      ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
