@@ -9,6 +9,7 @@ import essent.ir._
 import essent.Util._
 
 import collection.mutable.{ArrayBuffer, BitSet}
+import java.io.{File, FileWriter}
 import scala.reflect.ClassTag
 
 
@@ -402,6 +403,29 @@ class StatementGraph extends Graph {
       mergeStmtsMutably(Seq(id, nextID))
     }}
     println(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
+  }
+
+
+  // Miscellaneous Output and Analysis
+  //----------------------------------------------------------------------------
+  def writeDotFileWithSizes(filename: String) {
+    val fw = new FileWriter(new File(filename))
+    fw.write("digraph rocketchip {\n")
+      // (0 until numNodeRefs())
+    validNodes foreach { rowID => {
+      outNeigh(rowID) foreach { colID => {
+        fw.write(s"  $rowID -> $colID;\n")
+      }}
+      val sizeOfNode = (nodeSize(rowID))
+      fw.write(s"  $rowID [label=$sizeOfNode];\n")
+      val nodeColorBySize = if (sizeOfNode < 20) "blue"
+                            else if (sizeOfNode < 50) "green"
+                            else if (sizeOfNode < 200) "orange"
+                            else "red"
+      fw.write(s"  $rowID [color=$nodeColorBySize];\n")
+    }}
+    fw.write("}\n")
+    fw.close()
   }
 }
 
