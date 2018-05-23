@@ -136,6 +136,15 @@ class StatementGraph extends Graph {
     }}
   }
 
+  // NOTE: doesn't actually mutate graph, but just forecasts benefit
+  def numEdgesRemovedByMerge(mergeReq: Seq[Int]): Int = {
+    val totalInDegree = (mergeReq map { inNeigh(_).size }).sum
+    val totalOutDegree = (mergeReq map { outNeigh(_).size }).sum
+    val mergedInDegree = ((mergeReq flatMap inNeigh).distinct diff mergeReq).size
+    val mergedOutDegree = ((mergeReq flatMap outNeigh).distinct diff mergeReq).size
+    totalInDegree + totalOutDegree - (mergedInDegree + mergedOutDegree)
+  }
+
 
   // Zoning
   //----------------------------------------------------------------------------
