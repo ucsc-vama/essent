@@ -422,7 +422,7 @@ class StatementGraph extends Graph {
         fw.write(s"  $rowID -> $colID;\n")
       }}
       val sizeOfNode = (nodeSize(rowID))
-      fw.write(s"  $rowID [label=$sizeOfNode];\n")
+      // fw.write(s"  $rowID [label=$sizeOfNode];\n")
       val nodeColorBySize = if (sizeOfNode < 20) "blue"
                             else if (sizeOfNode < 50) "green"
                             else if (sizeOfNode < 200) "orange"
