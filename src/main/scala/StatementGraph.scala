@@ -246,6 +246,29 @@ class StatementGraph extends Graph {
     }
   }
 
+  def mergeSmallZonesDown(smallZoneCutoff: Int = 20) {
+    val smallZoneIDs = validNodes filter { id => {
+      val idSize = nodeSize(id)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
+    }}
+    val mergesToConsider = smallZoneIDs flatMap { id => {
+      val mergeableChildren = outNeigh(id) filter { childID => safeToMergeArb(Seq(id, childID)) }
+      if (mergeableChildren.nonEmpty) {
+        val orderedByEdgesRemoved = mergeableChildren.sortBy{
+          childID => numEdgesRemovedByMerge(Seq(id, childID))
+        }
+        val topChoice = orderedByEdgesRemoved.last
+        Seq(Seq(id, topChoice))
+      } else Seq()
+    }}
+    println(s"Small zones: ${smallZoneIDs.size}")
+    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    if (mergesToConsider.nonEmpty) {
+      mergeNodesSafe(mergesToConsider.toSeq)
+      mergeSmallZonesDown(smallZoneCutoff)
+    }
+  }
+
   def translateBlocksIntoZones() {
     val alreadyDeclared = stateElemNames().toSet
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
@@ -280,6 +303,7 @@ class StatementGraph extends Graph {
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
       ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
+      ("down", {sg: StatementGraph => sg.mergeSmallZonesDown()}),
       ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
     )
     toApply foreach { case(label, func) => {
