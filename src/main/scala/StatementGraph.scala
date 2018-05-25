@@ -302,8 +302,8 @@ class StatementGraph extends Graph {
       ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
-      ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
       ("down", {sg: StatementGraph => sg.mergeSmallZonesDown()}),
+      ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
       ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
     )
     toApply foreach { case(label, func) => {
