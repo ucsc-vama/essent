@@ -163,7 +163,7 @@ class StatementGraph extends Graph {
     val idToMFFC = findMFFCs(startingMFFCs)
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     mffcMap foreach { case (mffcID, memberIDs) => {
-      if (mffcID > 0) {
+      if (mffcID >= 0) {
         idToStmt(mffcID) = Block(memberIDs flatMap grabStmts)
         val idsToRemove = memberIDs diff Seq(mffcID)
         mergeStmtsMutably(Seq(mffcID) ++ idsToRemove)
