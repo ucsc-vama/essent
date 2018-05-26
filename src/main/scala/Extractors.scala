@@ -166,7 +166,7 @@ object Extract {
     case _ => Seq(s)
   }
 
-  def flattenModuleBody(m: Module, prefix: String, circuit: Circuit) = {
+  def flattenModule(m: Module, prefix: String, circuit: Circuit): Seq[Statement] = {
     val body = addPrefixToNameStmt(prefix)(m.body)
     val nodeNames = findInstancesOf[DefNode](body) map { _.name }
     val wireNames = findInstancesOf[DefWire](body) map { _.name }
@@ -177,14 +177,14 @@ object Extract {
     }
     val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
     val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
-    replaceNamesStmt(renames)(body)
+    flattenStmts(replaceNamesStmt(renames)(body))
   }
 
   def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean = true): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit)
     val allBodiesFlattened = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Some(flattenModuleBody(m, prefix, circuit))
+        case m: Module => flattenModule(m, prefix, circuit)
         case em: ExtModule => None
       }
     }
@@ -198,17 +198,12 @@ object Extract {
   // FUTURE: are there lame DefNodes I should also be grabbing?
   def squishOutPassThroughConnects(bodies: Seq[Statement],
                                    namesToExclude: Set[String]): Seq[Statement] = {
-    def flattenBlocks(stmt: Statement): Seq[Statement] = stmt match {
-      case b: Block => b.stmts flatMap flattenBlocks
-      case _ => Seq(stmt)
-    }
-    val blocksFlattened = bodies flatMap flattenBlocks
     def isRef(e: Expression): Boolean = e.isInstanceOf[WRef] || e.isInstanceOf[WSubField]
-    val (straightConnects, otherStmts) = blocksFlattened partition { _ match {
+    val (straightConnects, otherStmts) = bodies partition { _ match {
       case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
       case _ => false
     }}
-    println(s"Found straight connects in ${straightConnects.size}/${blocksFlattened.size} statements")
+    println(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
     val connectHEs = straightConnects flatMap findDependencesStmt
     val connectGraph = new Graph
     connectHEs foreach { he => connectGraph.addNodeWithDeps(he.name, he.deps) }
