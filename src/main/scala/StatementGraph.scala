@@ -476,14 +476,5 @@ object StatementGraph {
     sg
   }
 
-  def apply(circuit: Circuit): StatementGraph = {
-    val allInstances = findAllModuleInstances(circuit)
-    val allBodiesFlattened = allInstances flatMap {
-      case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => Some(flattenModuleBody(m, prefix, circuit))
-        case em: ExtModule => None
-      }
-    }
-    apply(allBodiesFlattened)
-  }
+  def apply(circuit: Circuit): StatementGraph = apply(flattenWholeDesign(circuit))
 }

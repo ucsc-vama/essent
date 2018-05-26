@@ -179,4 +179,40 @@ object Extract {
     val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
     replaceNamesStmt(renames)(body)
   }
+
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean = true): Seq[Statement] = {
+    val allInstances = findAllModuleInstances(circuit)
+    val allBodiesFlattened = allInstances flatMap {
+      case (modName, prefix) => findModule(modName, circuit) match {
+        case m: Module => Some(flattenModuleBody(m, prefix, circuit))
+        case em: ExtModule => None
+      }
+    }
+    if (squishOutConnects) {
+      val extIOMap = findExternalPorts(circuit)
+      val namesToExclude = extIOMap.keySet
+      squishOutPassThroughConnects(allBodiesFlattened, namesToExclude)
+    } else allBodiesFlattened
+  }
+
+  // FUTURE: are there lame DefNodes I should also be grabbing?
+  def squishOutPassThroughConnects(bodies: Seq[Statement],
+                                   namesToExclude: Set[String]): Seq[Statement] = {
+    def flattenBlocks(stmt: Statement): Seq[Statement] = stmt match {
+      case b: Block => b.stmts flatMap flattenBlocks
+      case _ => Seq(stmt)
+    }
+    val blocksFlattened = bodies flatMap flattenBlocks
+    def isRef(e: Expression): Boolean = e.isInstanceOf[WRef] || e.isInstanceOf[WSubField]
+    val (straightConnects, otherStmts) = blocksFlattened partition { _ match {
+      case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
+      case _ => false
+    }}
+    println(s"Found straight connects in ${straightConnects.size}/${blocksFlattened.size} statements")
+    val connectHEs = straightConnects flatMap findDependencesStmt
+    val connectGraph = new Graph
+    connectHEs foreach { he => connectGraph.addNodeWithDeps(he.name, he.deps) }
+    val chainRenames = connectGraph.chainReplacements
+    otherStmts map replaceNamesStmt(chainRenames)
+  }
 }

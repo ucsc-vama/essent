@@ -882,6 +882,17 @@ class Graph {
     }
   }
 
+  def chainReplacements(): Map[String, String] = {
+    val sourceIDs = nodeRefIDs filter { inNeigh(_).isEmpty }
+    def reachableIDs(id: Int): Seq[Int] = {
+      Seq(id) ++ (outNeigh(id) flatMap reachableIDs)
+    }
+    val renamePairs = sourceIDs flatMap {
+      sourceID => reachableIDs(sourceID) map { childID => (idToName(childID), idToName(sourceID)) }
+    }
+    renamePairs.toMap
+  }
+
 
   // Obscure Output & Stats
   //----------------------------------------------------------------------------
