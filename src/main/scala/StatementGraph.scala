@@ -220,15 +220,15 @@ class StatementGraph extends Graph {
       val idSize = nodeSize(id)
       idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
     }}
-    def overlapSize(idA: Int, idB: Int): Int = inNeigh(idA).intersect(inNeigh(idB)).size
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
       val siblings = (inNeigh(id) flatMap outNeigh).distinct - id
       val legalSiblings = siblings filter {
         sibID => !blacklistedZoneIDs.contains(sibID) && idToStmt(sibID).isInstanceOf[Block]
       }
+      val myInputSet = inNeigh(id).toSet
       val sibsScored = legalSiblings map {
-        sibID => (overlapSize(id, sibID) / numInputs, sibID)
+        sibID => (inNeigh(sibID).count(myInputSet) / numInputs, sibID)
       }
       val choices = sibsScored filter { _._1 >= mergeThreshold }
       val choicesOrdered = choices.sortWith{_._1 > _._1}
