@@ -118,7 +118,7 @@ class EmitCpp(writer: Writer) {
   }
 
 
-  // Write Zoning Optimzed Eval
+  // Write Zoning Optimized Eval
   //----------------------------------------------------------------------------
   def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
 
@@ -202,7 +202,7 @@ class EmitCpp(writer: Writer) {
         writeLines(2, memWriteTriggerZones)
         writeLines(1, "}")
       }
-      case _ => throw new Exception("Statement at top-level is not a zone")
+      case _ => throw new Exception(s"Statement at top-level is not a zone (${stmt.serialize})")
     }}
   }
 
