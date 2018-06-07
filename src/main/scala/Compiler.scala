@@ -326,8 +326,7 @@ class CCEmitter(writer: Writer) extends firrtl.Emitter {
   }
 
   def execute(state: CircuitState): CircuitState = {
-    val emitter = new essent.EmitCpp(writer)
-    emitter.emit(state.circuit)
+    emit(state, writer)
     state
   }
 }
