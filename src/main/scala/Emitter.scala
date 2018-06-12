@@ -28,8 +28,12 @@ object Emitter {
     val regInits = registers map {
       r: DefRegister => initVal(r.name, r.tpe)
     }
-    val memInits = memories map { m: DefMemory => {
-      s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();"
+    val memInits = memories flatMap { m: DefMemory => {
+      if ((m.depth > 1000) && (bitWidth(m.dataType)) <= 64) {
+        Seq(s"${m.name}[0].rand_init();",
+            s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a] = ${m.name}[0].as_single_word() + a;")
+      } else
+        Seq(s"for (size_t a=0; a < ${m.depth}; a++) ${m.name}[a].rand_init();")
     }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
