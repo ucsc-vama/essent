@@ -24,7 +24,7 @@ object ReplaceAsyncRegs extends Pass {
     val resetMux = Mux(WRef("rst", oneBitType, PortKind, MALE),
                        zero,
                        WRef("enMux", oneBitType, NodeKind, MALE), oneBitType)
-    val enableMux = Mux(WRef("en", oneBitType, PortKind, MALE), 
+    val enableMux = Mux(WRef("en", oneBitType, PortKind, MALE),
                         WRef("d", oneBitType, PortKind, MALE),
                         WRef(reg), oneBitType)
     val enableMuxStmt = DefNode(NoInfo, "enMux", enableMux)
