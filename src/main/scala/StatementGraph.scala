@@ -282,7 +282,8 @@ class StatementGraph extends Graph {
       (id -> externalDepNames.toSeq)
     }}).toMap
     val allInputs = idToInputNames.values.flatten.toSet
-    blockIDs foreach { id => {
+    val blockIDsTopoSorted = topologicalSort filter blockIDs
+    blockIDsTopoSorted.zipWithIndex foreach { case (id, index) => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
       val namesToDeclare = consumedOutputs -- alreadyDeclared
@@ -290,7 +291,7 @@ class StatementGraph extends Graph {
       val outputsToDeclare = nameToStmts collect {
         case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
       }
-      idToStmt(id) = ActivityZone(zoneName, blacklistedZoneIDs.contains(id), idToInputNames(id),
+      idToStmt(id) = ActivityZone(index, blacklistedZoneIDs.contains(id), idToInputNames(id),
                                   idToMemberStmts(id), outputsToDeclare.toMap)
     }}
   }
@@ -322,9 +323,11 @@ class StatementGraph extends Graph {
   //----------------------------------------------------------------------------
   def getZoneNames(): Seq[String] = idToStmt collect { case az: ActivityZone => az.name }
 
-  def getZoneInputMap(): Map[String,Seq[String]] = {
+  def getNumZones(): Int = idToStmt count { _.isInstanceOf[ActivityZone] }
+
+  def getZoneInputMap(): Map[String,Seq[Int]] = {
     val allZoneInputs = validNodes.toSeq flatMap { id => idToStmt(id) match {
-      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.name) }
+      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.id) }
       case _ => Seq()
     }}
     Util.groupByFirst(allZoneInputs)

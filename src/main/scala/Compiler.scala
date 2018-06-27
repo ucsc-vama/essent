@@ -120,19 +120,17 @@ class EmitCpp(writer: Writer) {
 
   // Write Zoning Optimized Eval
   //----------------------------------------------------------------------------
-  def genFlagName(regName: String): String = s"ZONE_$regName".replace('.','$')
-
   def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
 
-  def genDepZoneTriggers(consumers: Seq[String], condition: String): Seq[String] = {
-    consumers map { consumer => s"${genFlagName(consumer)} |= $condition;" }
+  def genDepZoneTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
+    consumerIDs map { consumerID => s"ZONEflags[$consumerID] |= $condition;" }
   }
 
-  def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[String]],
+  def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
       suffix: String): Seq[String] = {
-    selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumers) => {
+    selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
       val localName = name.replace('.','$')
-      genDepZoneTriggers(consumers, s"$name != $localName$suffix")
+      genDepZoneTriggers(consumerIDs, s"$name != $localName$suffix")
     }}
   }
 
@@ -143,6 +141,7 @@ class EmitCpp(writer: Writer) {
       startingDoNotDec: Set[String],
       opt: OptFlags) {
     val zoneNames = sg.getZoneNames()
+    val numZones = sg.getNumZones()
     if (opt.trackAct) {
       writeLines(1, decZoneActTrackers(zoneNames))
       writeLines(1, "uint64_t cycle_count = 0;")
@@ -169,7 +168,7 @@ class EmitCpp(writer: Writer) {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(1, nonMemCacheDecs)
-    writeLines(1, zoneNames map { zoneName => s"bool ${genFlagName(zoneName)};" })
+    writeLines(1, s"std::array<bool,$numZones> ZONEflags;")
     // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
     writeLines(1, s"bool regs_set = false;")
@@ -180,7 +179,7 @@ class EmitCpp(writer: Writer) {
       case az: ActivityZone => {
         writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
         if (!az.alwaysActive)
-          writeLines(2, s"${genFlagName(az.name)} = false;")
+          writeLines(2, s"ZONEflags[${az.id}] = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
@@ -212,7 +211,7 @@ class EmitCpp(writer: Writer) {
     writeLines(3, "regs_set = false;")
     writeLines(2, "}")
     writeLines(2, "if (!sim_cached) {")
-    writeLines(3, sg.getZoneNames map { zoneName => s"${genFlagName(zoneName)} = true;" })
+    writeLines(3, "ZONEflags.fill(true);")
     writeLines(2, "}")
     writeLines(2, "sim_cached = regs_set;")
     writeLines(2, "this->update_registers = update_registers;")
@@ -233,7 +232,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
-          writeLines(2, s"if (${genFlagName(az.name)}) ${genZoneFuncName(az.name)}();")
+          writeLines(2, s"if (ZONEflags[${az.id}]) ${genZoneFuncName(az.name)}();")
         else
           writeLines(2, s"${genZoneFuncName(az.name)}();")
       }
@@ -275,6 +274,7 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
+    writeLines(0, "#include <array>")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")

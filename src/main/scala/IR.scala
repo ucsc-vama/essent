@@ -38,7 +38,7 @@ case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow:
 }
 
 case class ActivityZone(
-    name:String,
+    id: Int,
     alwaysActive: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
@@ -48,4 +48,5 @@ case class ActivityZone(
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def name(): String = id.toString
 }
