@@ -18,6 +18,7 @@ import firrtl.Utils._
 
 class EmitCpp(writer: Writer) {
   val tabs = "  "
+  val flagVarName = "ZONEflags"
 
   // Writing To File
   //----------------------------------------------------------------------------
@@ -123,7 +124,7 @@ class EmitCpp(writer: Writer) {
   def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
 
   def genDepZoneTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
-    consumerIDs map { consumerID => s"ZONEflags[$consumerID] |= $condition;" }
+    consumerIDs map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
   }
 
   def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
@@ -168,7 +169,7 @@ class EmitCpp(writer: Writer) {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
     writeLines(1, nonMemCacheDecs)
-    writeLines(1, s"std::array<bool,$numZones> ZONEflags;")
+    writeLines(1, s"std::array<bool,$numZones> $flagVarName;")
     // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
     writeLines(1, s"bool regs_set = false;")
@@ -179,7 +180,7 @@ class EmitCpp(writer: Writer) {
       case az: ActivityZone => {
         writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
         if (!az.alwaysActive)
-          writeLines(2, s"ZONEflags[${az.id}] = false;")
+          writeLines(2, s"$flagVarName[${az.id}] = false;")
         if (opt.trackAct)
           writeLines(2, s"${zoneActTrackerName(az.name)}++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
@@ -211,7 +212,7 @@ class EmitCpp(writer: Writer) {
     writeLines(3, "regs_set = false;")
     writeLines(2, "}")
     writeLines(2, "if (!sim_cached) {")
-    writeLines(3, "ZONEflags.fill(true);")
+    writeLines(3, s"$flagVarName.fill(true);")
     writeLines(2, "}")
     writeLines(2, "sim_cached = regs_set;")
     writeLines(2, "this->update_registers = update_registers;")
@@ -232,7 +233,7 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
-          writeLines(2, s"if (ZONEflags[${az.id}]) ${genZoneFuncName(az.name)}();")
+          writeLines(2, s"if ($flagVarName[${az.id}]) ${genZoneFuncName(az.name)}();")
         else
           writeLines(2, s"${genZoneFuncName(az.name)}();")
       }
