@@ -19,6 +19,7 @@ import firrtl.Utils._
 class EmitCpp(writer: Writer) {
   val tabs = "  "
   val flagVarName = "ZONEflags"
+  val actVarName = "ACTcounts"
 
   // Writing To File
   //----------------------------------------------------------------------------
@@ -141,19 +142,18 @@ class EmitCpp(writer: Writer) {
       extIOtypes: Map[String, Type],
       startingDoNotDec: Set[String],
       opt: OptFlags) {
-    val zoneNames = sg.getZoneNames()
     val numZones = sg.getNumZones()
     if (opt.trackAct) {
-      writeLines(1, decZoneActTrackers(zoneNames))
+      writeLines(1, s"std::array<uint64_t,$numZones> $actVarName{};")
       writeLines(1, "uint64_t cycle_count = 0;")
-      val zoneNamesAndSizes = sg.stmtsOrdered flatMap { _ match {
-        case az: ActivityZone => Some((az.name, az.memberStmts.size))
+      val zoneIDsAndSizes = sg.stmtsOrdered flatMap { _ match {
+        case az: ActivityZone => Some((az.id, az.memberStmts.size))
         case _ => None
       }}
       writeLines(1, "void printZoneActivities() {")
       writeLines(2, """fprintf(stderr, "%llu\n", cycle_count);""")
-      writeLines(2, zoneActOutput(zoneNamesAndSizes))
-      writeLines(2, zoneEffActSummary(zoneNamesAndSizes))
+      writeLines(2, zoneActOutput(zoneIDsAndSizes))
+      writeLines(2, zoneEffActSummary(zoneIDsAndSizes))
       writeLines(1, "}")
       writeLines(1, s"~$topName() {")
       writeLines(2, "printZoneActivities();")
@@ -182,7 +182,7 @@ class EmitCpp(writer: Writer) {
         if (!az.alwaysActive)
           writeLines(2, s"$flagVarName[${az.id}] = false;")
         if (opt.trackAct)
-          writeLines(2, s"${zoneActTrackerName(az.name)}++;")
+          writeLines(2, s"${zoneActTrackerName(az.id)}++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
         }}
@@ -243,23 +243,19 @@ class EmitCpp(writer: Writer) {
     writeLines(2, "regs_set = true;")
   }
 
-  def zoneActTrackerName(zoneName: String) = s"ACT${zoneName.replace('.', '$')}"
+  def zoneActTrackerName(zoneID: Int) = s"$actVarName[$zoneID]"
 
-  def decZoneActTrackers(zoneNames: Seq[String]) = {
-    zoneNames map { zoneName => s"uint64_t ${zoneActTrackerName(zoneName)} = 0;"}
-  }
-
-  def zoneActOutput(zoneNamesAndSizes: Seq[(String,Int)]) = {
-    zoneNamesAndSizes map {
-      case (zoneName, zoneSize) => s"""fprintf(stderr, "$zoneName %llu %d\\n", ${zoneActTrackerName(zoneName)}, $zoneSize);"""
+  def zoneActOutput(zoneIDsAndSizes: Seq[(Int,Int)]) = {
+    zoneIDsAndSizes map {
+      case (zoneID, zoneSize) => s"""fprintf(stderr, "$zoneID %llu $zoneSize\\n", ${zoneActTrackerName(zoneID)});"""
     }
   }
 
-  def zoneEffActSummary(zoneNamesAndSizes: Seq[(String,Int)]) = {
-    val sum = zoneNamesAndSizes map {
-      case (zoneName, zoneSize) => s"total += ${zoneActTrackerName(zoneName)} * $zoneSize;"
+  def zoneEffActSummary(zoneIDsAndSizes: Seq[(Int,Int)]) = {
+    val sum = zoneIDsAndSizes map {
+      case (zoneID, zoneSize) => s"total += ${zoneActTrackerName(zoneID)} * $zoneSize;"
     }
-    val totalSize = (zoneNamesAndSizes map { _._2 }).sum
+    val totalSize = (zoneIDsAndSizes map { _._2 }).sum
     val effAct = s"double eff_act = static_cast<double>(total) / $totalSize / cycle_count;"
     val printEffAct = """printf("Effective Activity: %g\n", eff_act);"""
     Seq("uint64_t total = 0;") ++ sum ++ Seq(effAct, printEffAct)

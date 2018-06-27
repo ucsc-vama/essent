@@ -321,8 +321,6 @@ class StatementGraph extends Graph {
 
   // Zone info
   //----------------------------------------------------------------------------
-  def getZoneNames(): Seq[String] = idToStmt collect { case az: ActivityZone => az.name }
-
   def getNumZones(): Int = idToStmt count { _.isInstanceOf[ActivityZone] }
 
   def getZoneInputMap(): Map[String,Seq[Int]] = {
@@ -375,7 +373,7 @@ class StatementGraph extends Graph {
   }
 
   def analyzeZoningQuality() {
-    val numZones = getZoneNames().size
+    val numZones = getNumZones()
     println(s"Zones: $numZones")
     val zoneSizes = nodeRefIDs flatMap { id => idToStmt(id) match {
       case az: ActivityZone => Some(nodeSize(id))

@@ -48,5 +48,4 @@ case class ActivityZone(
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
-  def name(): String = id.toString
 }
