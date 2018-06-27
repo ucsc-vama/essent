@@ -121,7 +121,7 @@ class EmitCpp(writer: Writer) {
 
   // Write Zoning Optimized Eval
   //----------------------------------------------------------------------------
-  def genZoneFuncName(zoneName: String): String = s"EVAL_$zoneName".replace('.','$')
+  def genZoneFuncName(zoneID: Int): String = "EVAL_" + zoneID
 
   def genDepZoneTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
     consumerIDs map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
@@ -178,7 +178,7 @@ class EmitCpp(writer: Writer) {
     writeLines(1, s"bool verbose;")
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
-        writeLines(1, s"void ${genZoneFuncName(az.name)}() {")
+        writeLines(1, s"void ${genZoneFuncName(az.id)}() {")
         if (!az.alwaysActive)
           writeLines(2, s"$flagVarName[${az.id}] = false;")
         if (opt.trackAct)
@@ -233,9 +233,9 @@ class EmitCpp(writer: Writer) {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${az.id}]) ${genZoneFuncName(az.name)}();")
+          writeLines(2, s"if ($flagVarName[${az.id}]) ${genZoneFuncName(az.id)}();")
         else
-          writeLines(2, s"${genZoneFuncName(az.name)}();")
+          writeLines(2, s"${genZoneFuncName(az.id)}();")
       }
       case _ => writeLines(2, emitStmt(doNotDec)(stmt))
     }}
