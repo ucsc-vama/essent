@@ -55,8 +55,7 @@ class ArgsParser {
 
     help("help").text("prints this usage text")
 
-    // TODO: ensure given input file
-    arg[File]("<file>").unbounded().action( (x, c) =>
+    arg[File]("<file>").required().unbounded().action( (x, c) =>
       c.copy(firInputFile = x) ).text(".fir input file")
   }
 
