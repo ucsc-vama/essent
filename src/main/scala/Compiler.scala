@@ -16,7 +16,10 @@ import firrtl.PrimOps._
 import firrtl.Utils._
 
 
-class EmitCpp(writer: Writer) {
+class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
+  def inputForm = LowForm
+  def outputForm = LowForm
+
   val tabs = "  "
   val flagVarName = "ZONEflags"
   val actVarName = "ACTcounts"
@@ -264,7 +267,12 @@ class EmitCpp(writer: Writer) {
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
-  def emit(opt: OptFlags, circuit: Circuit) {
+  def emit(state: firrtl.CircuitState, writer: java.io.Writer) {}
+  // TODO: unimplemented, but also deprecated in firrtl
+
+  def execute(state: CircuitState): CircuitState = {
+    val opt = initialOpt
+    val circuit = state.circuit
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -309,20 +317,6 @@ class EmitCpp(writer: Writer) {
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
-  }
-}
-
-class CCEmitter(opt: OptFlags, writer: Writer) extends firrtl.Emitter {
-  def inputForm = LowForm
-  def outputForm = LowForm
-
-  def emit(state: CircuitState, lwriter: Writer): Unit = {
-    val emitter = new essent.EmitCpp(lwriter)
-    emitter.emit(opt, state.circuit)
-  }
-
-  def execute(state: CircuitState): CircuitState = {
-    emit(state, writer)
     state
   }
 }
@@ -359,7 +353,7 @@ class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
 }
 
 class CCCompiler(opt: OptFlags, writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
-  def emitter = new CCEmitter(opt, writer)
+  def emitter = new CppEmitter(opt, writer)
   def transforms: Seq[Transform] = Seq(
     new firrtl.ChirrtlToHighFirrtl,
     new firrtl.IRToWorkingIR,
