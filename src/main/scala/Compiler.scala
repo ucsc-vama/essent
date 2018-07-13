@@ -264,8 +264,7 @@ class EmitCpp(writer: Writer) {
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
-  def emit(circuit: Circuit) {
-    val opt = OptFlags(true, true, true, false)
+  def emit(opt: OptFlags, circuit: Circuit) {
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -313,13 +312,13 @@ class EmitCpp(writer: Writer) {
   }
 }
 
-class CCEmitter(writer: Writer) extends firrtl.Emitter {
+class CCEmitter(opt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def inputForm = LowForm
   def outputForm = LowForm
 
   def emit(state: CircuitState, lwriter: Writer): Unit = {
     val emitter = new essent.EmitCpp(lwriter)
-    emitter.emit(state.circuit)
+    emitter.emit(opt, state.circuit)
   }
 
   def execute(state: CircuitState): CircuitState = {
@@ -359,8 +358,8 @@ class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
   }
 }
 
-class CCCompiler(writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
-  def emitter = new CCEmitter(writer)
+class CCCompiler(opt: OptFlags, writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
+  def emitter = new CCEmitter(opt, writer)
   def transforms: Seq[Transform] = Seq(
     new firrtl.ChirrtlToHighFirrtl,
     new firrtl.IRToWorkingIR,

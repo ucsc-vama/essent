@@ -24,5 +24,3 @@ object Util {
     str filter { !charsToRemove.contains(_) }
   }
 }
-
-case class OptFlags(regUpdates: Boolean, muxShadows: Boolean, zoneAct: Boolean, trackAct: Boolean)
