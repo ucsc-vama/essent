@@ -173,9 +173,9 @@ object Emitter {
       case And => p.args map emitExpr mkString(" & ")
       case Or => p.args map emitExpr mkString(" | ")
       case Xor => p.args map emitExpr mkString(" ^ ")
-      case Andr => throw new Exception("Andr unimplemented!")
-      case Orr => throw new Exception("Orr unimplemented!")
-      case Xorr => throw new Exception("Xorr unimplemented!")
+      case Andr => s"${emitExpr(p.args.head)}.andr()"
+      case Orr => s"${emitExpr(p.args.head)}.orr()"
+      case Xorr => s"${emitExpr(p.args.head)}.xorr()"
       case Cat => s"${emitExpr(p.args(0))}.cat(${emitExpr(p.args(1))})"
       case Bits => s"${emitExpr(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
       case Head => s"${emitExpr(p.args.head)}.head<${p.consts.head.toInt}>()"
