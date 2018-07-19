@@ -263,10 +263,10 @@ class Graph {
     if (newMFFCseeds.isEmpty) {
       val skipUnreached = priorMFFC filter { mffc => mffc != -1 && mffc != -3 }
       val mffcGrouped = skipUnreached groupBy { identity }
-      println(s"# nodes reached: ${skipUnreached.size}")
-      println(s"# MFFC's: ${mffcGrouped.size}")
+      logger.info(s"# nodes reached: ${skipUnreached.size}")
+      logger.info(s"# MFFC's: ${mffcGrouped.size}")
       val biggestSize = mffcGrouped.map{ _._2.size }.max
-      println(s"biggest MFFC: $biggestSize")
+      logger.info(s"biggest MFFC: $biggestSize")
       priorMFFC
     } else {
       newMFFCseeds foreach { id => priorMFFC(id) = id }

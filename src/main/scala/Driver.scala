@@ -6,6 +6,7 @@ import scala.sys.process._
 
 import firrtl._
 import firrtl.ir._
+import logger._
 
 
 object Driver {
@@ -22,7 +23,8 @@ object Driver {
     val circuit = firrtl.Parser.parse(Source.fromFile(opt.firInputFile).getLines,
                                       firrtl.Parser.IgnoreInfo)
     val topName = circuit.main
-  
+    setLoggingLevels(opt)
+
     if (opt.writeHarness) {
       val harnessFilename = new File(outputDir, s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
@@ -37,6 +39,23 @@ object Driver {
     compiler.compileAndEmit(CircuitState(circuit, firrtl.ChirrtlForm))
     dutWriter.close()
     debugWriter map { _.close() }
+  }
+
+  def setLoggingLevels(opt: OptFlags) {
+    def parseLevel(levelStr: String) = levelStr.toLowerCase match {
+      case "error" => LogLevel.Error
+      case "warn"  => LogLevel.Warn
+      case "info"  => LogLevel.Info
+      case "debug" => LogLevel.Debug
+      case "trace" => LogLevel.Trace
+    }
+    val baseClassNames = Seq("Emitter", "Extract$", "Graph", "StatementGraph")
+    val baseLogLevel = parseLevel(opt.essentLogLevel)
+    val baseClassLogLevels = (baseClassNames map {
+      className => s"essent.$className" -> baseLogLevel}
+    ).toMap
+    Logger.setClassLogLevels(baseClassLogLevels)
+    Logger.setClassLogLevels(Map("essent.passes" -> parseLevel(opt.passLogLevel)))
   }
 
   def compileCPP(dutName: String, buildDir: String): ProcessBuilder = {

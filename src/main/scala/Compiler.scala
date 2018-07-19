@@ -166,7 +166,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val outputPairs = sg.getZoneOutputsToDeclare()
     val outputConsumers = sg.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
-    println(s"Output nodes: ${outputPairs.size}")
     val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
     val nonMemCacheDecs = sg.getExternalZoneInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"

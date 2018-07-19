@@ -5,13 +5,12 @@ import essent.ir._
 
 import firrtl._
 import firrtl.ir._
-import firrtl.Mappers._
-import firrtl.Utils._
+import logger.LazyLogging
 
 import scala.reflect.ClassTag
 
 
-object Extract {
+object Extract extends LazyLogging {
   // Finding Statements by Type
   //----------------------------------------------------------------------------
   // https://medium.com/@sinisalouc/overcoming-type-erasure-in-scala-8f2422070d20
@@ -203,7 +202,7 @@ object Extract {
       case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
       case _ => false
     }}
-    println(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
+    logger.info(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
     val connectHEs = straightConnects flatMap findDependencesStmt
     val connectGraph = new Graph
     connectHEs foreach { he => connectGraph.addNodeWithDeps(he.name, he.deps) }

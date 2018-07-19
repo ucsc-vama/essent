@@ -2,6 +2,7 @@ package essent
 
 import firrtl._
 import firrtl.ir._
+import logger._
 
 import essent.Emitter._
 import essent.Extract._
@@ -13,7 +14,7 @@ import java.io.{File, FileWriter}
 import scala.reflect.ClassTag
 
 
-class StatementGraph extends Graph {
+class StatementGraph extends Graph with LazyLogging {
   // Vertex ID -> firrtl statement (Block used for aggregates)
   val idToStmt = ArrayBuffer[Statement]()
 
@@ -127,7 +128,7 @@ class StatementGraph extends Graph {
 
   def mergeNodesSafe(mergeReqs: Seq[Seq[Int]]) {
     mergeReqs foreach { mergeReq => {
-      if (mergeReq.size < 2) println("tiny merge req!")
+      if (mergeReq.size < 2) logger.info("tiny merge req!")
       val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
       if (zonesStillExist && safeToMergeArb(mergeReq)) {
         idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
@@ -185,7 +186,7 @@ class StatementGraph extends Graph {
       case (id, parentID) => validNodes.contains(parentID)
     }
     if (basePairsWithValidParents.nonEmpty) {
-      println(s"Merging up ${basePairsWithValidParents.size} single-input zones")
+      logger.info(s"Merging up ${basePairsWithValidParents.size} single-input zones")
       basePairsWithValidParents foreach { case (childID, parentID) => {
         idToStmt(parentID) = Block(grabStmts(parentID) ++ grabStmts(childID))
         mergeStmtsMutably(Seq(parentID, childID))
@@ -208,7 +209,7 @@ class StatementGraph extends Graph {
       case (inputIDs, siblingIDs) if ((siblingIDs.size > 1) && safeToMergeArb(siblingIDs)) => siblingIDs
     }
     if (mergesToConsider.nonEmpty) {
-      println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
+      logger.info(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
       mergeNodesSafe(mergesToConsider)
       mergeSmallSiblings(smallZoneCutoff)
     }
@@ -238,8 +239,8 @@ class StatementGraph extends Graph {
       if (topChoice.isEmpty) Seq()
       else Seq(Seq(topChoice.get._2, id))
     }}
-    println(s"Small zones: ${smallZoneIDs.size}")
-    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    logger.info(s"Small zones: ${smallZoneIDs.size}")
+    logger.info(s"Worthwhile merges: ${mergesToConsider.size}")
     if (mergesToConsider.nonEmpty) {
       mergeNodesSafe(mergesToConsider.toSeq)
       mergeSmallZones(smallZoneCutoff, mergeThreshold)
@@ -261,8 +262,8 @@ class StatementGraph extends Graph {
         Seq(Seq(id, topChoice))
       } else Seq()
     }}
-    println(s"Small zones: ${smallZoneIDs.size}")
-    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    logger.info(s"Small zones: ${smallZoneIDs.size}")
+    logger.info(s"Worthwhile merges: ${mergesToConsider.size}")
     if (mergesToConsider.nonEmpty) {
       mergeNodesSafe(mergesToConsider.toSeq)
       mergeSmallZonesDown(smallZoneCutoff)
@@ -311,11 +312,11 @@ class StatementGraph extends Graph {
       val startTime = System.currentTimeMillis()
       func(this)
       val stopTime = System.currentTimeMillis()
-      println(s"[$label] took: ${stopTime - startTime}")
-      println(s"Down to ${nonEmptyStmts()} statement blocks")
+      logger.info(s"[$label] took: ${stopTime - startTime}")
+      logger.info(s"Down to ${nonEmptyStmts()} statement blocks")
     }}
-    analyzeZoningQuality()
-    printMergedRegStats()
+    logger.info(zoningQualityStats())
+    logger.info(mergedRegStats())
   }
 
 
@@ -358,7 +359,35 @@ class StatementGraph extends Graph {
     }
   }
 
-  def printMergedRegStats() {
+  def zoningQualityStats(): String = {
+    val numZones = getNumZones()
+    val zoneSizes = nodeRefIDs flatMap { id => idToStmt(id) match {
+      case az: ActivityZone => Some(nodeSize(id))
+      case _ => None
+    }}
+    val numStmtsInZones = zoneSizes.sum
+    // NOTE: Compiler withholds some statements from zoning process
+    val numStmtsTotal = (nodeRefIDs map nodeSize).sum
+    val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
+    val numEdgesOrig = (nodeRefIDs flatMap {
+      id => grabStmts(id) flatMap {
+        stmt => findDependencesStmt(stmt) map { _.deps.size }
+      }
+    }).sum
+    val allOutputMaps = getZoneInputMap()
+    val numOutputsUnique = allOutputMaps.size
+    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
+    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
+    f"""|Zones: $numZones
+        |Output nodes: $numOutputsUnique
+        |Nodes in zones: $numStmtsInZones ($percNodesInZones%2.1f%%)
+        |Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%))
+        |Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f
+        |Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f
+        |Zone size range: ${zoneSizes.min} - ${zoneSizes.max}""".stripMargin
+  }
+
+  def mergedRegStats(): String = {
     val numRegs = idToStmt count { _.isInstanceOf[DefRegister] }
     val numMergedRegs = (idToStmt collect {
       case az: ActivityZone => {
@@ -369,34 +398,7 @@ class StatementGraph extends Graph {
         mergedRegsInZone.size
       }
     }).sum
-    println(s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone")
-  }
-
-  def analyzeZoningQuality() {
-    val numZones = getNumZones()
-    println(s"Zones: $numZones")
-    val zoneSizes = nodeRefIDs flatMap { id => idToStmt(id) match {
-      case az: ActivityZone => Some(nodeSize(id))
-      case _ => None
-    }}
-    val numStmtsInZones = zoneSizes.sum
-    // NOTE: Compiler withholds some statements from zoning process
-    val numStmtsTotal = (nodeRefIDs map nodeSize).sum
-    val percNodesInZones = 100d * numStmtsInZones / numStmtsTotal
-    println(f"Nodes in zones: $numStmtsInZones ($percNodesInZones%2.1f%%)")
-    val numEdgesOrig = (nodeRefIDs flatMap {
-      id => grabStmts(id) flatMap {
-        stmt => findDependencesStmt(stmt) map { _.deps.size }
-      }
-    }).sum
-    val allOutputMaps = getZoneInputMap()
-    val numOutputsUnique = allOutputMaps.size
-    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
-    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
-    println(f"Edges in zones: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%)")
-    println(f"Nodes/zone: ${numStmtsTotal.toDouble/numZones}%.1f")
-    println(f"Outputs/zone: ${numOutputsUnique.toDouble/numZones}%.1f")
-    println(f"Zone size range: ${zoneSizes.min} - ${zoneSizes.max}")
+    s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone"
   }
 
 
@@ -441,7 +443,7 @@ class StatementGraph extends Graph {
       idToStmt(id) = finalRegUpdate.copy(expr = nextExpr)
       mergeStmtsMutably(Seq(id, nextID))
     }}
-    println(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
+    logger.info(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
   }
 
 

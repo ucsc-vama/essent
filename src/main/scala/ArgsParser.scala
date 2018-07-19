@@ -12,7 +12,9 @@ case class OptFlags(
     zoneAct: Boolean = true,
     writeHarness: Boolean = false,
     dumpLoFirrtl: Boolean = false,
-    trackAct: Boolean = false)
+    trackAct: Boolean = false,
+    passLogLevel: String = "warn",
+    essentLogLevel: String = "warn")
 
 class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {
@@ -52,6 +54,22 @@ class ArgsParser {
         zoneAct = true,
         trackAct = true)
     ).text("print out zone activity stats")
+
+    opt[String]("essent-log-level").abbr("ell").valueName("<Error|Warn|Info|Debug|Trace>")
+    .validate { x =>
+      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
+      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
+    }
+    .action( (level, c) => c.copy(essentLogLevel = level ) )
+    .text("Logging level for essent not during passes")
+
+    opt[String]("pass-log-level").abbr("pll").valueName("<Error|Warn|Info|Debug|Trace>")
+    .validate { x =>
+      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
+      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
+    }
+    .action( (level, c) => c.copy(passLogLevel = level ) )
+    .text("Logging level for essent during passes")
 
     help("help").text("prints this usage text")
 

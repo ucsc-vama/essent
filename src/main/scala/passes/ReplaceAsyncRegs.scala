@@ -17,7 +17,7 @@ object ReplaceAsyncRegs extends Pass {
   }
 
   def generateReplacementModule(em: ExtModule): Module = {
-    println(s"Replacing ${em.name} (${em.defname})")
+    logger.info(s"Replacing ${em.name} (${em.defname})")
     val oneBitType = UIntType(IntWidth(1))
     val zero = UIntLiteral(0,IntWidth(1))
     val reg = DefRegister(NoInfo, "r", oneBitType, WRef("clk", ClockType, PortKind, MALE), zero, zero)
