@@ -18,25 +18,25 @@ case class OptFlags(
 
 class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {
-    opt[Unit]("O0").action( (_, c) => c.copy(
+    opt[Unit]("O0").abbr("O0").action( (_, c) => c.copy(
         regUpdates = false,
         muxShadows = false,
         zoneAct=false)
     ).text("disable all optimizations")
 
-    opt[Unit]("O1").action( (_, c) => c.copy(
+    opt[Unit]("O1").abbr("O1").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = false,
         zoneAct=false)
     ).text("enable only optimizations without conditionals")
 
-    opt[Unit]("O2").action( (_, c) => c.copy(
+    opt[Unit]("O2").abbr("O2").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = true,
         zoneAct=false)
     ).text("enable conditional evaluation of mux inputs")
 
-    opt[Unit]("O3").action( (_, c) => c.copy(
+    opt[Unit]("O3").abbr("O3").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = true,
         zoneAct=true)
