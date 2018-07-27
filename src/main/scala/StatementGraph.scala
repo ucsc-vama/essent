@@ -153,14 +153,17 @@ class StatementGraph extends Graph with LazyLogging {
 
   def coarsenToMFFCs() {
     val startingMFFCs = initialMFFCs()
-    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Int = {
+    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
       val matchingIDs = idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
-      val newMFFCID = matchingIDs.min
-      matchingIDs foreach { startingMFFCs(_) = newMFFCID }
-      newMFFCID
+      if (matchingIDs.isEmpty) None
+      else {
+        val newMFFCID = matchingIDs.min
+        matchingIDs foreach { startingMFFCs(_) = newMFFCID }
+        Some(newMFFCID)
+      }
     }
     // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
-    blacklistedZoneIDs += clumpByStmtType[Print]()
+    clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
     val idToMFFC = findMFFCs(startingMFFCs)
     val mffcMap = Util.groupIndicesByValue(idToMFFC)
     mffcMap foreach { case (mffcID, memberIDs) => {
