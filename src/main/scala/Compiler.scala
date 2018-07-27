@@ -295,15 +295,18 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     // writeLines(0, "}")
     // writeLines(0, "")
     val sg = StatementGraph(circuit)
+    val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
     if (opt.zoneAct)
       sg.coarsenIntoZones()
     else if (opt.regUpdates)
       sg.elideIntermediateRegUpdates()
-    writeLines(1, "bool assert_triggered = false;")
-    writeLines(1, "int assert_exit_code;")
-    writeLines(0, "")
+    if (containsAsserts) {
+      writeLines(1, "bool assert_triggered = false;")
+      writeLines(1, "int assert_exit_code;")
+      writeLines(0, "")
+    }
     if (opt.zoneAct)
       writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
@@ -311,7 +314,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeZoningBody(sg, doNotDec, opt)
     else
       writeBodyInner(2, sg, doNotDec, opt)
-    writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+    if (containsAsserts)
+      writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     writeRegResetOverrides(sg)
     writeLines(1, "}")
     writeLines(0, s"} $topName;") //closing top module dec

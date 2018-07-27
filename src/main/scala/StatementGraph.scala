@@ -63,6 +63,10 @@ class StatementGraph extends Graph with LazyLogging {
     case dm: DefMemory => dm.name
   }
 
+  def containsStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Boolean = {
+    (idToStmt collectFirst { case s: T => s }).isDefined
+  }
+
   def stmtsOrdered(): Seq[Statement] = topologicalSort filter validNodes map idToStmt
 
 
