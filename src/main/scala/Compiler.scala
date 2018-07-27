@@ -178,6 +178,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(1, s"bool update_registers;")
     writeLines(1, s"bool done_reset;")
     writeLines(1, s"bool verbose;")
+    writeLines(0, "")
     sg.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         writeLines(1, s"void ${genZoneFuncName(az.id)}() {")
@@ -206,6 +207,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       }
       case _ => throw new Exception(s"Statement at top-level is not a zone (${stmt.serialize})")
     }}
+    writeLines(0, "")
   }
 
   def writeZoningBody(sg: StatementGraph, doNotDec: Set[String], opt: OptFlags) {
@@ -287,12 +289,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       case m: ExtModule => declareExtModule(m)
     }
     val topModule = findModule(topName, circuit) match {case m: Module => m}
-    writeLines(0, "")
     // writeLines(0, "")
     // writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
     // writeLines(1, HarnessGenerator.harnessConnections(topModule))
     // writeLines(0, "}")
-    writeLines(0, "")
+    // writeLines(0, "")
     val sg = StatementGraph(circuit)
     val extIOMap = findExternalPorts(circuit)
     val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
@@ -302,9 +303,9 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       sg.elideIntermediateRegUpdates()
     writeLines(1, "bool assert_triggered = false;")
     writeLines(1, "int assert_exit_code;")
+    writeLines(0, "")
     if (opt.zoneAct)
       writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
-    writeLines(0, "")
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.zoneAct)
       writeZoningBody(sg, doNotDec, opt)
