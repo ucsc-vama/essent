@@ -289,11 +289,13 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       case m: ExtModule => declareExtModule(m)
     }
     val topModule = findModule(topName, circuit) match {case m: Module => m}
-    // writeLines(0, "")
-    // writeLines(0, s"void $topName::connect_harness(CommWrapper<struct $topName> *comm) {")
-    // writeLines(1, HarnessGenerator.harnessConnections(topModule))
-    // writeLines(0, "}")
-    // writeLines(0, "")
+    if (initialOpt.writeHarness) {
+      writeLines(0, "")
+      writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+      writeLines(2, HarnessGenerator.harnessConnections(topModule))
+      writeLines(1, "}")
+      writeLines(0, "")
+    }
     val sg = StatementGraph(circuit)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
