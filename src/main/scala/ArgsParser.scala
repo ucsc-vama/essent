@@ -79,3 +79,19 @@ class ArgsParser {
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())
 }
+
+object TestFlags {
+  def apply(inputFirFile: File): OptFlags = {
+    OptFlags(
+      firInputFile = inputFirFile,
+      regUpdates = true,
+      muxShadows = true,
+      zoneAct = false,
+      writeHarness = true,
+      dumpLoFirrtl = false,
+      trackAct = false,
+      passLogLevel = "warn",
+      essentLogLevel = "warn"
+    )
+  }
+}
