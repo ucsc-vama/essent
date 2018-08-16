@@ -100,7 +100,9 @@ object Emitter {
   // Emission
   //----------------------------------------------------------------------------
   def emitPort(topLevel: Boolean)(p: Port): Seq[String] = p.tpe match {
-    case ClockType => Seq()
+    case ClockType => if (!topLevel) Seq()
+                      else Seq(genCppType(UIntType(IntWidth(1))) + " " + p.name + ";")
+      // FUTURE: suppress generation of clock field if not making harness (or used)?
     case _ => if ((p.name != "reset") && !topLevel) Seq()
               else Seq(genCppType(p.tpe) + " " + p.name + ";")
   }

@@ -34,17 +34,17 @@ object HarnessGenerator {
     val signalNames = scala.collection.mutable.ArrayBuffer.empty[String]
     val inputNames = scala.collection.mutable.ArrayBuffer.empty[String]
     val outputNames = scala.collection.mutable.ArrayBuffer.empty[String]
-    m.ports foreach {p => p.tpe match {
-      case ClockType =>
-      case _ => {
-        if (p.name == "reset") signalNames += "&" + p.name
-        else {
-          val width = bitWidth(p.tpe)
-          val sigName = s"&${p.name}"
-          p.direction match {
-            case Input => inputNames += sigName
-            case Output => outputNames += sigName
-          }
+    val origOrderInputNames = scala.collection.mutable.ArrayBuffer.empty[String]
+    m.ports foreach { p => {
+      val sigName = s"&${p.name}"
+      if (p.name == "clock" || p.name == "reset") {
+        origOrderInputNames += sigName
+        if (p.name == "reset")
+          signalNames += sigName
+      } else {
+        p.direction match {
+          case Input => inputNames += sigName
+          case Output => outputNames += sigName
         }
       }
     }}
@@ -54,7 +54,7 @@ object HarnessGenerator {
     val mapConnects = (internalNames.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
-    (reorderPorts(inputNames) map connectSignal("in_")) ++
+    (origOrderInputNames ++ reorderPorts(inputNames) map connectSignal("in_")) ++
     (reorderPorts(outputNames) map connectSignal("out_")) ++
     (reorderPorts(signalNames) map connectSignal("")) ++ mapConnects
   }
