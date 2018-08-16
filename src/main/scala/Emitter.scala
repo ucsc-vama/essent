@@ -146,44 +146,49 @@ object Emitter {
     case w: WSubField => s"${emitExpr(w.expr)}.${w.name}"
     case w: WSubAccess => s"${emitExpr(w.expr)}[${emitExpr(w.index)}.as_single_word()]"
     case p: DoPrim => p.op match {
-      case Add => p.args map emitExpr mkString(" + ")
-      case Addw => s"${emitExpr(p.args(0))}.addw(${emitExpr(p.args(1))})"
-      case Sub => p.args map emitExpr mkString(" - ")
-      case Subw => s"${emitExpr(p.args(0))}.subw(${emitExpr(p.args(1))})"
-      case Mul => p.args map emitExpr mkString(" * ")
-      case Div => p.args map emitExpr mkString(" / ")
-      case Rem => p.args map emitExpr mkString(" % ")
-      case Lt  => p.args map emitExpr mkString(" < ")
-      case Leq => p.args map emitExpr mkString(" <= ")
-      case Gt  => p.args map emitExpr mkString(" > ")
-      case Geq => p.args map emitExpr mkString(" >= ")
-      case Eq => p.args map emitExpr mkString(" == ")
-      case Neq => p.args map emitExpr mkString(" != ")
-      case Pad => s"${emitExpr(p.args.head)}.pad<${bitWidth(p.tpe)}>()"
-      case AsUInt => s"(${emitExpr(p.args.head)}).asUInt()"
-      case AsSInt => s"${emitExpr(p.args.head)}.asSInt()"
+      case Add => p.args map emitExprWrap mkString(" + ")
+      case Addw => s"${emitExprWrap(p.args(0))}.addw(${emitExprWrap(p.args(1))})"
+      case Sub => p.args map emitExprWrap mkString(" - ")
+      case Subw => s"${emitExprWrap(p.args(0))}.subw(${emitExprWrap(p.args(1))})"
+      case Mul => p.args map emitExprWrap mkString(" * ")
+      case Div => p.args map emitExprWrap mkString(" / ")
+      case Rem => p.args map emitExprWrap mkString(" % ")
+      case Lt  => p.args map emitExprWrap mkString(" < ")
+      case Leq => p.args map emitExprWrap mkString(" <= ")
+      case Gt  => p.args map emitExprWrap mkString(" > ")
+      case Geq => p.args map emitExprWrap mkString(" >= ")
+      case Eq => p.args map emitExprWrap mkString(" == ")
+      case Neq => p.args map emitExprWrap mkString(" != ")
+      case Pad => s"${emitExprWrap(p.args.head)}.pad<${bitWidth(p.tpe)}>()"
+      case AsUInt => s"${emitExprWrap(p.args.head)}.asUInt()"
+      case AsSInt => s"${emitExprWrap(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
-      case Shl => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>()"
-      case Shlw => s"${emitExpr(p.args.head)}.shlw<${p.consts.head.toInt}>()"
-      case Shr => s"${emitExpr(p.args.head)}.shr<${p.consts.head.toInt}>()"
-      case Dshl => p.args map emitExpr mkString(" << ")
-      case Dshlw => s"${emitExpr(p.args(0))}.dshlw(${emitExpr(p.args(1))})"
-      case Dshr => p.args map emitExpr mkString(" >> ")
-      case Cvt => s"${emitExpr(p.args.head)}.cvt()"
-      case Neg => s"-${emitExpr(p.args.head)}"
-      case Not => s"~${emitExpr(p.args.head)}"
-      case And => p.args map emitExpr mkString(" & ")
-      case Or => p.args map emitExpr mkString(" | ")
-      case Xor => p.args map emitExpr mkString(" ^ ")
-      case Andr => s"${emitExpr(p.args.head)}.andr()"
-      case Orr => s"${emitExpr(p.args.head)}.orr()"
-      case Xorr => s"${emitExpr(p.args.head)}.xorr()"
-      case Cat => s"${emitExpr(p.args(0))}.cat(${emitExpr(p.args(1))})"
-      case Bits => s"${emitExpr(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
-      case Head => s"${emitExpr(p.args.head)}.head<${p.consts.head.toInt}>()"
-      case Tail => s"(${emitExpr(p.args.head)}).tail<${p.consts.head.toInt}>()"
+      case Shl => s"${emitExprWrap(p.args.head)}.shl<${p.consts.head.toInt}>()"
+      case Shlw => s"${emitExprWrap(p.args.head)}.shlw<${p.consts.head.toInt}>()"
+      case Shr => s"${emitExprWrap(p.args.head)}.shr<${p.consts.head.toInt}>()"
+      case Dshl => p.args map emitExprWrap mkString(" << ")
+      case Dshlw => s"${emitExprWrap(p.args(0))}.dshlw(${emitExpr(p.args(1))})"
+      case Dshr => p.args map emitExprWrap mkString(" >> ")
+      case Cvt => s"${emitExprWrap(p.args.head)}.cvt()"
+      case Neg => s"-${emitExprWrap(p.args.head)}"
+      case Not => s"~${emitExprWrap(p.args.head)}"
+      case And => p.args map emitExprWrap mkString(" & ")
+      case Or => p.args map emitExprWrap mkString(" | ")
+      case Xor => p.args map emitExprWrap mkString(" ^ ")
+      case Andr => s"${emitExprWrap(p.args.head)}.andr()"
+      case Orr => s"${emitExprWrap(p.args.head)}.orr()"
+      case Xorr => s"${emitExprWrap(p.args.head)}.xorr()"
+      case Cat => s"${emitExprWrap(p.args(0))}.cat(${emitExpr(p.args(1))})"
+      case Bits => s"${emitExprWrap(p.args.head)}.bits<${p.consts(0).toInt},${p.consts(1).toInt}>()"
+      case Head => s"${emitExprWrap(p.args.head)}.head<${p.consts.head.toInt}>()"
+      case Tail => s"${emitExprWrap(p.args.head)}.tail<${p.consts.head.toInt}>()"
     }
     case _ => throw new Exception(s"Don't yet support $e")
+  }
+
+  def emitExprWrap(e: Expression): String = e match {
+    case e: DoPrim => s"(${emitExpr(e)})"
+    case _ => emitExpr(e)
   }
 
   def emitStmt(doNotDec: Set[String])(s: Statement): Seq[String] = s match {
