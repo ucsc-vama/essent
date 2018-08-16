@@ -160,7 +160,7 @@ object Emitter {
       case Eq => p.args map emitExpr mkString(" == ")
       case Neq => p.args map emitExpr mkString(" != ")
       case Pad => s"${emitExpr(p.args.head)}.pad<${bitWidth(p.tpe)}>()"
-      case AsUInt => s"${emitExpr(p.args.head)}.asUInt()"
+      case AsUInt => s"(${emitExpr(p.args.head)}).asUInt()"
       case AsSInt => s"${emitExpr(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExpr(p.args.head)}.shl<${p.consts.head.toInt}>()"

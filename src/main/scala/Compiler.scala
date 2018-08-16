@@ -343,7 +343,8 @@ class FinalCleanups extends SeqTransform {
     essent.passes.FactorMemReads,
     essent.passes.FactorMemWrites,
     essent.passes.SplitRegUpdates,
-    essent.passes.FixMulResultWidth)
+    essent.passes.FixMulResultWidth,
+    essent.passes.FixSubType)
     // passes.VerilogRename,
     // passes.VerilogPrep)
 }
