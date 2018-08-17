@@ -17,3 +17,9 @@ libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 lazy val firrtl = (project in file("firrtl"))
 
 lazy val essent = (project in file(".")).dependsOn(firrtl)
+
+// Assembly
+
+assemblyJarName in assembly := "essent.jar"
+
+assemblyOutputPath in assembly := file("./utils/bin/essent.jar")
