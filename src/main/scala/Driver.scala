@@ -59,7 +59,7 @@ object Driver {
   }
 
   def compileCPP(dutName: String, buildDir: String): ProcessBuilder = {
-    Seq("g++", "-O3", "-std=c++11", s"-I$buildDir", s"-Ifirrtl-sig",
+    Seq("c++", "-O3", "-std=c++11", s"-I$buildDir", s"-Ifirrtl-sig",
       s"$buildDir/$dutName-harness.cc", "-o", s"$buildDir/$dutName")
   }
 }
