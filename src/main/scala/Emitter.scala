@@ -138,9 +138,9 @@ object Emitter {
       else s"SInt<$width>(${splatLargeLiteralIntoRawArray(u.value, width)})"
     }
     case m: Mux => {
-      val condName = emitExpr(m.cond)
-      val tvalName = emitExpr(m.tval)
-      val fvalName = emitExpr(m.fval)
+      val condName = emitExprWrap(m.cond)
+      val tvalName = emitExprWrap(m.tval)
+      val fvalName = emitExprWrap(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
     case w: WSubField => s"${emitExpr(w.expr)}.${w.name}"

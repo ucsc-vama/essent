@@ -199,7 +199,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggerZones = memWritesInZone flatMap { mw => {
-          val condition = s"${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}"
+          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
           genDepZoneTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }}
         writeLines(2, memWriteTriggerZones)
