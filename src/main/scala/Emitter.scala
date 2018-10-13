@@ -206,11 +206,11 @@ object Emitter {
       else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
     }
     case p: Print => {
-      val formatters = "(%h)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
+      val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
       val argWidths = p.args map {e: Expression => bitWidth(e.tpe)}
       if (!(argWidths forall { _ <= 64 })) throw new Exception(s"Can't print wide signals")
       val replacements = formatters zip argWidths map { case(format, width) =>
-        if (format == "%h") {
+        if (format == "%h" || format == "%x") {
           val printWidth = math.ceil((width/4).toDouble).toInt
           (format, s"""%0${printWidth}" PRIx64 """")
         } else {
