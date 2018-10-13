@@ -331,7 +331,7 @@ class FinalCleanups extends SeqTransform {
   def inputForm = MidForm
   def outputForm = LowForm
   val transforms = Seq(
-    firrtl.passes.VerilogWrap,
+    // firrtl.passes.VerilogWrap,
     // essent.passes.InferAddw,
     // essent.passes.WireConstProp,
     // essent.passes.ZeroFromBits,

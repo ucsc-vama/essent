@@ -14,7 +14,7 @@ libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.1.0"
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.1.1"
 
 lazy val essent = (project in file("."))
 

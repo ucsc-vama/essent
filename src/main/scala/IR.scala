@@ -11,6 +11,7 @@ case class RegUpdate(info: Info, regRef: Expression, expr: Expression) extends S
   def mapExpr(f: Expression => Expression): Statement = this.copy(regRef = f(regRef), expr = f(expr))
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def mapInfo(f: Info => Info): Statement = this
 }
 
 case class MemWrite(memName: String,
@@ -26,6 +27,7 @@ case class MemWrite(memName: String,
   }
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def mapInfo(f: Info => Info): Statement = this
   def nodeName(): String = s"$memName.$portName"
 }
 
@@ -35,6 +37,7 @@ case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow:
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def mapInfo(f: Info => Info): Statement = this
 }
 
 case class ActivityZone(
@@ -48,4 +51,5 @@ case class ActivityZone(
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
+  def mapInfo(f: Info => Info): Statement = this
 }
