@@ -144,7 +144,7 @@ object Emitter {
       s"$condName ? $tvalName : $fvalName"
     }
     case w: WSubField => s"${emitExpr(w.expr)}.${w.name}"
-    case w: WSubAccess => s"${emitExpr(w.expr)}[${emitExpr(w.index)}.as_single_word()]"
+    case w: WSubAccess => s"${emitExpr(w.expr)}[${emitExprWrap(w.index)}.as_single_word()]"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExprWrap mkString(" + ")
       case Addw => s"${emitExprWrap(p.args(0))}.addw(${emitExprWrap(p.args(1))})"
@@ -187,7 +187,7 @@ object Emitter {
   }
 
   def emitExprWrap(e: Expression): String = e match {
-    case e: DoPrim => s"(${emitExpr(e)})"
+    case DoPrim(_,_,_,_) | Mux(_,_,_,_) => s"(${emitExpr(e)})"
     case _ => emitExpr(e)
   }
 
@@ -222,14 +222,14 @@ object Emitter {
         case (str, (searchFor, replaceWith)) => str.replaceFirst(searchFor, replaceWith)
       }
       val printfArgs = Seq(s""""$formatString"""") ++
-                        (p.args map {arg => s"${emitExpr(arg)}.as_single_word()"})
-      Seq(s"if (done_reset && update_registers && verbose && ${emitExpr(p.en)}) printf(${printfArgs mkString(", ")});")
+                        (p.args map {arg => s"${emitExprWrap(arg)}.as_single_word()"})
+      Seq(s"if (done_reset && update_registers && verbose && ${emitExprWrap(p.en)}) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => {
       Seq(s"if (${emitExpr(st.en)}) {assert_triggered = true; assert_exit_code = ${st.ret};}")
     }
     case mw: MemWrite => {
-      Seq(s"if (update_registers && ${emitExpr(mw.wrEn)} && ${emitExpr(mw.wrMask)}) ${mw.memName}[${emitExpr(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
+      Seq(s"if (update_registers && ${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}) ${mw.memName}[${emitExprWrap(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
     case ru: RegUpdate => Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${emitExpr(ru.expr)};")
     case r: DefRegister => Seq()
