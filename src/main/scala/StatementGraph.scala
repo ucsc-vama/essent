@@ -87,8 +87,8 @@ class StatementGraph extends Graph with LazyLogging {
     def convToStmts(ids: Seq[Int]): Seq[Statement] = ids filter validNodes map idToStmt
     val muxIDToShadows = (muxIDs map { muxID => {
       val muxExpr = grabMux(idToStmt(muxID))
-      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass, muxID) map nameToID
-      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass, muxID) map nameToID
+      val tShadow = crawlBack(grabIDs(muxExpr.tval), dontPass ++ grabIDs(muxExpr.cond), muxID) map nameToID
+      val fShadow = crawlBack(grabIDs(muxExpr.fval), dontPass ++ grabIDs(muxExpr.cond), muxID) map nameToID
       (muxID -> (tShadow, fShadow))
     }}).toMap
     val muxIDSet = muxIDs.toSet

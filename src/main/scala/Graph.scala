@@ -231,6 +231,7 @@ class Graph {
     case l: Literal => Seq()
     case w: WRef => if (w.name.contains("[")) Seq() else Seq(nameToID(w.name))
     case p: DoPrim => p.args flatMap grabIDs
+    case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap grabIDs
     case _ => throw new Exception(s"expression is not a WRef $e")
   }
 
