@@ -16,8 +16,6 @@ libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
 libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.1.3"
 
-lazy val essent = (project in file("."))
-
 
 // Assembly
 
