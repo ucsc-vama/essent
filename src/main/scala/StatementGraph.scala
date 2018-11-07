@@ -11,6 +11,9 @@ import essent.Util._
 
 import collection.mutable.{ArrayBuffer, BitSet}
 import java.io.{File, FileWriter}
+import org.json4s._
+import org.json4s.JsonDSL._
+import org.json4s.native.JsonMethods._
 import scala.reflect.ClassTag
 
 
@@ -324,6 +327,7 @@ class StatementGraph extends Graph with LazyLogging {
     }}
     logger.info(zoningQualityStats())
     logger.info(mergedRegStats())
+    // dumpZoneInfoToJson()
   }
 
 
@@ -406,6 +410,18 @@ class StatementGraph extends Graph with LazyLogging {
       }
     }).sum
     s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone"
+  }
+
+  def dumpZoneInfoToJson(filename: String = "partStats.json") {
+    val azStmts = idToStmt collect { case az: ActivityZone => az }
+    def azToJson(az: ActivityZone): JValue = {
+      ( ("id" -> az.id) ~
+        ("size" -> flattenStmts(az).size)
+      )
+    }
+    val fw = new FileWriter(new File(filename))
+    fw.write(pretty(render(azStmts map azToJson)))
+    fw.close()
   }
 
 
