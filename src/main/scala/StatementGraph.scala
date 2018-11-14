@@ -416,7 +416,9 @@ class StatementGraph extends Graph with LazyLogging {
     val azStmts = idToStmt collect { case az: ActivityZone => az }
     def azToJson(az: ActivityZone): JValue = {
       ( ("id" -> az.id) ~
-        ("size" -> flattenStmts(az).size)
+        ("size" -> flattenStmts(az).size) ~
+        ("num-inputs" -> az.inputs.size) ~
+        ("num-outputs" -> az.outputsToDeclare.size)
       )
     }
     val fw = new FileWriter(new File(filename))
