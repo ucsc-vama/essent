@@ -149,17 +149,20 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     if (opt.trackAct) {
       writeLines(1, s"std::array<uint64_t,$numZones> $actVarName{};")
       writeLines(1, "uint64_t cycle_count = 0;")
-      val zoneIDsAndSizes = sg.stmtsOrdered flatMap { _ match {
-        case az: ActivityZone => Some((az.id, az.memberStmts.size))
-        case _ => None
-      }}
-      writeLines(1, "void printZoneActivities() {")
-      writeLines(2, """fprintf(stderr, "%llu\n", cycle_count);""")
-      writeLines(2, zoneActOutput(zoneIDsAndSizes))
-      writeLines(2, zoneEffActSummary(zoneIDsAndSizes))
+      writeLines(1, "void writeZoneActivities() {")
+      writeLines(2, "std::fstream file(\"zone_activities.json\", std::ios::out | std::ios::binary);")
+      writeLines(2, "JSON zone_acts;")
+      writeLines(2, s"for (int i=0; i<$numZones; i++) {")
+      writeLines(3, s"""zone_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
+      writeLines(2, "}")
+      writeLines(2, "JSON all_data;")
+      writeLines(2, "all_data[\"zone-activities\"] = zone_acts;")
+      writeLines(2, "all_data[\"cycles\"] = cycle_count;")
+      writeLines(2, "file << all_data << std::endl;")
+      writeLines(2, "file.close();")
       writeLines(1, "}")
       writeLines(1, s"~$topName() {")
-      writeLines(2, "printZoneActivities();")
+      writeLines(2, "writeZoneActivities();")
       writeLines(1, "}")
     }
     // predeclare zone outputs
@@ -249,22 +252,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
 
   def zoneActTrackerName(zoneID: Int) = s"$actVarName[$zoneID]"
 
-  def zoneActOutput(zoneIDsAndSizes: Seq[(Int,Int)]) = {
-    zoneIDsAndSizes map {
-      case (zoneID, zoneSize) => s"""fprintf(stderr, "$zoneID %llu $zoneSize\\n", ${zoneActTrackerName(zoneID)});"""
-    }
-  }
-
-  def zoneEffActSummary(zoneIDsAndSizes: Seq[(Int,Int)]) = {
-    val sum = zoneIDsAndSizes map {
-      case (zoneID, zoneSize) => s"total += ${zoneActTrackerName(zoneID)} * $zoneSize;"
-    }
-    val totalSize = (zoneIDsAndSizes map { _._2 }).sum
-    val effAct = s"double eff_act = static_cast<double>(total) / $totalSize / cycle_count;"
-    val printEffAct = """printf("Effective Activity: %g\n", eff_act);"""
-    Seq("uint64_t total = 0;") ++ sum ++ Seq(effAct, printEffAct)
-  }
-
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
@@ -284,6 +271,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
+    if (opt.trackAct) {
+      writeLines(0, "#include <fstream>")
+      writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
+      writeLines(0, "using json::JSON;")
+    }
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)
