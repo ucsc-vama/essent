@@ -13,6 +13,7 @@ case class OptFlags(
     writeHarness: Boolean = false,
     dumpLoFirrtl: Boolean = false,
     trackAct: Boolean = false,
+    trackSigs: Boolean = false,
     passLogLevel: String = "warn",
     essentLogLevel: String = "warn")
 
@@ -55,6 +56,10 @@ class ArgsParser {
         trackAct = true)
     ).text("print out zone activity stats")
 
+    opt[Unit]("signal-activity").action( (_, c) => c.copy(
+        trackSigs = true)
+    ).text("track individual signal activities")
+
     opt[String]("essent-log-level").abbr("ell").valueName("<Error|Warn|Info|Debug|Trace>")
     .validate { x =>
       if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
@@ -90,6 +95,7 @@ object TestFlags {
       writeHarness = true,
       dumpLoFirrtl = false,
       trackAct = false,
+      trackSigs = false,
       passLogLevel = "warn",
       essentLogLevel = "warn"
     )

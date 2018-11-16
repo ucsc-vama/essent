@@ -95,6 +95,7 @@ object Extract extends LazyLogging {
     case s: Stop => None
     case r: DefRegister => None
     case m: DefMemory => None
+    case EmptyStmt => None
     case _ => throw new Exception(s"Don't know how to find result name of ${stmt.serialize}")
   }
 
