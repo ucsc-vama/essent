@@ -108,6 +108,16 @@ object Extract extends LazyLogging {
     case _ => throw new Exception(s"not a connect or defnode: ${stmt.serialize}")
   }
 
+  def findStmtNameAndType(stmt: Statement): Seq[(String, Type)] = stmt match {
+    case ms: MuxShadowed => (ms.tShadow ++ ms.fShadow) flatMap findStmtNameAndType
+    case az: ActivityZone => az.memberStmts flatMap findStmtNameAndType
+    case mw: MemWrite => Seq()
+    case _ => findResultName(stmt) match {
+      case Some(name) => Seq((name, findResultType(stmt)))
+      case None => Seq()
+    }
+  }
+
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)

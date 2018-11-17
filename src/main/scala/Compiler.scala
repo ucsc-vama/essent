@@ -236,15 +236,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def zoneActTrackerName(zoneID: Int) = s"$actVarName[$zoneID]"
 
   def declareSigTracking(sg: StatementGraph, topName: String) {
-    def findStmtNameAndType(stmt: Statement): Seq[(String, Type)] = stmt match {
-      case ms: MuxShadowed => (ms.tShadow ++ ms.fShadow) flatMap findStmtNameAndType
-      case az: ActivityZone => az.memberStmts flatMap findStmtNameAndType
-      case mw: MemWrite => Seq()
-      case _ => findResultName(stmt) match {
-        case Some(name) => Seq((name, findResultType(stmt)))
-        case None => Seq()
-      }
-    }
     val allNamesAndTypes = (sg.validNodes.toSeq map sg.idToStmt) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
     writeLines(0, "")
@@ -336,6 +327,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
     if (opt.trackAct || opt.trackSigs)
       emitJsonWriter(sg, opt)
+    if (opt.zoneStats)
+      sg.dumpZoneInfoToJson(sigNameToID)
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)

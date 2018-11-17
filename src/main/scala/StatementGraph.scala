@@ -327,7 +327,6 @@ class StatementGraph extends Graph with LazyLogging {
     }}
     logger.info(zoningQualityStats())
     logger.info(mergedRegStats())
-    // dumpZoneInfoToJson()
   }
 
 
@@ -412,14 +411,22 @@ class StatementGraph extends Graph with LazyLogging {
     s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone"
   }
 
-  def dumpZoneInfoToJson(filename: String = "partStats.json") {
+  def dumpZoneInfoToJson(sigNameToID: Map[String,Int], filename: String = "partStats.json") {
     val azStmts = idToStmt collect { case az: ActivityZone => az }
+    def computeMemberIds(az: ActivityZone) = {
+      az.memberStmts map findResultName collect {
+        case Some(name) if (sigNameToID.contains(name)) => sigNameToID(name)
+      }
+    }
     def azToJson(az: ActivityZone): JValue = {
-      ( ("id" -> az.id) ~
+      val baseJson = (
+        ("id" -> az.id) ~
         ("size" -> flattenStmts(az).size) ~
         ("num-inputs" -> az.inputs.size) ~
         ("num-outputs" -> az.outputsToDeclare.size)
       )
+      if (sigNameToID.nonEmpty) baseJson ~ ("member-ids" -> computeMemberIds(az))
+      else baseJson
     }
     val fw = new FileWriter(new File(filename))
     fw.write(pretty(render(azStmts map azToJson)))
