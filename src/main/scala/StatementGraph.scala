@@ -433,6 +433,34 @@ class StatementGraph extends Graph with LazyLogging {
     fw.close()
   }
 
+  def dumpNodeTypeToJson(sigNameToID: Map[String,Int], filename: String = "nodeTypes.json") {
+    val coveredGraphIDs = validNodes filter { id => sigNameToID.contains(idToName(id)) }
+    def extractResultOp(stmt: Statement): String = {
+      val resultExpr = stmt match {
+        case dn: DefNode => dn.value
+        case c: Connect => c.expr
+      }
+      resultExpr match {
+        case w: WRef => "WRef"
+        case ul: UIntLiteral => "UIntLit"
+        case sl: SIntLiteral => "SIntLit"
+        case m: Mux => "Mux"
+        case w: WSubField => "WSubField"
+        case w: WSubAccess => "WSubAccess"
+        case p: DoPrim => "PrimOp-" + p.op.toString
+      }
+    }
+    def graphIDtoJson(id: Int): JValue = {
+      (
+        ("id" -> sigNameToID(idToName(id))) ~
+        ("op" -> extractResultOp(idToStmt(id)))
+      )
+    }
+    val fw = new FileWriter(new File(filename))
+    fw.write(pretty(render(coveredGraphIDs map graphIDtoJson)))
+    fw.close()
+  }
+
 
   // Mutations for State Elements
   //----------------------------------------------------------------------------

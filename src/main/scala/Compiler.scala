@@ -24,6 +24,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   val flagVarName = "ZONEflags"
   val actVarName = "ACTcounts"
   val sigTrackName = "SIGcounts"
+  val sigActName = "SIGact"
+  val sigExtName = "SIGext"
   var sigNameToID = Map[String,Int]()
 
   // Writing To File
@@ -103,7 +105,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       }
       case _ => {
         writeLines(indentLevel, emitStmt(doNotDec)(stmt))
-        if (opt.trackSigs) emitSigTracker(stmt, indentLevel)
+        if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
   }
@@ -235,11 +237,15 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
 
   def zoneActTrackerName(zoneID: Int) = s"$actVarName[$zoneID]"
 
-  def declareSigTracking(sg: StatementGraph, topName: String) {
+  def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
     val allNamesAndTypes = (sg.validNodes.toSeq map sg.idToStmt) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
     writeLines(0, "")
     writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
+    if (opt.trackExts) {
+      writeLines(0, s"std::array<bool,${sigNameToID.size}> $sigActName{};")
+      writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigExtName{};")
+    }
     writeLines(0, "namespace old {")
     writeLines(1, allNamesAndTypes map {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')};"
@@ -247,7 +253,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(0, "}")
   }
 
-  def emitSigTracker(stmt: Statement, indentLevel: Int) {
+  def emitSigTracker(stmt: Statement, indentLevel: Int, opt: OptFlags) {
     stmt match {
       case mw: MemWrite =>
       case _ => {
@@ -256,6 +262,15 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
           case Some(name) => {
             val cleanName = name.replace('.','$')
             writeLines(indentLevel, s"$sigTrackName[${sigNameToID(name)}] += $name != old::$cleanName ? 1 : 0;")
+            if (opt.trackExts) {
+              writeLines(indentLevel, s"$sigActName[${sigNameToID(name)}] = $name != old::$cleanName;")
+              val depNames = findDependencesStmt(stmt).head.deps
+              val trackedDepNames = depNames filter sigNameToID.contains
+              val depTrackers = trackedDepNames map {name => s"$sigActName[${sigNameToID(name)}]"}
+              val anyDepActive = depTrackers.mkString(" || ")
+              if (anyDepActive.nonEmpty)
+                writeLines(indentLevel, s"$sigExtName[${sigNameToID(name)}] += !$sigActName[${sigNameToID(name)}] && ($anyDepActive) ? 1 : 0;")
+            }
             writeLines(indentLevel, s"old::$cleanName = $name;")
           }
           case None =>
@@ -282,6 +297,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "}")
       writeLines(1, "all_data[\"zone-activities\"] = zone_acts;")
     }
+    writeLines(1, "JSON sig_exts;")
+    writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
+    writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
+    writeLines(1, "}")
+    writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
     writeLines(1, "all_data[\"cycles\"] = cycle_count;")
     writeLines(1, "file << all_data << std::endl;")
     writeLines(1, "file.close();")
@@ -322,13 +342,15 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     else if (opt.regUpdates)
       sg.elideIntermediateRegUpdates()
     if (opt.trackSigs)
-      declareSigTracking(sg, topName)
+      declareSigTracking(sg, topName, opt)
     if (opt.trackAct)
       writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
     if (opt.trackAct || opt.trackSigs)
       emitJsonWriter(sg, opt)
     if (opt.zoneStats)
       sg.dumpZoneInfoToJson(sigNameToID)
+    if (opt.trackExts)
+      sg.dumpNodeTypeToJson(sigNameToID)
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)

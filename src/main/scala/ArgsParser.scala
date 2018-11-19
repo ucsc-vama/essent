@@ -15,6 +15,7 @@ case class OptFlags(
     trackAct: Boolean = false,
     trackSigs: Boolean = false,
     zoneStats: Boolean = false,
+    trackExts: Boolean = false,
     passLogLevel: String = "warn",
     essentLogLevel: String = "warn")
 
@@ -66,6 +67,11 @@ class ArgsParser {
         zoneStats = true)
     ).text("output topo information from zoning partitioning")
 
+    opt[Unit]("signal-exts").action( (_, c) => c.copy(
+        trackSigs = true,
+        trackExts = true)
+    ).text("track individual signal extinguishes (with activities)")
+
     opt[String]("essent-log-level").abbr("ell").valueName("<Error|Warn|Info|Debug|Trace>")
     .validate { x =>
       if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
@@ -102,6 +108,7 @@ object TestFlags {
       dumpLoFirrtl = false,
       trackAct = false,
       trackSigs = false,
+      trackExts = false,
       passLogLevel = "warn",
       essentLogLevel = "warn"
     )
