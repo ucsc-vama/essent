@@ -418,6 +418,10 @@ class StatementGraph extends Graph with LazyLogging {
         case Some(name) if (sigNameToID.contains(name)) => sigNameToID(name)
       }
     }
+    def computeOutputIds(az: ActivityZone) = {
+      val outputNames = az.outputsToDeclare map { _._1 }
+      outputNames map sigNameToID
+    }
     def azToJson(az: ActivityZone): JValue = {
       val baseJson = (
         ("id" -> az.id) ~
@@ -425,8 +429,11 @@ class StatementGraph extends Graph with LazyLogging {
         ("num-inputs" -> az.inputs.size) ~
         ("num-outputs" -> az.outputsToDeclare.size)
       )
-      if (sigNameToID.nonEmpty) baseJson ~ ("member-ids" -> computeMemberIds(az))
-      else baseJson
+      if (sigNameToID.nonEmpty) {
+        baseJson ~
+        ("member-ids" -> computeMemberIds(az)) ~
+        ("output-ids" -> computeOutputIds(az))
+      } else baseJson
     }
     val fw = new FileWriter(new File(filename))
     fw.write(pretty(render(azStmts map azToJson)))
