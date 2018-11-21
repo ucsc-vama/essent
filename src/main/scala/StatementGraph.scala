@@ -14,6 +14,7 @@ import java.io.{File, FileWriter}
 import org.json4s._
 import org.json4s.JsonDSL._
 import org.json4s.native.JsonMethods._
+import scala.io.Source
 import scala.reflect.ClassTag
 
 
@@ -280,8 +281,7 @@ class StatementGraph extends Graph with LazyLogging {
     }
   }
 
-  def translateBlocksIntoZones() {
-    val alreadyDeclared = stateElemNames().toSet
+  def translateBlocksIntoZones(alreadyDeclared: Set[String] = stateElemNames().toSet) {
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map {
       id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
@@ -289,11 +289,12 @@ class StatementGraph extends Graph with LazyLogging {
     val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
     val idToInputNames = (blockIDs map { id => {
       val zoneDepNames = idToMemberStmts(id) flatMap findDependencesStmt flatMap { _.deps }
+      // FUTURE: don't call stateElemeNames repeatedly
       val externalDepNames = zoneDepNames.toSet -- (idToProducedOutputs(id).toSet -- stateElemNames)
       (id -> externalDepNames.toSeq)
     }}).toMap
     val allInputs = idToInputNames.values.flatten.toSet
-    val blockIDsTopoSorted = topologicalSort filter blockIDs
+    val blockIDsTopoSorted = blockIDs  //topologicalSort filter blockIDs
     blockIDsTopoSorted.zipWithIndex foreach { case (id, index) => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
@@ -511,6 +512,55 @@ class StatementGraph extends Graph with LazyLogging {
       mergeStmtsMutably(Seq(id, nextID))
     }}
     logger.info(s"Was able to elide ${elidedRegIDs.size}/${regUpdateIDs.size} intermediate reg updates")
+  }
+
+
+  // Zoning via METIS
+  //----------------------------------------------------------------------------
+  def zoneViaMetis() {
+    val baseFileName = "bare.metis"
+    val targetParts = 265
+    writeMetisFile(baseFileName)
+    val partAssignments = readInMetisResults(baseFileName + ".part." + targetParts)
+    // TODO: dedup with regular coarsen
+    def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
+      val matchingIDs = idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
+      if (matchingIDs.isEmpty) None
+      else {
+        val newPartID = matchingIDs.min
+        matchingIDs foreach { partAssignments(_) = newPartID }
+        Some(newPartID)
+      }
+    }
+    val alreadyDeclared = stateElemNames().toSet
+    // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
+    clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
+    val partMap = Util.groupIndicesByValue(partAssignments)
+    partMap foreach { case (partID, memberIDs) => {
+      if (partID >= 0) {
+        idToStmt(partID) = Block(memberIDs flatMap grabStmts)
+        val idsToRemove = memberIDs diff Seq(partID)
+        mergeStmtsMutably(Seq(partID) ++ idsToRemove)
+        assert(validNodes(partID))   // otherwise, part incorporated exclusively invalid nodes
+      }
+    }}
+    // break cycles
+    translateBlocksIntoZones(alreadyDeclared)
+    println("here")
+    logger.info(zoningQualityStats())
+    logger.info(mergedRegStats())
+    assert(partAssignments forall { _ != -1 }) // all nodes reached
+  }
+
+  def readInMetisResults(filename: String): ArrayBuffer[Int] = {
+    // TODO: make sure it exists
+    val bufferedSource = Source.fromFile(filename)
+    val asInts = bufferedSource.getLines filter {_.nonEmpty} map { _.toInt}
+    val arrayResult = ArrayBuffer[Int]()
+    // TODO: cleaner conversion
+    asInts foreach { i => arrayResult += i }
+    bufferedSource.close()
+    arrayResult
   }
 
 
