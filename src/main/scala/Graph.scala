@@ -173,8 +173,8 @@ class Graph {
     val callerIDs = ArrayBuffer.fill(nameToID.size)(-1)
     def visit(vertexID: Int, callerID: Int) {
       if (inStack(vertexID)) {
-        println(s"${idToName(vertexID)} $vertexID")
-        printCycle(callerID, callerIDs)
+        val cycle = backtrackToFindCycle(callerID, callerIDs, Seq(vertexID))
+        cycle foreach printNode
         throw new Exception("There is a cycle!")
       } else if (!finished(vertexID)) {
         if (vertexID != callerID)
@@ -190,11 +190,14 @@ class Graph {
     finalOrdering
   }
 
-  def printCycle(vertexID: Int, callerIDs: ArrayBuffer[Int], cycleSoFar: Set[Int] = Set[Int]()) {
-    if (callerIDs(vertexID) != -1) {
-      printNode(vertexID)
+  def backtrackToFindCycle(vertexID: Int, callerIDs: ArrayBuffer[Int],
+                           cycleSoFar: Seq[Int] = Seq[Int]()): Seq[Int] = {
+    if (callerIDs(vertexID) == -1) cycleSoFar
+    else {
       if (outNeigh(vertexID).forall(!cycleSoFar.contains(_)))
-        printCycle(callerIDs(vertexID), callerIDs, cycleSoFar + vertexID)
+        backtrackToFindCycle(callerIDs(vertexID), callerIDs, cycleSoFar ++ Seq(vertexID))
+      else
+        cycleSoFar ++ Seq(vertexID)
     }
   }
 
