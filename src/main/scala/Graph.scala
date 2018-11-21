@@ -201,6 +201,29 @@ class Graph {
     }
   }
 
+  def findCyclesByTopoSort(): Option[Seq[Int]] = {
+    var cycleFound: Option[Seq[Int]] = None
+    val inStack = BitSet()
+    val finished = BitSet()
+    val callerIDs = ArrayBuffer.fill(nameToID.size)(-1)
+    def visit(vertexID: Int, callerID: Int) {
+      if (inStack(vertexID)) {
+        val cycle = backtrackToFindCycle(callerID, callerIDs, Seq(vertexID))
+        cycleFound = Some(cycle)
+      } else if (!finished(vertexID)) {
+        if (vertexID != callerID)
+          callerIDs(vertexID) = callerID
+        inStack.add(vertexID)
+        inNeigh(vertexID) foreach { neighborID => visit(neighborID, vertexID) }
+        finished.add(vertexID)
+        inStack.remove(vertexID)
+      }
+    }
+    nameToID.values foreach { startingID => visit(startingID, startingID) }
+    cycleFound
+  }
+
+
 
   // Mux shadowing
   //----------------------------------------------------------------------------
@@ -449,6 +472,16 @@ class Graph {
     if (idsToMerge.exists(validNodes.contains(_)))
       validNodes += mergedID
     validNodes --= idsToRemove
+  }
+
+  def disconnectNodes(idA: Int, idB: Int) {
+    println(s"  disconnecting $idA $idB")
+    def removeEdge(source: Int, dest: Int) {
+      outNeigh(source) = outNeigh(source) filter { _ != dest }
+      inNeigh(dest) = inNeigh(dest) filter { _ != source }
+    }
+    removeEdge(idA, idB)
+    removeEdge(idB, idA)
   }
 
   def mergeZonesPar(mergeReqs: Seq[Seq[Int]], zoneMap: Map[Int, Seq[Int]], zones: ArrayBuffer[Int]): Map[Int, Seq[Int]] = {

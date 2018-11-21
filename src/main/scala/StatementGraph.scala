@@ -551,6 +551,7 @@ class StatementGraph extends Graph with LazyLogging {
     translateBlocksIntoZones()
     logger.info(zoningQualityStats())
     logger.info(mergedRegStats())
+    breakCycles()
     assert(partAssignments forall { _ != -1 }) // all nodes reached
   }
 
@@ -563,6 +564,20 @@ class StatementGraph extends Graph with LazyLogging {
     asInts foreach { i => arrayResult += i }
     bufferedSource.close()
     arrayResult
+  }
+
+  def breakCycles() {
+    val cycleToRemove = findCyclesByTopoSort()
+    cycleToRemove match {
+      case None => println("done - no cycles found")
+      case Some(cycle) => {
+        println(s"found a cycle")
+        assert(cycle.size > 1)
+        // fix cycle
+        disconnectNodes(cycle(0), cycle(1))
+        breakCycles()
+      }
+    }
   }
 
 
