@@ -538,17 +538,17 @@ class StatementGraph extends Graph with LazyLogging {
     // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
     clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
     val partMap = Util.groupIndicesByValue(partAssignments)
-    partMap foreach { case (partID, memberIDs) => {
-      if (partID >= 0) {
+    partMap foreach { case (partTag, memberIDs) => {
+      if (partTag >= 0) {
+        val partID = memberIDs.head
         idToStmt(partID) = Block(memberIDs flatMap grabStmts)
         val idsToRemove = memberIDs diff Seq(partID)
         mergeStmtsMutably(Seq(partID) ++ idsToRemove)
         assert(validNodes(partID))   // otherwise, part incorporated exclusively invalid nodes
       }
     }}
-    // break cycles
+    // TODO: break cycles
     translateBlocksIntoZones()
-    println("here")
     logger.info(zoningQualityStats())
     logger.info(mergedRegStats())
     assert(partAssignments forall { _ != -1 }) // all nodes reached
