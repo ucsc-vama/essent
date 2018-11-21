@@ -537,6 +537,7 @@ class StatementGraph extends Graph with LazyLogging {
     invalidIDs foreach { id => partAssignments(id) = -3 }
     // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
     clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
+    breakCyclesWithMG(partAssignments)
     val partMap = Util.groupIndicesByValue(partAssignments)
     partMap foreach { case (partTag, memberIDs) => {
       if (partTag >= 0) {
@@ -564,6 +565,41 @@ class StatementGraph extends Graph with LazyLogging {
     asInts foreach { i => arrayResult += i }
     bufferedSource.close()
     arrayResult
+  }
+
+  def breakCyclesWithMG(initialAssignments: ArrayBuffer[Int]) {
+    val mg = MacroGraph(this, initialAssignments)
+    def breakCycleInMg(cycle: Seq[Int]) {
+      val pathsToConsider = (cycle.last +: cycle.init, cycle,
+                             cycle.tail :+ cycle.head).zipped.toList
+      pathsToConsider foreach { case (startMacro, internalMacro, endMacro) => {
+        reachableInternal(startMacro, internalMacro, endMacro)
+      }}
+    }
+    def reachableInternal(startMacro: Int, internalMacro: Int, endMacro: Int): Boolean = {
+      def stayWithinMacro(nodeID: Int): Boolean = mg.idToMacroID(nodeID) == internalMacro
+      val startNodes = mg.findMemberIDsForIncomingMacro(startMacro, internalMacro)
+      val destNodes = mg.findMemberIDsForOutgoingMacro(internalMacro, endMacro)
+      println(s"want to break cycle between $startMacro-$internalMacro-$endMacro")
+      println(s"will start from fg $startNodes trying to reach fg $destNodes")
+      val reached = forwardBoundedTraversal(startNodes.toSet, startNodes.toSet, stayWithinMacro)
+      val overlap = (reached intersect destNodes.toSet).nonEmpty
+      println(s"was reachable internally: $overlap")
+      overlap
+    }
+    def forwardBoundedTraversal(frontier: Set[Int], reached: Set[Int], pred: Int => Boolean): Set[Int] = {
+      if (frontier.isEmpty) reached
+      else {
+        val allOutgoing = frontier flatMap outNeigh filter pred
+        val nextFrontier = allOutgoing -- reached
+        forwardBoundedTraversal(nextFrontier, nextFrontier ++ reached, pred)
+      }
+    }
+    val cycle = mg.findCyclesByTopoSort()
+    cycle match {
+      case None => println("mg found no cycles")
+      case Some(cycle) => breakCycleInMg(cycle)
+    }
   }
 
   def breakCycles(attempts: Int = 1) {
