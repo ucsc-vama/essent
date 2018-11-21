@@ -47,7 +47,6 @@ class MacroGraph(fg: Graph) extends Graph {
 }
 
 // TODO: how do you assign IDs and prevent graph from giving wrong ones?
-// FUTURE: pull string names out of graph?
 
 object MacroGraph {
   // TODO: set convention that macroID < 0 means don't map?
@@ -57,7 +56,13 @@ object MacroGraph {
     val asMap = Util.groupIndicesByValue(initialAssignments)
     val dropNegIDs = asMap filter { case (key, value) => key >= 0 }
     dropNegIDs foreach { case (key,value) => mg.members(key) = value }
+    val largestMacroID = initialAssignments.max
+    mg.outNeigh ++= ArrayBuffer.fill(largestMacroID+1)(ArrayBuffer[Int]())
+    mg.inNeigh ++= ArrayBuffer.fill(largestMacroID+1)(ArrayBuffer[Int]())
     mg.members.keys foreach mg.recomputeMacroEdges
+    // FUTURE: pull string names out of graph?
+    mg.validNodes ++= mg.members.keys
+    mg.nameToID ++= mg.members.keys map { macroID => (s"m-$macroID" -> macroID) }
     mg
   }
 }
