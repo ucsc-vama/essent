@@ -566,16 +566,16 @@ class StatementGraph extends Graph with LazyLogging {
     arrayResult
   }
 
-  def breakCycles() {
+  def breakCycles(attempts: Int = 1) {
     val cycleToRemove = findCyclesByTopoSort()
     cycleToRemove match {
-      case None => println("done - no cycles found")
+      case None => println(s"done - no cycles (after $attempts attempts)")
       case Some(cycle) => {
-        println(s"found a cycle")
+        // println(s"found a cycle")
         assert(cycle.size > 1)
         // fix cycle
         disconnectNodes(cycle(0), cycle(1))
-        breakCycles()
+        breakCycles(attempts + 1)
       }
     }
   }

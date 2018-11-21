@@ -475,7 +475,7 @@ class Graph {
   }
 
   def disconnectNodes(idA: Int, idB: Int) {
-    println(s"  disconnecting $idA $idB")
+    // println(s"  disconnecting $idA $idB")
     def removeEdge(source: Int, dest: Int) {
       outNeigh(source) = outNeigh(source) filter { _ != dest }
       inNeigh(dest) = inNeigh(dest) filter { _ != source }
