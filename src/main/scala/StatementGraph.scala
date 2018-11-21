@@ -281,7 +281,8 @@ class StatementGraph extends Graph with LazyLogging {
     }
   }
 
-  def translateBlocksIntoZones(alreadyDeclared: Set[String] = stateElemNames().toSet) {
+  def translateBlocksIntoZones() {
+    val alreadyDeclared = stateElemNames().toSet
     val blockIDs = validNodes filter { idToStmt(_).isInstanceOf[Block] }
     val idToMemberStmts: Map[Int,Seq[Statement]] = (blockIDs map {
       id => idToStmt(id) match { case b: Block => (id -> b.stmts) }
@@ -532,7 +533,8 @@ class StatementGraph extends Graph with LazyLogging {
         Some(newPartID)
       }
     }
-    val alreadyDeclared = stateElemNames().toSet
+    val invalidIDs = nodeRefIDs filterNot validNodes
+    invalidIDs foreach { id => partAssignments(id) = -3 }
     // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
     clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
     val partMap = Util.groupIndicesByValue(partAssignments)
@@ -545,7 +547,7 @@ class StatementGraph extends Graph with LazyLogging {
       }
     }}
     // break cycles
-    translateBlocksIntoZones(alreadyDeclared)
+    translateBlocksIntoZones()
     println("here")
     logger.info(zoningQualityStats())
     logger.info(mergedRegStats())
