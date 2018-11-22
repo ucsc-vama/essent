@@ -17,21 +17,27 @@ class MacroGraph(fg: Graph) extends Graph {
     val allOutDests = memberSet flatMap fg.outNeigh
     val externalDests = allOutDests -- memberSet
     val externalDestMacroIDs = externalDests map idToMacroID filter { _ >= 0 }
+    outNeigh(macroID).clear()
     externalDestMacroIDs.copyToBuffer(outNeigh(macroID))
     val allInSources = memberSet flatMap fg.inNeigh
     val externalSources = allInSources -- memberSet
     val externalSourceMacroIDs = externalSources map idToMacroID filter { _ >= 0 }
+    inNeigh(macroID).clear
     externalSourceMacroIDs.copyToBuffer(inNeigh(macroID))
   }
 
   // NOTE: overwrites prior memberships
   def createMacro(newMacroID: Int, newMembers: Seq[Int]) {
-    val origMacroIDs = (newMembers map idToMacroID filter { _ >= 0 }).distinct
+    val origMacroIDs = newMembers map idToMacroID
+    val origOutMacroIDs = newMembers flatMap fg.outNeigh map idToMacroID
+    val origInMacroIDs = newMembers flatMap fg.inNeigh map idToMacroID
+    val macroIDsToUpdate = (origMacroIDs ++ origOutMacroIDs ++ origInMacroIDs).distinct filter { _ >= 0 }
     newMembers foreach { idToMacroID(_) = newMacroID }
     origMacroIDs foreach {
       macroID => members(macroID) = members(macroID) diff newMembers
     }
-    (origMacroIDs ++ Seq(newMacroID)) foreach recomputeMacroEdges
+    members(newMacroID) = newMembers
+    (macroIDsToUpdate :+ newMacroID) foreach recomputeMacroEdges
   }
 
   def findMemberIDsForIncomingMacro(sourceMacroID: Int, destMacroID: Int): Seq[Int] = {
@@ -43,6 +49,16 @@ class MacroGraph(fg: Graph) extends Graph {
     members(sourceMacroID) filter {
       nodeID => fg.outNeigh(nodeID) map idToMacroID contains destMacroID
     }
+  }
+
+  def createNewMacroID(): Int = {
+    val newMacroID = members.keys.max + 1
+    outNeigh += ArrayBuffer[Int]()
+    inNeigh += ArrayBuffer[Int]()
+    validNodes += newMacroID
+    nameToID += (s"m-$newMacroID" -> newMacroID)
+    members(newMacroID) = Seq()
+    newMacroID
   }
 }
 
