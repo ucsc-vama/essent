@@ -1,6 +1,6 @@
 package essent
 
-import collection.mutable.{ArrayBuffer, HashMap}
+import collection.mutable.{ArrayBuffer, HashMap, HashSet}
 
 // NOTE: macro IDs are for within this class, node IDs are for companion graph
 class MacroGraph(fg: Graph) extends Graph {
@@ -59,6 +59,15 @@ class MacroGraph(fg: Graph) extends Graph {
     nameToID += (s"m-$newMacroID" -> newMacroID)
     members(newMacroID) = Seq()
     newMacroID
+  }
+
+  def checkMacrosDisjoint(): Boolean = {
+    val includedSoFar = HashSet[Int]()
+    members forall { case (macroID, memberIDs) => {
+      val overlap = includedSoFar.intersect(memberIDs.toSet).nonEmpty
+      includedSoFar ++= memberIDs
+      !overlap
+    }}
   }
 }
 
