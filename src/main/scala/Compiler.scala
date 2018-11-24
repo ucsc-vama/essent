@@ -352,6 +352,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       sg.dumpZoneInfoToJson(sigNameToID)
     if (opt.trackExts)
       sg.dumpNodeTypeToJson(sigNameToID)
+    // sg.reachableAfter(sigNameToID)
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)

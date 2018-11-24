@@ -442,23 +442,24 @@ class StatementGraph extends Graph with LazyLogging {
     fw.close()
   }
 
+  def extractResultOp(stmt: Statement): String = {
+    val resultExpr = stmt match {
+      case dn: DefNode => dn.value
+      case c: Connect => c.expr
+    }
+    resultExpr match {
+      case w: WRef => "WRef"
+      case ul: UIntLiteral => "UIntLit"
+      case sl: SIntLiteral => "SIntLit"
+      case m: Mux => "Mux"
+      case w: WSubField => "WSubField"
+      case w: WSubAccess => "WSubAccess"
+      case p: DoPrim => "PrimOp-" + p.op.toString
+    }
+  }
+
   def dumpNodeTypeToJson(sigNameToID: Map[String,Int], filename: String = "nodeTypes.json") {
     val coveredGraphIDs = validNodes filter { id => sigNameToID.contains(idToName(id)) }
-    def extractResultOp(stmt: Statement): String = {
-      val resultExpr = stmt match {
-        case dn: DefNode => dn.value
-        case c: Connect => c.expr
-      }
-      resultExpr match {
-        case w: WRef => "WRef"
-        case ul: UIntLiteral => "UIntLit"
-        case sl: SIntLiteral => "SIntLit"
-        case m: Mux => "Mux"
-        case w: WSubField => "WSubField"
-        case w: WSubAccess => "WSubAccess"
-        case p: DoPrim => "PrimOp-" + p.op.toString
-      }
-    }
     def graphIDtoJson(id: Int): JValue = {
       (
         ("id" -> sigNameToID(idToName(id))) ~
@@ -467,6 +468,35 @@ class StatementGraph extends Graph with LazyLogging {
     }
     val fw = new FileWriter(new File(filename))
     fw.write(pretty(render(coveredGraphIDs map graphIDtoJson)))
+    fw.close()
+  }
+
+  def reachableAfter(sigNameToID: Map[String,Int], filename: String = "reachPost.json") {
+    val azStmts = idToStmt collect { case az: ActivityZone => az }
+    def findReachableInZone(az: ActivityZone): JValue = {
+      val zsg = StatementGraph(az.memberStmts)
+      val coveredGraphIDs = zsg.validNodes filter {
+        id => sigNameToID.contains(zsg.idToName(id))
+      }
+      val starters = coveredGraphIDs collect {
+        case id if (extractResultOp(zsg.idToStmt(id)) == "Mux") => id
+        // case id if (zsg.idToStmt(id).isInstanceOf[DefRegister]) => id
+        // case id if (zsg.idToStmt(id).isInstanceOf[Connect]) => id
+      }
+      val depthReached = ArrayBuffer.fill(zsg.numNodeRefs)(-1)
+      starters foreach { id => depthReached(id) = 0 }
+      zsg.reachAll(starters.toSet, 1, depthReached)
+      val reached = depthReached count { _ == 1 }
+      // println(s"zone ${az.id} starting from ${starters.size} reached $reached/${az.memberStmts.size - starters.size}")
+      (
+        ("az-id" -> az.id) ~
+        ("starter_size" -> starters.size) ~
+        ("reached" -> reached) ~
+        ("az-size" -> az.memberStmts.size)
+      )
+    }
+    val fw = new FileWriter(new File(filename))
+    fw.write(pretty(render(azStmts map findReachableInZone)))
     fw.close()
   }
 
