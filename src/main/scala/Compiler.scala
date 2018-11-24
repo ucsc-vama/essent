@@ -351,7 +351,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     if (opt.trackAct || opt.trackSigs)
       emitJsonWriter(sg, opt)
     if (opt.zoneStats)
-      sg.dumpZoneInfoToJson(sigNameToID)
+      sg.dumpZoneInfoToJson(opt, sigNameToID)
     if (opt.trackExts)
       sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)

@@ -414,7 +414,7 @@ class StatementGraph extends Graph with LazyLogging {
     s"With zoning, $numMergedRegs/$numRegs registers have $$next and $$final in same zone"
   }
 
-  def dumpZoneInfoToJson(sigNameToID: Map[String,Int], filename: String = "partStats.json") {
+  def dumpZoneInfoToJson(opt: OptFlags, sigNameToID: Map[String,Int], filename: String = "partStats.json") {
     val azStmts = idToStmt collect { case az: ActivityZone => az }
     def computeMemberIds(az: ActivityZone) = {
       az.memberStmts map findResultName collect {
@@ -430,8 +430,10 @@ class StatementGraph extends Graph with LazyLogging {
         ("id" -> az.id) ~
         ("size" -> flattenStmts(az).size) ~
         ("num-inputs" -> az.inputs.size) ~
-        ("num-outputs" -> az.outputsToDeclare.size)
+        ("num-outputs" -> az.outputsToDeclare.size) ~
+        ("zone-cutoff" -> opt.zoneCutoff)
       )
+      // TODO: pull out zone-cutoff into overall stats
       if (sigNameToID.nonEmpty) {
         baseJson ~
         ("member-ids" -> computeMemberIds(az)) ~
