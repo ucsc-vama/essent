@@ -193,11 +193,12 @@ class Graph {
   def backtrackToFindCycle(vertexID: Int, callerIDs: ArrayBuffer[Int],
                            cycleSoFar: Seq[Int] = Seq[Int]()): Seq[Int] = {
     if (callerIDs(vertexID) == -1) cycleSoFar
+    else if (outNeigh(vertexID).forall(!cycleSoFar.contains(_)))
+      backtrackToFindCycle(callerIDs(vertexID), callerIDs, cycleSoFar ++ Seq(vertexID))
     else {
-      if (outNeigh(vertexID).forall(!cycleSoFar.contains(_)))
-        backtrackToFindCycle(callerIDs(vertexID), callerIDs, cycleSoFar ++ Seq(vertexID))
-      else
-        cycleSoFar ++ Seq(vertexID)
+      val loopbackIndices = outNeigh(vertexID) map cycleSoFar.indexOf
+      val trimmedCycle = cycleSoFar.drop(loopbackIndices.max)
+      trimmedCycle ++ Seq(vertexID)
     }
   }
 
