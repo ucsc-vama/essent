@@ -309,15 +309,16 @@ class StatementGraph extends Graph with LazyLogging {
     }}
   }
 
-  def coarsenIntoZones() {
+  def coarsenIntoZones(smallZoneCutoff: Int = 20) {
+    logger.info(s"Using small-zone-cutoff of $smallZoneCutoff")
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
-      ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
+      // ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
-      ("small", {sg: StatementGraph => sg.mergeSmallZones(20, 0.5)}),
-      ("down", {sg: StatementGraph => sg.mergeSmallZonesDown()}),
-      ("small2", {sg: StatementGraph => sg.mergeSmallZones(40, 0.25)}),
+      ("small", {sg: StatementGraph => sg.mergeSmallZones(smallZoneCutoff, 0.5)}),
+      ("down", {sg: StatementGraph => sg.mergeSmallZonesDown(smallZoneCutoff)}),
+      ("small2", {sg: StatementGraph => sg.mergeSmallZones(2*smallZoneCutoff, 0.25)}),
       ("IR", {sg: StatementGraph => sg.translateBlocksIntoZones()})
     )
     toApply foreach { case(label, func) => {

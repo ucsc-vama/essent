@@ -338,7 +338,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val extIOMap = findExternalPorts(circuit)
     val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
     if (opt.zoneAct)
-      sg.coarsenIntoZones()
+      sg.coarsenIntoZones(opt.zoneCutoff)
       // sg.zoneViaMetis()
     else if (opt.regUpdates)
       sg.elideIntermediateRegUpdates()
