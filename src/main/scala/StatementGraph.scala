@@ -139,6 +139,7 @@ class StatementGraph extends Graph with LazyLogging {
       if (mergeReq.size < 2) logger.info("tiny merge req!")
       val zonesStillExist = mergeReq.forall{ idToStmt(_) != EmptyStmt }
       if (zonesStillExist && safeToMergeArb(mergeReq)) {
+        assert(blacklistedZoneIDs forall { !mergeReq.contains(_) })
         idToStmt(mergeReq.head) = Block(mergeReq flatMap grabStmts)
         mergeStmtsMutably(mergeReq)
       }
@@ -261,10 +262,12 @@ class StatementGraph extends Graph with LazyLogging {
   def mergeSmallZonesDown(smallZoneCutoff: Int = 20) {
     val smallZoneIDs = validNodes filter { id => {
       val idSize = nodeSize(id)
-      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff) && !blacklistedZoneIDs.contains(id)
     }}
     val mergesToConsider = smallZoneIDs flatMap { id => {
-      val mergeableChildren = outNeigh(id) filter { childID => safeToMergeArb(Seq(id, childID)) }
+      val mergeableChildren = outNeigh(id) filter {
+        childID => safeToMergeArb(Seq(id, childID)) && !blacklistedZoneIDs.contains(childID)
+      }
       if (mergeableChildren.nonEmpty) {
         val orderedByEdgesRemoved = mergeableChildren.sortBy{
           childID => numEdgesRemovedByMerge(Seq(id, childID))
