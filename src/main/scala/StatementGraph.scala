@@ -298,7 +298,7 @@ class StatementGraph extends Graph with LazyLogging {
       (id -> externalDepNames.toSeq)
     }}).toMap
     val allInputs = idToInputNames.values.flatten.toSet
-    val blockIDsTopoSorted = blockIDs  //topologicalSort filter blockIDs
+    val blockIDsTopoSorted = topologicalSort filter blockIDs
     blockIDsTopoSorted.zipWithIndex foreach { case (id, index) => {
       val zoneName = id.toString
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)

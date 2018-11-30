@@ -231,9 +231,9 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       }
       case _ => writeLines(2, emitStmt(doNotDec)(stmt))
     }}
-    writeLines(2, "#ifdef ALL_ON")
-    writeLines(2, "ZONEflags.fill(true);" )
-    writeLines(2, "#endif")
+    // writeLines(2, "#ifdef ALL_ON")
+    // writeLines(2, "ZONEflags.fill(true);" )
+    // writeLines(2, "#endif")
     writeLines(2, "regs_set = true;")
   }
 
