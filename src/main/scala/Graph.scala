@@ -147,9 +147,13 @@ class Graph {
     val finished = BitSet()
     def visit(vertexID: Int) {
       if (inStack(vertexID)) {
-        println(s"${idToName(vertexID)} $vertexID")
-        nodeRefIDs filter inStack foreach printNode
-        throw new Exception("There is a cycle!")
+        findCyclesByTopoSort() match {
+          case None => throw new Exception("Was a cycle but couldn't reproduce")
+          case Some(cycle) => {
+            cycle foreach { id => println(idToName(id)) }
+            throw new Exception("There is a cycle! (above)")
+          }
+        }
       } else if (!finished(vertexID)) {
         inStack.add(vertexID)
         inNeigh(vertexID) foreach { neighborID => visit(neighborID) }
@@ -166,6 +170,7 @@ class Graph {
     topologicalSort filter validNodes map idToName
   }
 
+  // FUTURE: remove since findCyclesByTopoSort makes it redundant?
   def topologicalSortWithTracking() = {
     val finalOrdering = ArrayBuffer[Int]()
     val inStack = BitSet()
