@@ -9,13 +9,13 @@ case class OptFlags(
     firInputFile: File = null,
     regUpdates: Boolean = true,
     muxShadows: Boolean = true,
-    zoneAct: Boolean = true,
+    useZones: Boolean = true,
     writeHarness: Boolean = false,
     dumpLoFirrtl: Boolean = false,
-    trackAct: Boolean = false,
     trackSigs: Boolean = false,
-    zoneStats: Boolean = false,
+    trackZone: Boolean = false,
     trackExts: Boolean = false,
+    zoneStats: Boolean = false,
     zoneCutoff: Int = 20,
     passLogLevel: String = "warn",
     essentLogLevel: String = "warn")
@@ -25,25 +25,25 @@ class ArgsParser {
     opt[Unit]("O0").abbr("O0").action( (_, c) => c.copy(
         regUpdates = false,
         muxShadows = false,
-        zoneAct=false)
+        useZones=false)
     ).text("disable all optimizations")
 
     opt[Unit]("O1").abbr("O1").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = false,
-        zoneAct=false)
+        useZones=false)
     ).text("enable only optimizations without conditionals")
 
     opt[Unit]("O2").abbr("O2").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = true,
-        zoneAct=false)
+        useZones=false)
     ).text("enable conditional evaluation of mux inputs")
 
     opt[Unit]("O3").abbr("O3").action( (_, c) => c.copy(
         regUpdates = true,
         muxShadows = true,
-        zoneAct=true)
+        useZones=true)
     ).text("enable all optimizations (default)")
 
     opt[Unit]("dump").action( (_, c) => c.copy(
@@ -54,24 +54,24 @@ class ArgsParser {
         writeHarness = true)
     ).text("generate harness for Verilator debug API")
 
-    opt[Unit]("activity-stats").action( (_, c) => c.copy(
-        zoneAct = true,
-        trackAct = true)
-    ).text("print out zone activity stats")
-
-    opt[Unit]("signal-activity").action( (_, c) => c.copy(
+    opt[Unit]("activity-signal").action( (_, c) => c.copy(
         trackSigs = true)
     ).text("track individual signal activities")
 
-    opt[Unit]("zone-stats").action( (_, c) => c.copy(
-        zoneAct = true,
-        zoneStats = true)
-    ).text("output topo information from zoning partitioning")
+    opt[Unit]("activity-zone").action( (_, c) => c.copy(
+        useZones = true,
+        trackZone = true)
+    ).text("print out zone activity stats")
 
-    opt[Unit]("signal-exts").action( (_, c) => c.copy(
+    opt[Unit]("activity-exts").action( (_, c) => c.copy(
         trackSigs = true,
         trackExts = true)
     ).text("track individual signal extinguishes (with activities)")
+
+    opt[Unit]("stats-zone").action( (_, c) => c.copy(
+        useZones = true,
+        zoneStats = true)
+    ).text("output topo information from zoning partitioning")
 
     opt[Int]("zone-cutoff").action( (x, c) => c.copy(
         zoneCutoff = x)
@@ -104,19 +104,6 @@ class ArgsParser {
 
 object TestFlags {
   def apply(inputFirFile: File): OptFlags = {
-    OptFlags(
-      firInputFile = inputFirFile,
-      regUpdates = true,
-      muxShadows = true,
-      zoneAct = false,
-      writeHarness = true,
-      dumpLoFirrtl = false,
-      trackAct = false,
-      trackSigs = false,
-      trackExts = false,
-      zoneCutoff = 20,
-      passLogLevel = "warn",
-      essentLogLevel = "warn"
-    )
+    OptFlags(firInputFile = inputFirFile)
   }
 }

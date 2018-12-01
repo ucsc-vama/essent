@@ -174,7 +174,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         writeLines(1, s"void ${genZoneFuncName(az.id)}() {")
         if (!az.alwaysActive)
           writeLines(2, s"$flagVarName[${az.id}] = false;")
-        if (opt.trackAct)
+        if (opt.trackZone)
           writeLines(2, s"${zoneActTrackerName(az.id)}++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
@@ -292,7 +292,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "}")
       writeLines(1, "all_data[\"signal-activities\"] = sig_acts;")
     }
-    if (opt.trackAct) {
+    if (opt.trackZone) {
       writeLines(1, "JSON zone_acts;")
       writeLines(1, s"for (int i=0; i<${sg.getNumZones()}; i++) {")
       writeLines(2, s"""zone_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
@@ -329,7 +329,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
-    if (opt.trackAct || opt.trackSigs) {
+    if (opt.trackZone || opt.trackSigs) {
       writeLines(0, "#include <fstream>")
       writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
       writeLines(0, "using json::JSON;")
@@ -339,16 +339,16 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
-    if (opt.zoneAct)
+    if (opt.useZones)
       sg.coarsenIntoZones(opt.zoneCutoff)
       // sg.zoneViaMetis()
     else if (opt.regUpdates)
       sg.elideIntermediateRegUpdates()
     if (opt.trackSigs)
       declareSigTracking(sg, topName, opt)
-    if (opt.trackAct)
+    if (opt.trackZone)
       writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
-    if (opt.trackAct || opt.trackSigs)
+    if (opt.trackZone || opt.trackSigs)
       emitJsonWriter(sg, opt)
     if (opt.zoneStats)
       sg.dumpZoneInfoToJson(opt, sigNameToID)
@@ -372,12 +372,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    if (opt.zoneAct)
+    if (opt.useZones)
       writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackAct || opt.trackSigs)
+    if (opt.trackZone || opt.trackSigs)
       writeLines(2, "cycle_count++;")
-    if (opt.zoneAct)
+    if (opt.useZones)
       writeZoningBody(sg, doNotDec, opt)
     else
       writeBodyInner(2, sg, doNotDec, opt)
@@ -385,7 +385,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     writeRegResetOverrides(sg)
     writeLines(1, "}")
-    if (opt.trackAct || opt.trackSigs) {
+    if (opt.trackZone || opt.trackSigs) {
       writeLines(1, s"~$topName() {")
       writeLines(2, "writeActToJson();")
       writeLines(1, "}")
