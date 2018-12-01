@@ -2622,3 +2622,186 @@
 //   val allZoneOutputs = (getZoneOutputsToDeclare() map { _._1 }).toSet
 //   (allZoneInputs -- allZoneOutputs).toSeq
 // }
+
+
+
+
+
+// Zoning via METIS
+//----------------------------------------------------------------------------
+// def zoneViaMetis() {
+//   val baseFileName = "bare.metis"
+//   val targetParts = 265
+//   writeMetisFile(baseFileName)
+//   val partAssignments = readInMetisResults(baseFileName + ".part." + targetParts)
+//   // TODO: dedup with regular coarsen
+//   def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
+//     val matchingIDs = idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
+//     if (matchingIDs.isEmpty) None
+//     else {
+//       val newPartID = matchingIDs.min
+//       matchingIDs foreach { partAssignments(_) = newPartID }
+//       Some(newPartID)
+//     }
+//   }
+//   val invalidIDs = nodeRefIDs filterNot validNodes
+//   invalidIDs foreach { id => partAssignments(id) = -3 }
+//   // blacklistedZoneIDs += clumpByStmtType[RegUpdate]()
+//   clumpByStmtType[Print]() foreach { blacklistedZoneIDs += _ }
+//   breakCyclesWithMG(partAssignments)
+//   val partMap = Util.groupIndicesByValue(partAssignments)
+//   partMap foreach { case (partTag, memberIDs) => {
+//     if (partTag >= 0) {
+//       val partID = memberIDs.head
+//       idToStmt(partID) = Block(memberIDs flatMap grabStmts)
+//       val idsToRemove = memberIDs diff Seq(partID)
+//       mergeStmtsMutably(Seq(partID) ++ idsToRemove)
+//       assert(validNodes(partID))   // otherwise, part incorporated exclusively invalid nodes
+//     }
+//   }}
+//   // TODO: break cycles
+//   translateBlocksIntoZones()
+//   logger.info(zoningQualityStats())
+//   logger.info(mergedRegStats())
+//   breakCycles()
+//   assert(partAssignments forall { _ != -1 }) // all nodes reached
+// }
+//
+// def readInMetisResults(filename: String): ArrayBuffer[Int] = {
+//   // TODO: make sure it exists
+//   val bufferedSource = Source.fromFile(filename)
+//   val asInts = bufferedSource.getLines filter {_.nonEmpty} map { _.toInt}
+//   val arrayResult = ArrayBuffer[Int]()
+//   // TODO: cleaner conversion
+//   asInts foreach { i => arrayResult += i }
+//   bufferedSource.close()
+//   arrayResult
+// }
+//
+// def breakCyclesWithMG(initialAssignments: ArrayBuffer[Int]) {
+//   val mg = MacroGraph(this, initialAssignments)
+//   def breakCycleInMg(cycle: Seq[Int]) {
+//     println(s"trying to break macro-cycle: $cycle")
+//     val pathsToConsider = (cycle.last +: cycle.init, cycle,
+//                            cycle.tail :+ cycle.head).zipped.toList
+//     if (!tryPathsUntilDisconnected(pathsToConsider))
+//       breakAtLowestSplit(pathsToConsider)
+//   }
+//   def tryPathsUntilDisconnected(paths: Seq[(Int,Int,Int)]): Boolean = {
+//     if (paths.isEmpty) {
+//       // println("wuwo! no paths left to check")
+//       false
+//     } else {
+//       val reached = reachableInternal(paths.head)
+//       if (reached)
+//         tryPathsUntilDisconnected(paths.tail)
+//       else true
+//     }
+//   }
+//   def breakAtLowestSplit(paths: Seq[(Int,Int,Int)]) {
+//     val scores = paths map scoreBestSplits
+//     val sortedScores = scores.sortBy(t => (t._1, t._2, t._3))
+//     val chosenSplit = sortedScores.head
+//     val newID = mg.createNewMacroID()
+//     // println(chosenSplit)
+//     sortedScores foreach println
+//     if (chosenSplit._1 > 0) println(s"yikes, winner had in-outs")
+//     println(s"from ${chosenSplit._3} made new macro ID of $newID for ${chosenSplit._4.size} nodes")
+//     mg.createMacro(newID, chosenSplit._4.toSeq)
+//   }
+//   def printNode(nodeID: Int) {
+//     val outStr = (outNeigh(nodeID) map { n => s"$n(${mg.idToMacroID(n)})"}).mkString(" ")
+//     val inStr = (inNeigh(nodeID) map { n => s"$n(${mg.idToMacroID(n)})"}).mkString(" ")
+//     println(s"$nodeID(${mg.idToMacroID(nodeID)}) - ${idToName(nodeID)}")
+//     println(s"  in: $inStr")
+//     println(s"  out: $outStr")
+//   }
+//   def reachableInternal(macroIDpath: (Int,Int,Int)): Boolean = {
+//     val (startMacro, internalMacro, endMacro) = macroIDpath
+//     def stayWithinMacro(nodeID: Int): Boolean = mg.idToMacroID(nodeID) == internalMacro
+//     val startNodes = mg.findMemberIDsForIncomingMacro(startMacro, internalMacro) diff Seq(8915)
+//     val destNodes = mg.findMemberIDsForOutgoingMacro(internalMacro, endMacro)
+//     // println(s"  want to break cycle between $startMacro-$internalMacro-$endMacro")
+//     // println(s"  will start from fg $startNodes trying to reach fg $destNodes")
+//     // println(s"  macro $internalMacro has ${mg.members(internalMacro).size} nodes")
+//     val reached = forwardBoundedTraversal(startNodes.toSet, startNodes.toSet, stayWithinMacro)
+//     val unreached = mg.members(internalMacro) diff reached.toSeq
+//     val overlap = (reached intersect destNodes.toSet).nonEmpty
+//     if (!overlap) {
+//       val newID = mg.createNewMacroID()
+//       println(s"from $internalMacro made new macro ID of $newID for ${unreached.size} nodes")
+//       mg.createMacro(newID, unreached)
+//     }
+//     overlap
+//   }
+//   def scoreBestSplits(macroIDpath: (Int,Int,Int)) = {
+//     val (startMacro, internalMacro, endMacro) = macroIDpath
+//     val startNodes = mg.findMemberIDsForIncomingMacro(startMacro, internalMacro)
+//     val destNodes = mg.findMemberIDsForOutgoingMacro(internalMacro, endMacro)
+//     def stayWithinMacro(nodeID: Int): Boolean = mg.idToMacroID(nodeID) == internalMacro
+//     val numInOuts = (startNodes intersect destNodes).size
+//     // println(s"Considering: $internalMacro (${mg.members(internalMacro).size})")
+//     val parReached = forwardBoundedTraversal(startNodes.toSet, startNodes.toSet, stayWithinMacro)
+//     val startReaches = startNodes map {
+//       id => forwardBoundedTraversal(Set(id), Set(id), stayWithinMacro)
+//     }
+//     val otherSide = mg.findMemberIDsForOutgoingMacro(startMacro, internalMacro)
+//     val outsFromStart = (mg.members(startMacro) flatMap outNeigh map mg.idToMacroID).distinct
+//     // printNode(internalMacro)
+//     // println(s"scoring $startMacro, $internalMacro, $endMacro")
+//     // println(s"out from $startMacro $outsFromStart ${mg.outNeigh(startMacro)}")
+//     // println(s"$startMacro-$internalMacro $startNodes $otherSide")
+//     val startReached = startReaches reduce { _ ++ _}
+//     if (startReached.size != parReached.size)
+//       println(s"merged reaches ${startReached.size} vs par starts ${parReached.size}")
+//     val parParents = backwardBoundedTraversal(destNodes.toSet, destNodes.toSet, stayWithinMacro)
+//     // val smallerCompToRemove = Seq(parReached, parParents).sortBy(_.size).head
+//     val smallerCompToRemove = Seq(parReached, parParents).sortBy(_.size - mg.members(internalMacro).size).head
+//     if (internalMacro == 1018 || internalMacro == 240)
+//       smallerCompToRemove foreach printNode
+//     (numInOuts, smallerCompToRemove.size - mg.members(internalMacro).size, internalMacro, smallerCompToRemove, smallerCompToRemove.size)
+//   }
+//   def forwardBoundedTraversal(frontier: Set[Int], reached: Set[Int], pred: Int => Boolean): Set[Int] = {
+//     if (frontier.isEmpty) reached
+//     else {
+//       val allOutgoing = frontier flatMap outNeigh filter pred
+//       val nextFrontier = allOutgoing -- reached
+//       forwardBoundedTraversal(nextFrontier, nextFrontier ++ reached, pred)
+//     }
+//   }
+//   def backwardBoundedTraversal(frontier: Set[Int], reached: Set[Int], pred: Int => Boolean): Set[Int] = {
+//     if (frontier.isEmpty) reached
+//     else {
+//       val allOutgoing = frontier flatMap inNeigh filter pred
+//       val nextFrontier = allOutgoing -- reached
+//       backwardBoundedTraversal(nextFrontier, nextFrontier ++ reached, pred)
+//     }
+//   }
+//   def repeatUntilMgAcyclic(trials: Int = 755) {
+//     if (trials == 0) return
+//     val cycle = mg.findCyclesByTopoSort()
+//     cycle match {
+//       case None => println("mg found no more cycles")
+//       case Some(cycle) => {
+//         println(s"$trials more cycle breaks left")
+//         breakCycleInMg(cycle)
+//         repeatUntilMgAcyclic(trials - 1)
+//       }
+//     }
+//   }
+//   repeatUntilMgAcyclic()
+// }
+//
+// def breakCycles(attempts: Int = 1) {
+//   val cycleToRemove = findCyclesByTopoSort()
+//   cycleToRemove match {
+//     case None => println(s"done - no cycles (after $attempts attempts)")
+//     case Some(cycle) => {
+//       // println(s"found a cycle")
+//       assert(cycle.size > 1)
+//       // fix cycle
+//       disconnectNodes(cycle(0), cycle(1))
+//       breakCycles(attempts + 1)
+//     }
+//   }
+// }
