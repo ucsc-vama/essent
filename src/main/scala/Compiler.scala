@@ -175,7 +175,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         if (!az.alwaysActive)
           writeLines(2, s"$flagVarName[${az.id}] = false;")
         if (opt.trackZone)
-          writeLines(2, s"${zoneActTrackerName(az.id)}++;")
+          writeLines(2, s"$actVarName[${az.id}]++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
         }}
@@ -237,8 +237,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(2, "regs_set = true;")
   }
 
-  def zoneActTrackerName(zoneID: Int) = s"$actVarName[$zoneID]"
-
   def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
     val allNamesAndTypes = (sg.validNodes.toSeq map sg.idToStmt) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
@@ -299,11 +297,13 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "}")
       writeLines(1, "all_data[\"zone-activities\"] = zone_acts;")
     }
-    // writeLines(1, "JSON sig_exts;")
-    // writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
-    // writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
-    // writeLines(1, "}")
-    // writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
+    if (opt.trackExts) {
+      writeLines(1, "JSON sig_exts;")
+      writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
+      writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
+      writeLines(1, "}")
+      writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
+    }
     writeLines(1, "all_data[\"cycles\"] = cycle_count;")
     writeLines(1, "file << all_data << std::endl;")
     writeLines(1, "file.close();")
