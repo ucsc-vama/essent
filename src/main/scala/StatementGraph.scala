@@ -317,7 +317,7 @@ class StatementGraph extends Graph with LazyLogging {
     // Not worrying about dead zones for now
     val toApply = Seq(
       ("mffc", {sg: StatementGraph => sg.coarsenToMFFCs()}),
-      // ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
+      ("single", {sg: StatementGraph => sg.mergeSingleInputMFFCsToParents()}),
       ("siblings", {sg: StatementGraph => sg.mergeSmallSiblings()}),
       ("small", {sg: StatementGraph => sg.mergeSmallZones(smallZoneCutoff, 0.5)}),
       ("down", {sg: StatementGraph => sg.mergeSmallZonesDown(smallZoneCutoff)}),
@@ -439,6 +439,7 @@ class StatementGraph extends Graph with LazyLogging {
       // TODO: pull out zone-cutoff into overall stats
       if (sigNameToID.nonEmpty) {
         baseJson ~
+        ("input-ids" -> (az.inputs filter { sigNameToID.contains } map sigNameToID)) ~
         ("member-ids" -> computeMemberIds(az)) ~
         ("output-ids" -> computeOutputIds(az))
       } else baseJson
