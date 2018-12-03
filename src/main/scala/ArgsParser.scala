@@ -22,6 +22,9 @@ case class OptFlags(
 
 class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {
+    arg[File]("<file>").required().unbounded().action( (x, c) =>
+      c.copy(firInputFile = x) ).text(".fir input file")
+
     opt[Unit]("O0").abbr("O0").action( (_, c) => c.copy(
         regUpdates = false,
         muxShadows = false,
@@ -54,6 +57,24 @@ class ArgsParser {
         writeHarness = true)
     ).text("generate harness for Verilator debug API")
 
+    opt[String]("essent-log-level").abbr("ell").valueName("<Error|Warn|Info|Debug|Trace>")
+    .validate { x =>
+      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
+      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
+    }
+    .action( (level, c) => c.copy(essentLogLevel = level ) )
+    .text("Logging level for essent not during passes")
+
+    opt[String]("pass-log-level").abbr("pll").valueName("<Error|Warn|Info|Debug|Trace>")
+    .validate { x =>
+      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
+      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
+    }
+    .action( (level, c) => c.copy(passLogLevel = level ) )
+    .text("Logging level for essent during passes")
+
+    help("help").text("prints this usage text")
+
     opt[Unit]("activity-signal").action( (_, c) => c.copy(
         trackSigs = true)
     ).text("track individual signal activities")
@@ -76,27 +97,6 @@ class ArgsParser {
     opt[Int]("zone-cutoff").action( (x, c) => c.copy(
         zoneCutoff = x)
     ).text("parameter used for zoning")
-
-    opt[String]("essent-log-level").abbr("ell").valueName("<Error|Warn|Info|Debug|Trace>")
-    .validate { x =>
-      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
-      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
-    }
-    .action( (level, c) => c.copy(essentLogLevel = level ) )
-    .text("Logging level for essent not during passes")
-
-    opt[String]("pass-log-level").abbr("pll").valueName("<Error|Warn|Info|Debug|Trace>")
-    .validate { x =>
-      if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
-      else failure(s"$x bad value must be one of error|warn|info|debug|trace")
-    }
-    .action( (level, c) => c.copy(passLogLevel = level ) )
-    .text("Logging level for essent during passes")
-
-    help("help").text("prints this usage text")
-
-    arg[File]("<file>").required().unbounded().action( (x, c) =>
-      c.copy(firInputFile = x) ).text(".fir input file")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())
