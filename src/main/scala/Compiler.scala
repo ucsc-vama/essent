@@ -97,7 +97,9 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       case ms: MuxShadowed => {
         if (!doNotDec.contains(ms.name))
           writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
-        writeLines(indentLevel, s"if (${emitExpr(ms.mux.cond)}) {")
+        val muxCondRaw = emitExpr(ms.mux.cond)
+        val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
+        writeLines(indentLevel, s"if ($muxCond) {")
         writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, opt, keepAvail)
         writeLines(indentLevel, "} else {")
         writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, opt, keepAvail)
