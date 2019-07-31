@@ -37,7 +37,7 @@ object Emitter {
     }}
     val portInits = m.ports flatMap { p => p.tpe match {
       case ClockType => Seq()
-      case _ => if ((p.name != "reset") && !topLevel) Seq()
+      case _ => if (!topLevel) Seq()
                 else Seq(initVal(p.name, p.tpe))
     }}
     regInits ++ memInits ++ portInits
@@ -103,7 +103,7 @@ object Emitter {
     case ClockType => if (!topLevel) Seq()
                       else Seq(genCppType(UIntType(IntWidth(1))) + " " + p.name + ";")
       // FUTURE: suppress generation of clock field if not making harness (or used)?
-    case _ => if ((p.name != "reset") && !topLevel) Seq()
+    case _ => if (!topLevel) Seq()
               else Seq(genCppType(p.tpe) + " " + p.name + ";")
   }
 
