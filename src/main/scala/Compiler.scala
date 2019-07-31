@@ -135,7 +135,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def genZoneFuncName(zoneID: Int): String = "EVAL_" + zoneID
 
   def genDepZoneTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
-    consumerIDs map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
+    consumerIDs.sorted map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
   }
 
   def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
