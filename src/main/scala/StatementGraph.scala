@@ -189,7 +189,7 @@ class StatementGraph extends Graph with LazyLogging {
   // TODO: respect blacklist
   def mergeSingleInputMFFCsToParents(smallZoneCutoff: Int = 20) {
     val singleInputIDs = validNodes filter {
-      id => inNeigh(id).size == 1 && nodeSize(id) < smallZoneCutoff
+      id => (inNeigh(id).size == 1) && (nodeSize(id) < smallZoneCutoff) && !blacklistedZoneIDs.contains(id)
     }
     val singleInputSet = singleInputIDs.toSet
     val baseSingleInputIDs = singleInputIDs filter { id => !singleInputSet.contains(inNeigh(id).head) }
@@ -231,7 +231,7 @@ class StatementGraph extends Graph with LazyLogging {
   def mergeSmallZones(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
     val smallZoneIDs = validNodes filter { id => {
       val idSize = nodeSize(id)
-      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff)
+      idToStmt(id).isInstanceOf[Block] && (idSize > 0) && (idSize < smallZoneCutoff) && !blacklistedZoneIDs.contains(id)
     }}
     val mergesToConsider = smallZoneIDs flatMap { id => {
       val numInputs = inNeigh(id).size.toDouble
