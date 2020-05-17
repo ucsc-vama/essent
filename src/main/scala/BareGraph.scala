@@ -3,29 +3,29 @@ package essent
 import collection.mutable.ArrayBuffer
 
 // Directed graph class to be used as base for others
-//  - uses numeric vertex identifiers (Int)
+//  - uses numeric vertex identifiers (NodeID  which is type alias for Int)
 //  - tracks edges both in outgoing and incomming directions
 
 class BareGraph {
-  // TODO: define NodeID type for code documentation clarity
-  type AdjacencyList = ArrayBuffer[ArrayBuffer[Int]]
+  // Access companion object's type aliases without prefix
+  import BareGraph.{NodeID, AdjacencyList}
   
   // Internal data structures
   //----------------------------------------------------------------------------
   // numeric vertex ID -> list of incoming vertex IDs (dependencies)
-  val inNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[Int]]()
+  val inNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]()
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
-  val outNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[Int]]()
+  val outNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]()
 
 
   // Graph building
   //----------------------------------------------------------------------------
-  def addEdge(sourceID: Int, destID: Int) {
-    def growNeighsIfNeeded(id: Int, neighs: AdjacencyList) {
+  def addEdge(sourceID: NodeID, destID: NodeID) {
+    def growNeighsIfNeeded(id: NodeID, neighs: AdjacencyList) {
       assert(id >= 0)
       if (id >= neighs.size) {
         val numElemsToGrow = id - neighs.size + 1
-        neighs.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[Int]()))
+        neighs.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
       }
     }
     val maxID = math.max(sourceID, destID)
@@ -35,7 +35,7 @@ class BareGraph {
     inNeigh(destID) += sourceID
   }
 
-  def addEdgeIfNew(sourceID: Int, destID: Int) {
+  def addEdgeIfNew(sourceID: NodeID, destID: NodeID) {
     if ((sourceID >= outNeigh.size) || !outNeigh(sourceID).contains(destID))
       addEdge(sourceID, destID)
   }
@@ -52,7 +52,7 @@ class BareGraph {
     uniquifyNeighs(inNeigh)
   }
 
-  def mergeNodesMutably(idsToMerge: Seq[Int]) {
+  def mergeNodesMutably(idsToMerge: Seq[NodeID]) {
     val mergedID = idsToMerge.head
     val idsToRemove = idsToMerge.tail
     def mergeNodeOneDirection(neighA: AdjacencyList, neighB: AdjacencyList) {
@@ -79,4 +79,9 @@ class BareGraph {
   }
 
   def numEdges() = computeDegrees(outNeigh).sum
+}
+
+object BareGraph {
+  type NodeID = Int
+  type AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]
 }
