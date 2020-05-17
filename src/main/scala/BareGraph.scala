@@ -41,6 +41,11 @@ class BareGraph {
   }
 
 
+  // Accessors
+  //----------------------------------------------------------------------------
+  def nodeRange() = 0 until numNodes()
+
+
   // Mutators
   //----------------------------------------------------------------------------
   def removeDuplicateEdges() {
@@ -72,7 +77,8 @@ class BareGraph {
 
   // Stats
   //----------------------------------------------------------------------------
-  def numNodes() = math.max(outNeigh.size, inNeigh.size)
+  // assumes outNeigh and inNeigh grow together (they should)
+  def numNodes() = outNeigh.size
 
   def computeDegrees(neighs: AdjacencyList) = {
     neighs map { _.size }
