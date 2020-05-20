@@ -67,7 +67,7 @@ class NamedGraph  extends BareGraph {
 
   // Stats
   //----------------------------------------------------------------------------
-  override def numNodes() = validNodes.size
+  def numValidNodes() = validNodes.size
 
   def numNodeRefs() = idToName.size  
 }

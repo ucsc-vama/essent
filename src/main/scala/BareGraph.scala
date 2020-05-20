@@ -43,7 +43,7 @@ class BareGraph {
 
   // Accessors
   //----------------------------------------------------------------------------
-  def nodeRange() = 0 until numNodes()
+  def nodeRange() = 0 until outNeigh.size
 
 
   // Mutators
