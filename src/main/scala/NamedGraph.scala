@@ -2,7 +2,12 @@ package essent
 
 import firrtl.ir._
 
+import essent.Emitter._
+import essent.Extract._
+import essent.ir._
+
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
+import scala.reflect.ClassTag
 
 // Extends BareGraph to include more attributes per node
 //  - Associates a name (String) and Statement with each node
@@ -51,18 +56,64 @@ class NamedGraph  extends BareGraph {
   def addStatementNode(resultName: String, depNames: Seq[String],
                        stmt: Statement = EmptyStmt) = {
     val potentiallyNewDestID = getID(resultName)
-    validNodes += potentiallyNewDestID
     depNames foreach {depName : String => addEdge(depName, resultName)}
     if (potentiallyNewDestID >= idToStmt.size) {
       val numElemsToGrow = potentiallyNewDestID - idToStmt.size + 1
       idToStmt.appendAll(ArrayBuffer.fill(numElemsToGrow)(EmptyStmt))
     }
     idToStmt(potentiallyNewDestID) = stmt
+    // Don't want to emit state element declarations
+    if (!stmt.isInstanceOf[DefRegister] && !stmt.isInstanceOf[DefMemory])
+      validNodes += potentiallyNewDestID
+  }
+
+  def buildFromBodies(bodies: Seq[Statement]) {
+    val bodyHE = bodies flatMap {
+      case b: Block => b.stmts flatMap findDependencesStmt
+      case s => findDependencesStmt(s)
+    }
+    bodyHE foreach { he => addStatementNode(he.name, he.deps, he.stmt) }
   }
 
 
-  // Traversal
+  // Traversal / Queries / Extraction
   //----------------------------------------------------------------------------
+  def stmtsOrdered(): Seq[Statement] = TopologicalSort(this) filter validNodes map idToStmt
+
+  def containsStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Boolean = {
+    (idToStmt collectFirst { case s: T => s }).isDefined
+  }
+
+  def allRegDefs(): Seq[DefRegister] = idToStmt collect {
+    case dr: DefRegister => dr
+  }
+
+  def stateElemNames(): Seq[String] = idToStmt collect {
+    case dr: DefRegister => dr.name
+    case dm: DefMemory => dm.name
+  }
+
+
+  // Mutation
+  //----------------------------------------------------------------------------
+  def addOrderingDepsForStateUpdates() {
+    def addOrderingEdges(writerName: String, readerTarget: String) {
+      // TODO: need to add guard back in (for readerTarget being in nameToID)?
+      val writerID = nameToID(writerName)
+      val readerIDs = outNeigh(nameToID(readerTarget))
+      readerIDs foreach {
+        readerID => if (readerID != writerID) addEdgeIfNew(readerID, writerID)
+      }
+    }
+    idToStmt foreach { stmt => stmt match {
+      case ru: RegUpdate => {
+        val regName = emitExpr(ru.regRef)
+        addOrderingEdges(regName + "$final", regName)
+      }
+      case mw: MemWrite => addOrderingEdges(mw.nodeName, mw.memName)
+      case _ =>
+    }}
+  }
 
 
   // Stats
@@ -70,4 +121,17 @@ class NamedGraph  extends BareGraph {
   def numValidNodes() = validNodes.size
 
   def numNodeRefs() = idToName.size  
+}
+
+
+
+object NamedGraph {
+  def apply(bodies: Seq[Statement]): NamedGraph = {
+    val ng = new NamedGraph
+    ng.buildFromBodies(bodies)
+    ng.addOrderingDepsForStateUpdates()
+    ng
+  }
+
+  def apply(circuit: Circuit): NamedGraph = apply(flattenWholeDesign(circuit))
 }
