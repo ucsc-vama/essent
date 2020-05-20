@@ -112,8 +112,14 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }}
   }
 
-  def writeRegResetOverrides(sg: StatementGraph) {
-    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String]) {
+    ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+  }
+
+  // def writeRegResetOverrides(sg: StatementGraph) {
+  def writeRegResetOverrides(ng: NamedGraph) {
+    // val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+    val updatesWithResets = ng.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
     val overridesToWrite = resetGroups.toSeq flatMap {
       case (resetName, regDefs) => {
@@ -338,25 +344,28 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val sg = StatementGraph(circuit)
-    val containsAsserts = sg.containsStmtOfType[Stop]()
+    // val sg = StatementGraph(circuit)
+    val ng = NamedGraph(circuit)
+    // val containsAsserts = sg.containsStmtOfType[Stop]()
+    val containsAsserts = ng.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
-    val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
-    if (opt.useZones)
-      sg.coarsenIntoZones(opt.zoneCutoff)
-      // sg.zoneViaMetis()
-    else if (opt.regUpdates)
-      sg.elideIntermediateRegUpdates()
-    if (opt.trackSigs)
-      declareSigTracking(sg, topName, opt)
-    if (opt.trackZone)
-      writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
-    if (opt.trackZone || opt.trackSigs)
-      emitJsonWriter(sg, opt)
-    if (opt.zoneStats)
-      sg.dumpZoneInfoToJson(opt, sigNameToID)
-    if (opt.trackExts)
-      sg.dumpNodeTypeToJson(sigNameToID)
+    // val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
+    val doNotDec = ng.stateElemNames.toSet ++ extIOMap.keySet
+    // if (opt.useZones)
+    //   sg.coarsenIntoZones(opt.zoneCutoff)
+    //   // sg.zoneViaMetis()
+    // else if (opt.regUpdates)
+    //   sg.elideIntermediateRegUpdates()
+    // if (opt.trackSigs)
+    //   declareSigTracking(sg, topName, opt)
+    // if (opt.trackZone)
+    //   writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
+    // if (opt.trackZone || opt.trackSigs)
+    //   emitJsonWriter(sg, opt)
+    // if (opt.zoneStats)
+    //   sg.dumpZoneInfoToJson(opt, sigNameToID)
+    // if (opt.trackExts)
+    //   sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
@@ -375,24 +384,26 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    if (opt.useZones)
-      writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
+    // if (opt.useZones)
+    //   writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackZone || opt.trackSigs)
-      writeLines(2, "cycle_count++;")
-    if (opt.useZones)
-      writeZoningBody(sg, doNotDec, opt)
-    else
-      writeBodyInner(2, sg, doNotDec, opt)
+    // if (opt.trackZone || opt.trackSigs)
+    //   writeLines(2, "cycle_count++;")
+    // if (opt.useZones)
+    //   writeZoningBody(sg, doNotDec, opt)
+    // else
+    //   writeBodyInner(2, sg, doNotDec, opt)
+    writeBodyInner(2, ng, doNotDec)
     if (containsAsserts)
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-    writeRegResetOverrides(sg)
+    // writeRegResetOverrides(sg)
+    writeRegResetOverrides(ng)
     writeLines(1, "}")
-    if (opt.trackZone || opt.trackSigs) {
-      writeLines(1, s"~$topName() {")
-      writeLines(2, "writeActToJson();")
-      writeLines(1, "}")
-    }
+    // if (opt.trackZone || opt.trackSigs) {
+    //   writeLines(1, s"~$topName() {")
+    //   writeLines(2, "writeActToJson();")
+    //   writeLines(1, "}")
+    // }
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
