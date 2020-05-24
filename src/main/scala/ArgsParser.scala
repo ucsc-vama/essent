@@ -104,6 +104,6 @@ class ArgsParser {
 
 object TestFlags {
   def apply(inputFirFile: File): OptFlags = {
-    OptFlags(firInputFile = inputFirFile)
+    OptFlags(firInputFile = inputFirFile, writeHarness = true)
   }
 }
