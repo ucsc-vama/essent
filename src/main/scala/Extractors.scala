@@ -1,5 +1,6 @@
 package essent
 
+import essent.BareGraph.NodeID
 import essent.Emitter._
 import essent.ir._
 
@@ -209,15 +210,24 @@ object Extract extends LazyLogging {
   def squishOutPassThroughConnects(bodies: Seq[Statement],
                                    namesToExclude: Set[String]): Seq[Statement] = {
     def isRef(e: Expression): Boolean = e.isInstanceOf[WRef] || e.isInstanceOf[WSubField]
+    def findChainRenames(ng: NamedGraph): Map[String, String] = {
+      val sourceIDs = ng.nodeRange filter { ng.inNeigh(_).isEmpty }
+      def reachableIDs(id: Int): Seq[Int] = {
+        Seq(id) ++ (ng.outNeigh(id) flatMap reachableIDs)
+      }
+      def findChildRenames(sourceID: NodeID) = {
+        reachableIDs(sourceID) map {
+          childID => (ng.idToName(childID), ng.idToName(sourceID))
+        }
+      }
+      (sourceIDs flatMap findChildRenames).toMap
+    }
     val (straightConnects, otherStmts) = bodies partition { _ match {
       case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
       case _ => false
     }}
     logger.info(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
-    val connectHEs = straightConnects flatMap findDependencesStmt
-    val connectGraph = new Graph
-    connectHEs foreach { he => connectGraph.addNodeWithDeps(he.name, he.deps) }
-    val chainRenames = connectGraph.chainReplacements
+    val chainRenames = findChainRenames(NamedGraph(straightConnects))
     otherStmts map replaceNamesStmt(chainRenames)
   }
 }
