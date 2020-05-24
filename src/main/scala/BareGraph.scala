@@ -46,6 +46,30 @@ class BareGraph {
   def nodeRange() = 0 until outNeigh.size
 
 
+  // Traversals
+  //----------------------------------------------------------------------------
+  // TODO: make NodeSet type?
+  // TODO: speed advantages of using BitSet in places?
+  // TODO: speed advantages of using less Set-like structures?
+  def extPathExists(source: NodeID, dest: NodeID): Boolean = extPathExists(Set(source), Set(dest))
+
+  def extPathExists(sourceSet: Set[NodeID], destSet: Set[NodeID]): Boolean = {
+    val sourcesOnFringe = sourceSet filter {
+      id => outNeigh(id) exists { neigh => !sourceSet.contains(neigh) }
+    }
+    val startingExtFrontier = sourcesOnFringe flatMap outNeigh diff destSet
+    def traverseUntilIntersect(frontier: Set[NodeID], reached: Set[NodeID]): Boolean = {
+      if (frontier.isEmpty) false
+      else {
+        val nextFrontier = frontier flatMap outNeigh diff reached
+        if ((nextFrontier & destSet).nonEmpty) true
+        else traverseUntilIntersect(nextFrontier, reached ++ nextFrontier)
+      }
+    }
+    traverseUntilIntersect(startingExtFrontier, sourceSet ++ startingExtFrontier)
+  }
+
+
   // Mutators
   //----------------------------------------------------------------------------
   def removeDuplicateEdges() {

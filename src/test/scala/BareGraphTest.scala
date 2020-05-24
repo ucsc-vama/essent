@@ -52,4 +52,30 @@ class BareGraphSpec extends FlatSpec {
     assert(!bg.outNeigh(4).contains(3))
     assert(!bg.inNeigh(4).contains(3))
   }
+
+  it should "find trivial external paths" in {
+    val bg = new BareGraph
+    bg.addEdge(0,1)
+    bg.addEdge(1,2)
+    assert( bg.extPathExists(0,2))
+    assert(!bg.extPathExists(0,1))
+    assert(!bg.extPathExists(2,0))
+  }
+
+  it should "find more sophisticated external paths" in {
+    val bg = new BareGraph
+    bg.addEdge(0,1)
+    bg.addEdge(0,2)
+    bg.addEdge(1,2)
+    bg.addEdge(10,11)
+    bg.addEdge(10,12)
+    assert(!bg.extPathExists(0,10))
+    assert(!bg.extPathExists(0,12))
+    bg.addEdge(2,11)
+    assert( bg.extPathExists(0,11))
+    assert(!bg.extPathExists(0,10))
+    assert(!bg.extPathExists(0,12))
+    assert(!bg.extPathExists(Set(0,1,2),Set(10,11,12)))
+    assert( bg.extPathExists(Set(0,1),Set(10,11,12)))
+  }
 }
