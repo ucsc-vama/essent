@@ -345,7 +345,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
     // val sg = StatementGraph(circuit)
-    val ng = NamedGraph(circuit)
+    val ng = NamedGraph(circuit, opt.removeFlatConnects)
     // val containsAsserts = sg.containsStmtOfType[Stop]()
     val containsAsserts = ng.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)

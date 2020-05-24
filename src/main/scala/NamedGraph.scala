@@ -133,5 +133,6 @@ object NamedGraph {
     ng
   }
 
-  def apply(circuit: Circuit): NamedGraph = apply(flattenWholeDesign(circuit))
+  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): NamedGraph =
+    apply(flattenWholeDesign(circuit, removeFlatConnects))
 }

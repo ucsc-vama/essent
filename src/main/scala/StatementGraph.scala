@@ -585,5 +585,5 @@ object StatementGraph {
     sg
   }
 
-  def apply(circuit: Circuit): StatementGraph = apply(flattenWholeDesign(circuit))
+  def apply(circuit: Circuit): StatementGraph = apply(flattenWholeDesign(circuit, true))
 }

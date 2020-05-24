@@ -7,6 +7,7 @@ import scopt.OptionParser
 
 case class OptFlags(
     firInputFile: File = null,
+    removeFlatConnects: Boolean = true,
     regUpdates: Boolean = true,
     muxShadows: Boolean = true,
     useZones: Boolean = true,
@@ -26,24 +27,28 @@ class ArgsParser {
       c.copy(firInputFile = x) ).text(".fir input file")
 
     opt[Unit]("O0").abbr("O0").action( (_, c) => c.copy(
+        removeFlatConnects = false,
         regUpdates = false,
         muxShadows = false,
         useZones=false)
     ).text("disable all optimizations")
 
     opt[Unit]("O1").abbr("O1").action( (_, c) => c.copy(
+        removeFlatConnects = true,
         regUpdates = true,
         muxShadows = false,
         useZones=false)
     ).text("enable only optimizations without conditionals")
 
     opt[Unit]("O2").abbr("O2").action( (_, c) => c.copy(
+        removeFlatConnects = true,
         regUpdates = true,
         muxShadows = true,
         useZones=false)
     ).text("enable conditional evaluation of mux inputs")
 
     opt[Unit]("O3").abbr("O3").action( (_, c) => c.copy(
+        removeFlatConnects = true,
         regUpdates = true,
         muxShadows = true,
         useZones=true)

@@ -191,7 +191,7 @@ object Extract extends LazyLogging {
     flattenStmts(replaceNamesStmt(renames)(body))
   }
 
-  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean = true): Seq[Statement] = {
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit)
     val allBodiesFlattened = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
