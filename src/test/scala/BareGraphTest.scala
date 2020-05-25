@@ -47,6 +47,8 @@ class BareGraphSpec extends FlatSpec {
     assert(bg.inNeigh(4).contains(0))
     assert(bg.outNeigh(3).isEmpty)
     assert(bg.inNeigh(3).isEmpty)
+    assert(!bg.outNeigh(0).contains(0))
+    assert(!bg.inNeigh(0).contains(0))
     assert(!bg.outNeigh(0).contains(3))
     assert(!bg.inNeigh(0).contains(3))
     assert(!bg.outNeigh(4).contains(3))
