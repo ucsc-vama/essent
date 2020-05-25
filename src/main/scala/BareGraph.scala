@@ -46,7 +46,7 @@ class BareGraph {
   def nodeRange() = 0 until outNeigh.size
 
 
-  // Traversals
+  // Traversals / Queries
   //----------------------------------------------------------------------------
   // TODO: make NodeSet type?
   // TODO: speed advantages of using BitSet in places?
@@ -68,6 +68,8 @@ class BareGraph {
     }
     traverseUntilIntersect(startingExtFrontier, sourceSet ++ startingExtFrontier)
   }
+
+  def mergeIsAcyclic(u: NodeID, v: NodeID): Boolean = !extPathExists(u,v) && !extPathExists(v,u)
 
 
   // Mutators
