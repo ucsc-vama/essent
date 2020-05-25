@@ -65,4 +65,18 @@ class NamedGraphSpec extends FlatSpec {
     assert( ng.mergeIsAcyclic("a","x"))
     assert( ng.mergeIsAcyclic("y","a"))
   }
+
+  it should "be able to detect if Statement type anywhere in graph" in {
+    val ng = new NamedGraph
+    ng.addStatementNode("child", Seq("parent0","parent1"), Block(Seq()))
+    assert( ng.containsStmtOfType[Block]())
+    assert(!ng.containsStmtOfType[DefWire]())
+  }
+
+  it should "find IDs of requested Statement type" in {
+    val ng = new NamedGraph
+    ng.addStatementNode("child", Seq("parent0","parent1"), Block(Seq()))
+    assertResult(Seq(ng.nameToID("child"))) { ng.findIDsOfStmtOfType[Block]() }
+    assertResult(Seq()) { ng.findIDsOfStmtOfType[DefWire]() }
+  }
 }

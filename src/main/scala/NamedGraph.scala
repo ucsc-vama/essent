@@ -85,6 +85,10 @@ class NamedGraph  extends BareGraph {
     (idToStmt collectFirst { case s: T => s }).isDefined
   }
 
+  def findIDsOfStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Seq[NodeID] = {
+    idToStmt.zipWithIndex collect { case (s: T , id: Int) => id }
+  }
+
   def allRegDefs(): Seq[DefRegister] = idToStmt collect {
     case dr: DefRegister => dr
   }
