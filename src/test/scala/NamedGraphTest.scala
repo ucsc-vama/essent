@@ -50,4 +50,19 @@ class NamedGraphSpec extends FlatSpec {
     ng.addStatementNode("sibling", Seq("parent0","parent1"), Block(Seq()))
     assertResult(EmptyStmt)(ng.idToStmt(ng.nameToID("parent1")))
   }
+
+  it should "test safety or merges (whether acyclic)" in {
+    val ng = new NamedGraph
+    ng.addEdge("a","b")
+    ng.addEdge("b","c")
+    assert( ng.mergeIsAcyclic("a","b"))
+    assert( ng.mergeIsAcyclic("b","a"))
+    assert(!ng.mergeIsAcyclic("a","c"))
+    assert(!ng.mergeIsAcyclic("c","a"))
+    ng.addEdge("a","c")
+    assert(!ng.mergeIsAcyclic("a","c"))
+    ng.addEdge("x","y")
+    assert( ng.mergeIsAcyclic("a","x"))
+    assert( ng.mergeIsAcyclic("y","a"))
+  }
 }

@@ -94,6 +94,12 @@ class NamedGraph  extends BareGraph {
     case dm: DefMemory => dm.name
   }
 
+  def mergeIsAcyclic(nameA: String, nameB: String): Boolean = {
+    val idA = nameToID(nameA)
+    val idB = nameToID(nameB)
+    super.mergeIsAcyclic(idA, idB)
+  }
+
 
   // Mutation
   //----------------------------------------------------------------------------
