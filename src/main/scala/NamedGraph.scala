@@ -126,6 +126,16 @@ class NamedGraph  extends BareGraph {
     }}
   }
 
+  def mergeStmtsMutably(mergeDest: NodeID, mergeSources: Seq[NodeID], mergeStmt: Statement) {
+    val mergedID = mergeDest
+    val idsToRemove = mergeSources
+    idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+    // NOTE: keeps mappings of name (idToName & nameToID) for debugging dead nodes
+    mergeNodesMutably(mergeDest, mergeSources)
+    idToStmt(mergeDest) = mergeStmt
+    validNodes --= idsToRemove
+  }
+
 
   // Stats
   //----------------------------------------------------------------------------

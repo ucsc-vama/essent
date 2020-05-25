@@ -66,6 +66,18 @@ class NamedGraphSpec extends FlatSpec {
     assert( ng.mergeIsAcyclic("y","a"))
   }
 
+  it should "be able to merge Statements" in {
+    val ng = new NamedGraph
+    ng.addStatementNode("b", Seq("a"), Attach(NoInfo,Seq()))
+    ng.addStatementNode("c", Seq("b","a"), Attach(NoInfo,Seq()))
+    ng.mergeStmtsMutably(ng.nameToID("b"), Seq(ng.nameToID("c")), Block(Seq()))
+    assertResult(Block(Seq()))(ng.idToStmt(ng.nameToID("b")))
+    assertResult(EmptyStmt)(ng.idToStmt(ng.nameToID("c")))
+    assert( ng.validNodes(ng.nameToID("b")))
+    assert(!ng.validNodes(ng.nameToID("c")))
+    // trusts BareGraph's test for mergeNodesMutably
+  }
+
   it should "be able to detect if Statement type anywhere in graph" in {
     val ng = new NamedGraph
     ng.addStatementNode("child", Seq("parent0","parent1"), Block(Seq()))
