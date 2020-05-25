@@ -42,7 +42,7 @@ class BareGraphSpec extends FlatSpec {
     bg.addEdge(0,2)
     bg.addEdge(3,4)
     bg.addEdge(3,0)
-    bg.mergeNodesMutably(Seq(0,3))
+    bg.mergeNodesMutably(0,Seq(3))
     assert(bg.outNeigh(0).contains(4))
     assert(bg.inNeigh(4).contains(0))
     assert(bg.outNeigh(3).isEmpty)

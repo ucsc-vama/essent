@@ -83,11 +83,11 @@ class BareGraph {
     uniquifyNeighs(inNeigh)
   }
 
-  def mergeNodesMutably(idsToMerge: Seq[NodeID]) {
-    val mergedID = idsToMerge.head
-    val idsToRemove = idsToMerge.tail
+  def mergeNodesMutably(mergeDest: NodeID, mergeSources: Seq[NodeID]) {
+    val mergedID = mergeDest
+    val idsToRemove = mergeSources
     def mergeNodeOneDirection(neighA: AdjacencyList, neighB: AdjacencyList) {
-      val combinedDirNeigh = idsToMerge.flatMap(neighA(_)).distinct diff idsToMerge
+      val combinedDirNeigh = idsToRemove.flatMap(neighA(_)).distinct diff idsToRemove
       combinedDirNeigh foreach { id => {
         neighB(id) --= idsToRemove
         // TODO: reduce redundancy with AddEdgeIfNew
