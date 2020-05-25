@@ -42,4 +42,12 @@ class NamedGraphSpec extends FlatSpec {
     assertResult(4) { ng.numEdges }
     assert(ng.idToStmt(ng.nameToID("sibling")) == Block(Seq()))
   }
+
+  it should "fill in idToStmts as necessary with EmptyStmt" in {
+    val ng = new NamedGraph
+    ng.addEdge("alpha", "beta")
+    assertResult(EmptyStmt)(ng.idToStmt(ng.nameToID("alpha")))
+    ng.addStatementNode("sibling", Seq("parent0","parent1"), Block(Seq()))
+    assertResult(EmptyStmt)(ng.idToStmt(ng.nameToID("parent1")))
+  }
 }

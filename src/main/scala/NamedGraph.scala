@@ -40,6 +40,7 @@ class NamedGraph  extends BareGraph {
       val newID = nameToID.size
       nameToID(vertexName) = newID
       idToName += vertexName
+      idToStmt += EmptyStmt
       // TODO: is it better to trust BareGraph to grow for new ID? (current)
       newID
     }
