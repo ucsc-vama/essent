@@ -356,6 +356,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     //   // sg.zoneViaMetis()
     // else if (opt.regUpdates)
     //   sg.elideIntermediateRegUpdates()
+    if (opt.regUpdates)
+      OptElideRegUpdates(ng)
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
     // if (opt.trackZone)
