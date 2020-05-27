@@ -79,7 +79,9 @@ class NamedGraph  extends BareGraph {
 
   // Traversal / Queries / Extraction
   //----------------------------------------------------------------------------
-  def stmtsOrdered(): Seq[Statement] = TopologicalSort(this) filter validNodes map idToStmt
+  def collectValidStmts(ids: Seq[NodeID]): Seq[Statement] = ids filter validNodes map idToStmt
+
+  def stmtsOrdered(): Seq[Statement] = collectValidStmts(TopologicalSort(this))
 
   def containsStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Boolean = {
     (idToStmt collectFirst { case s: T => s }).isDefined

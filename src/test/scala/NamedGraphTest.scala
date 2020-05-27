@@ -91,4 +91,13 @@ class NamedGraphSpec extends FlatSpec {
     assertResult(Seq(ng.nameToID("child"))) { ng.findIDsOfStmtOfType[Block]() }
     assertResult(Seq()) { ng.findIDsOfStmtOfType[DefWire]() }
   }
+
+  it should "collect valid statements from subset" in {
+    val ng = new NamedGraph
+    ng.addStatementNode("b", Seq("a"), Attach(NoInfo,Seq()))
+    ng.addStatementNode("c", Seq("b","a"), Block(Seq()))
+    val goal = Seq(Attach(NoInfo,Seq()), Block(Seq()))
+    val result = ng.collectValidStmts(Seq(ng.nameToID("b"), ng.nameToID("c")))
+    assertResult(goal.toSet)(result.toSet)
+  }
 }
