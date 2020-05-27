@@ -69,7 +69,7 @@ object Emitter {
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
     val nodeReplaced = s match {
       case n: DefNode if (renames.contains(n.name)) => n.copy(name = renames(n.name))
-      case ms: MuxShadowed if (renames.contains(ms.name)) => ms.copy(name = renames(ms.name))
+      case cm: CondMux if (renames.contains(cm.name)) => cm.copy(name = renames(cm.name))
       case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName))
       case _ => s
     }

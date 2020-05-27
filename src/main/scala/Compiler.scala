@@ -89,20 +89,20 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   //----------------------------------------------------------------------------
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String] = Seq()) {
     // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
-    if (opt.muxShadows)
+    if (opt.conditionalMuxes)
       sg.coarsenMuxShadows(keepAvail)
     // NOTE: keepAvail not needed because potentially dangerous statements won't be found bottom-up
     //   potentially dangerous statements have hidden side effects (regs, mem writes, prints, stops)
     sg.stmtsOrdered foreach { stmt => stmt match {
-      case ms: MuxShadowed => {
-        if (!doNotDec.contains(ms.name))
-          writeLines(indentLevel, s"${genCppType(ms.mux.tpe)} ${ms.name};")
-        val muxCondRaw = emitExpr(ms.mux.cond)
+      case cm: CondMux => {
+        if (!doNotDec.contains(cm.name))
+          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${cm.name};")
+        val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         writeLines(indentLevel, s"if ($muxCond) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.tShadow), doNotDec + ms.name, opt, keepAvail)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), doNotDec + cm.name, opt, keepAvail)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(ms.fShadow), doNotDec + ms.name, opt, keepAvail)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), doNotDec + cm.name, opt, keepAvail)
         writeLines(indentLevel, "}")
       }
       case _ => {

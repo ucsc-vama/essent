@@ -114,7 +114,7 @@ class StatementGraph extends Graph with LazyLogging {
       val muxOutputName = findResultName(idToStmt(muxID)).get
       val (tShadow, fShadow) = muxIDToShadows(muxID)
       val muxOutputStmt = idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)
-      idToStmt(muxID) = MuxShadowed(muxOutputName, muxExpr,
+      idToStmt(muxID) = CondMux(muxOutputName, muxExpr,
                           convToStmts(tShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)),
                           convToStmts(fShadow) :+ (idToStmt(muxID) mapExpr replaceMux(muxExpr.fval)))
       mergeStmtsMutably(Seq(muxID) ++ tShadow ++ fShadow)

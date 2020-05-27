@@ -31,9 +31,9 @@ case class MemWrite(memName: String,
   def nodeName(): String = s"$memName.$portName"
 }
 
-case class MuxShadowed(name: String, mux: Mux, tShadow: Seq[Statement], fShadow: Seq[Statement]) extends Statement {
-  def serialize: String =  "shadow mux"
-  def mapStmt(f: Statement => Statement): Statement = this.copy(tShadow = tShadow map f, fShadow = fShadow map f)
+case class CondMux(name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[Statement]) extends Statement {
+  def serialize: String =  "conditional mux"
+  def mapStmt(f: Statement => Statement): Statement = this.copy(tWay = tWay map f, fWay = fWay map f)
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this

@@ -89,7 +89,7 @@ object Extract extends LazyLogging {
   def findResultName(stmt: Statement): Option[String] = stmt match {
     case d: DefNode => Some(d.name)
     case c: Connect => Some(emitExpr(c.loc))
-    case ms: MuxShadowed => Some(ms.name)
+    case cm: CondMux => Some(cm.name)
     case ru: RegUpdate => Some(emitExpr(ru.regRef))
     case mw: MemWrite => Some(mw.memName)
     case p: Print => None
@@ -110,7 +110,7 @@ object Extract extends LazyLogging {
   }
 
   def findStmtNameAndType(stmt: Statement): Seq[(String, Type)] = stmt match {
-    case ms: MuxShadowed => (ms.tShadow ++ ms.fShadow) flatMap findStmtNameAndType
+    case cm: CondMux => (cm.tWay ++ cm.fWay) flatMap findStmtNameAndType
     case az: ActivityZone => az.memberStmts flatMap findStmtNameAndType
     case mw: MemWrite => Seq()
     case _ => findResultName(stmt) match {
@@ -172,7 +172,7 @@ object Extract extends LazyLogging {
   def flattenStmts(s: Statement): Seq[Statement] = s match {
     case b: Block => b.stmts flatMap flattenStmts
     case az: ActivityZone => az.memberStmts flatMap flattenStmts
-    case m: MuxShadowed => (m.tShadow ++ m.fShadow) flatMap flattenStmts
+    case cm: CondMux => (cm.tWay ++ cm.fWay) flatMap flattenStmts
     case EmptyStmt => Seq()
     case _ => Seq(s)
   }
