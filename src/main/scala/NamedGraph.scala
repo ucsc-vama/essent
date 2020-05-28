@@ -41,6 +41,7 @@ class NamedGraph  extends BareGraph {
       nameToID(vertexName) = newID
       idToName += vertexName
       idToStmt += EmptyStmt
+      growNeighsIfNeeded(newID)
       // TODO: is it better to trust BareGraph to grow for new ID? (current)
       newID
     }

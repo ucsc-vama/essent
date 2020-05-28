@@ -20,17 +20,17 @@ class BareGraph {
 
   // Graph building
   //----------------------------------------------------------------------------
-  def addEdge(sourceID: NodeID, destID: NodeID) {
-    def growNeighsIfNeeded(id: NodeID, neighs: AdjacencyList) {
-      assert(id >= 0)
-      if (id >= neighs.size) {
-        val numElemsToGrow = id - neighs.size + 1
-        neighs.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
-      }
+  def growNeighsIfNeeded(id: NodeID) {
+    assert(id >= 0)
+    if (id >= outNeigh.size) {
+      val numElemsToGrow = id - outNeigh.size + 1
+      outNeigh.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
+      inNeigh.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
     }
-    val maxID = math.max(sourceID, destID)
-    growNeighsIfNeeded(maxID, outNeigh)
-    growNeighsIfNeeded(maxID, inNeigh)
+  }
+
+  def addEdge(sourceID: NodeID, destID: NodeID) {
+    growNeighsIfNeeded(math.max(sourceID, destID))
     outNeigh(sourceID) += destID
     inNeigh(destID) += sourceID
   }
