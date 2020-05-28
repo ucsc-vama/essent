@@ -112,8 +112,28 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }}
   }
 
-  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String]) {
-    ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+  // TODO: move specialized CondMux emitter elsewhere?
+  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags) {
+    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    if (opt.conditionalMuxes)
+      MakeCondMux(ng)
+    ng.stmtsOrdered foreach { stmt => stmt match {
+      case cm: CondMux => {
+        if (!doNotDec.contains(cm.name))
+          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${cm.name};")
+        val muxCondRaw = emitExpr(cm.mux.cond)
+        val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
+        writeLines(indentLevel, s"if ($muxCond) {")
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), doNotDec + cm.name, opt)
+        writeLines(indentLevel, "} else {")
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), doNotDec + cm.name, opt)
+        writeLines(indentLevel, "}")
+      }
+      case _ => {
+        writeLines(indentLevel, emitStmt(doNotDec)(stmt))
+        if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
+      }
+    }}
   }
 
   // def writeRegResetOverrides(sg: StatementGraph) {
@@ -395,7 +415,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     //   writeZoningBody(sg, doNotDec, opt)
     // else
     //   writeBodyInner(2, sg, doNotDec, opt)
-    writeBodyInner(2, ng, doNotDec)
+    writeBodyInner(2, ng, doNotDec, opt)
     if (containsAsserts)
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     // writeRegResetOverrides(sg)

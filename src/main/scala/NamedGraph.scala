@@ -107,6 +107,8 @@ class NamedGraph  extends BareGraph {
     super.mergeIsAcyclic(idA, idB)
   }
 
+  def extractSourceIDs(e: Expression): Seq[NodeID] = findDependencesExpr(e) map nameToID
+
 
   // Mutation
   //----------------------------------------------------------------------------
