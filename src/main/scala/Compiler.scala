@@ -115,8 +115,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
-    if (opt.conditionalMuxes)
-      MakeCondMux(ng)
     ng.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (!doNotDec.contains(cm.name))
@@ -378,6 +376,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     //   sg.elideIntermediateRegUpdates()
     if (opt.regUpdates)
       OptElideRegUpdates(ng)
+    if (opt.conditionalMuxes) {
+      val startTime = System.currentTimeMillis()
+      MakeCondMux(ng)
+      val stopTime = System.currentTimeMillis()
+      println(s"[MakeCondMux] took: ${stopTime - startTime}")
+    }
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
     // if (opt.trackZone)

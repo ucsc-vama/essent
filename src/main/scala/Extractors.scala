@@ -162,6 +162,12 @@ object Extract extends LazyLogging {
     case w: DefWire => Seq()
     case m: DefMemory => Seq(HyperedgeDep(m.name, Seq(), m))
     case i: WDefInstance => Seq()
+    case cm: CondMux => {
+      val condDeps = findDependencesExpr(cm.mux.cond)
+      val wayHEDeps = (cm.tWay ++ cm.fWay) flatMap findDependencesStmt
+      val wayDeps = (wayHEDeps flatMap { _.deps }).distinct
+      Seq(HyperedgeDep(cm.name, (condDeps ++ wayDeps).distinct, cm))
+    }
     case EmptyStmt => Seq()
     case _ => throw new Exception(s"unexpected statement type! $s")
   }

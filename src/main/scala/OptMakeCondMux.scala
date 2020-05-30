@@ -7,9 +7,10 @@ import essent.ir._
 import firrtl.ir._
 
 
-object MakeCondMux {
+class MakeCondMux(val ng: NamedGraph) {
   // TODO: pull into generalized MFFC finder
-  def findMaxSafeWay(ng: NamedGraph, sources: Seq[NodeID], dontPass: Set[NodeID], muxID: NodeID) = {
+  def findMaxSafeWay(muxID: NodeID, muxCond: Expression, thisWay: Expression, otherWay: Expression) = {
+    val dontPass = ng.extractSourceIDs(muxCond).toSet ++ ng.extractSourceIDs(otherWay)
     def crawlBackToFindMFFC(frontier: Set[NodeID], inMFFC: Set[NodeID]): Set[NodeID] = {
       def allChildrenIncluded(u: NodeID) = ng.outNeigh(u) forall inMFFC
       if (frontier.nonEmpty) {
@@ -21,46 +22,64 @@ object MakeCondMux {
         crawlBackToFindMFFC(nextFrontier, expandedMFFC)
       } else inMFFC
     }
-    (crawlBackToFindMFFC(sources.toSet, Set(muxID)) - muxID).toSeq
+    val sources = ng.extractSourceIDs(thisWay).toSet
+    (crawlBackToFindMFFC(sources, Set(muxID)) - muxID).toSeq
   }
 
-  // FUTURE: consider creating all MuxShadowed statements on first pass (including nested)
-  // FUTURE: pull mux chains into if else chains to reduce indent depth
-  // FUTURE: consider mux size threshold
-  def apply(ng: NamedGraph) {
-    val muxIDs = ng.idToStmt.zipWithIndex collect {
-      case (DefNode(_, _, m: Mux), id) => id
-      case (Connect(_, _, m: Mux), id) => id
-    }
-    val muxIDToWays = (muxIDs map { muxID => {
-      val muxExpr = grabMux(ng.idToStmt(muxID))
-      val traversalLimits = ng.extractSourceIDs(muxExpr.cond).toSet
-      val tWay = findMaxSafeWay(ng, ng.extractSourceIDs(muxExpr.tval), traversalLimits ++ ng.extractSourceIDs(muxExpr.fval), muxID)
-      val fWay = findMaxSafeWay(ng, ng.extractSourceIDs(muxExpr.fval), traversalLimits ++ ng.extractSourceIDs(muxExpr.tval), muxID)
-      (muxID -> (tWay, fWay))
-    }}).toMap
-    val muxIDSet = muxIDs.toSet
-    val nestedMuxes = muxIDToWays flatMap {
-      case (muxID, (tWay, fWay)) => (tWay ++ fWay) filter muxIDSet
-    }
-    val topLevelMuxes = muxIDSet -- nestedMuxes
-    val muxesWorthShadowing = topLevelMuxes filter { muxID => {
-      val (tWay, fWay) = muxIDToWays(muxID)
-      tWay.nonEmpty || fWay.nonEmpty
-    }}
-    // just make defnode at end for ways instead of replacing?
+  def makeMuxOutputStmt(muxID: NodeID, muxWay: Expression): Statement = {
     def replaceMux(newResult: Expression)(e: Expression): Expression = e match {
       case m: Mux => newResult
       case _ => e
     }
-    muxesWorthShadowing foreach { muxID => {
+    ng.idToStmt(muxID) mapExpr replaceMux(muxWay)
+  }
+
+  def makeCondMuxesTopDown(muxIDsRemaining: Set[NodeID], muxIDToWays: Map[NodeID,(Seq[NodeID],Seq[NodeID])]) {
+    val muxesWithMuxesInside = muxIDToWays collect {
+      case (muxID, (tWay, fWay)) if ((tWay ++ fWay) exists muxIDsRemaining) => muxID
+    }
+    val baseMuxes = muxIDsRemaining -- muxesWithMuxesInside
+    if (baseMuxes.nonEmpty) {
+      // println(s"found ${muxIDsRemaining.size} muxes were big enough and ${baseMuxes.size} are base")
+      baseMuxes foreach { muxID => {
+        val muxExpr = grabMux(ng.idToStmt(muxID))
+        val muxStmtName = ng.idToName(muxID)
+        val (tWay, fWay) = muxIDToWays(muxID)
+        val cmStmt = CondMux(muxStmtName, muxExpr,
+                       ng.collectValidStmts(tWay) :+ makeMuxOutputStmt(muxID, muxExpr.tval),
+                       ng.collectValidStmts(fWay) :+ makeMuxOutputStmt(muxID, muxExpr.fval))
+        ng.mergeStmtsMutably(muxID, tWay ++ fWay, cmStmt)
+      }}
+      makeCondMuxesTopDown(muxesWithMuxesInside.toSet, muxIDToWays)
+    }
+  }
+
+  def doOpt() {
+    val muxIDs = (ng.idToStmt.zipWithIndex collect {
+      case (DefNode(_, _, m: Mux), id) => id
+      case (Connect(_, _, m: Mux), id) => id
+    }).toSet
+    val muxIDToWays = (muxIDs map { muxID => {
       val muxExpr = grabMux(ng.idToStmt(muxID))
-      val muxStmtName = ng.idToName(muxID)
+      val traversalLimits = ng.extractSourceIDs(muxExpr.cond).toSet
+      val tWay = findMaxSafeWay(muxID, muxExpr.cond, muxExpr.tval, muxExpr.fval)
+      val fWay = findMaxSafeWay(muxID, muxExpr.cond, muxExpr.fval, muxExpr.tval)
+      (muxID -> (tWay, fWay))
+    }}).toMap
+    val nonEmptyMuxes = muxIDs filter { muxID => {
       val (tWay, fWay) = muxIDToWays(muxID)
-      val cmStmt = CondMux(muxStmtName, muxExpr,
-                     ng.collectValidStmts(tWay) :+ (ng.idToStmt(muxID) mapExpr replaceMux(muxExpr.tval)),
-                     ng.collectValidStmts(fWay) :+ (ng.idToStmt(muxID) mapExpr replaceMux(muxExpr.fval)))
-      ng.mergeStmtsMutably(muxID, tWay ++ fWay, cmStmt)
+      (tWay.size + fWay.size) > 0
     }}
+    makeCondMuxesTopDown(nonEmptyMuxes, muxIDToWays)
+  }
+}
+
+
+object MakeCondMux {
+  // FUTURE: pull mux chains into if else chains to reduce indent depth
+  // FUTURE: consider mux size threshold
+  def apply(ng: NamedGraph) {
+    val optimizer = new MakeCondMux(ng)
+    optimizer.doOpt()
   }
 }
