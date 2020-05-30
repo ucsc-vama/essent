@@ -6,30 +6,9 @@ import essent.ir._
 
 import firrtl.ir._
 
-import collection.mutable.BitSet
-
 
 object MakeCondMux {
-  // embed inside apply?
-  def crawlBack(ng: NamedGraph, sources: Seq[NodeID], dontPass: BitSet, muxID: NodeID) = {
-    val q = new scala.collection.mutable.Queue[NodeID]
-    val reached = BitSet() ++ Seq(muxID)
-    def allChildrenReached(u: NodeID) = ng.outNeigh(u) forall reached
-    val initialFrontier = sources filter (v => !dontPass(v) && allChildrenReached(v))
-    reached ++= initialFrontier
-    q ++= initialFrontier flatMap ng.inNeigh
-    while (q.nonEmpty) {
-      val v = q.dequeue
-      if (!dontPass(v) && !reached(v) & allChildrenReached(v)) {
-        reached += v
-        q ++= ng.inNeigh(v)
-      }
-    }
-    (reached - muxID).toSeq
-  }
-
   // TODO: pull into generalized MFFC finder
-  // TODO: figure out how to make faster
   def findMaxSafeWay(ng: NamedGraph, sources: Seq[NodeID], dontPass: Set[NodeID], muxID: NodeID) = {
     def crawlBackToFindMFFC(frontier: Set[NodeID], inMFFC: Set[NodeID]): Set[NodeID] = {
       def allChildrenIncluded(u: NodeID) = ng.outNeigh(u) forall inMFFC
@@ -37,7 +16,7 @@ object MakeCondMux {
         val toInclude = frontier filter {
           v => !dontPass(v) && !inMFFC(v) & allChildrenIncluded(v)
         }
-        val nextFrontier = frontier flatMap ng.inNeigh
+        val nextFrontier = toInclude flatMap ng.inNeigh
         val expandedMFFC = inMFFC ++ toInclude
         crawlBackToFindMFFC(nextFrontier, expandedMFFC)
       } else inMFFC
@@ -55,9 +34,9 @@ object MakeCondMux {
     }
     val muxIDToWays = (muxIDs map { muxID => {
       val muxExpr = grabMux(ng.idToStmt(muxID))
-      val traversalLimits = BitSet() ++ ng.extractSourceIDs(muxExpr.cond)
-      val tWay = crawlBack(ng, ng.extractSourceIDs(muxExpr.tval), traversalLimits ++ ng.extractSourceIDs(muxExpr.fval), muxID)
-      val fWay = crawlBack(ng, ng.extractSourceIDs(muxExpr.fval), traversalLimits ++ ng.extractSourceIDs(muxExpr.tval), muxID)
+      val traversalLimits = ng.extractSourceIDs(muxExpr.cond).toSet
+      val tWay = findMaxSafeWay(ng, ng.extractSourceIDs(muxExpr.tval), traversalLimits ++ ng.extractSourceIDs(muxExpr.fval), muxID)
+      val fWay = findMaxSafeWay(ng, ng.extractSourceIDs(muxExpr.fval), traversalLimits ++ ng.extractSourceIDs(muxExpr.tval), muxID)
       (muxID -> (tWay, fWay))
     }}).toMap
     val muxIDSet = muxIDs.toSet
@@ -67,7 +46,7 @@ object MakeCondMux {
     val topLevelMuxes = muxIDSet -- nestedMuxes
     val muxesWorthShadowing = topLevelMuxes filter { muxID => {
       val (tWay, fWay) = muxIDToWays(muxID)
-      // tWay.nonEmpty || fWay.nonEmpty
+      tWay.nonEmpty || fWay.nonEmpty
     }}
     // just make defnode at end for ways instead of replacing?
     def replaceMux(newResult: Expression)(e: Expression): Expression = e match {
