@@ -104,7 +104,6 @@ class NamedGraphSpec extends FlatSpec {
   it should "be able to handle a 1 node graph with no edges" in {
     val stmt = DefNode(NoInfo,"dummy",UIntLiteral(0,IntWidth(1)))
     val ng = NamedGraph(Seq(stmt))
-    println(ng.nodeRange)
     assertResult(Seq(stmt)) { ng.stmtsOrdered }
   }
 }
