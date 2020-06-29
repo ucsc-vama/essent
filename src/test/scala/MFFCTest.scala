@@ -34,7 +34,7 @@ class MFFCSpec extends FlatSpec {
     val mffcWorker = new MFFC(bg)
     val initialMFFC =  ArrayBuffer(-1,-1, 2,-1,-1, 2,-1,-1)
     val expectedMFFC = ArrayBuffer( 2, 2, 2, 2, 2, 2,-1,-1)
-    mffcWorker.overideMFFCs(initialMFFC)
+    mffcWorker.overrideMFFCs(initialMFFC)
     mffcWorker.maximizeFFCs(Set(2,5))
     val grownMFFC = mffcWorker.mffc
     assert(grownMFFC == expectedMFFC)

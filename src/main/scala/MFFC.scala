@@ -14,7 +14,7 @@ class MFFC(val bg: BareGraph) {
   // numeric vertex ID -> MFFC ID
   val mffc = ArrayBuffer.fill(bg.numNodes)(Unclaimed)
 
-  def overideMFFCs(newAssignments: ArrayBuffer[NodeID]) {
+  def overrideMFFCs(newAssignments: ArrayBuffer[NodeID]) {
     mffc.clear()
     newAssignments.copyToBuffer(mffc)
   }
