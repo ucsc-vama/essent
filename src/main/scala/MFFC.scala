@@ -9,48 +9,54 @@ import collection.mutable.ArrayBuffer
 // TODO: add support for excluding nodes
 
 class MFFC(val bg: BareGraph) {
-  import MFFC.NodeUnreached
+  import MFFC.Unclaimed
 
-  def initialMFFCs(): ArrayBuffer[Int] =  ArrayBuffer.fill(bg.numNodes)(NodeUnreached)
+  // numeric vertex ID -> MFFC ID
+  val mffc = ArrayBuffer.fill(bg.numNodes)(Unclaimed)
 
-  def findMFFCs(priorMFFC: ArrayBuffer[NodeID]): ArrayBuffer[NodeID] = {
+  def overideMFFCs(newAssignments: ArrayBuffer[NodeID]) {
+    mffc.clear()
+    newAssignments.copyToBuffer(mffc)
+  }
+
+  def findMFFCs(): ArrayBuffer[NodeID] = {
     val unvisitedSinks = bg.nodeRange filter {
-      id => priorMFFC(id) == NodeUnreached && bg.outNeigh(id).isEmpty
+      id => mffc(id) == Unclaimed && bg.outNeigh(id).isEmpty
     }
-    val visited = bg.nodeRange filter { id => priorMFFC(id) != NodeUnreached }
+    val visited = bg.nodeRange filter { id => mffc(id) != Unclaimed }
     val fringe = (visited flatMap(bg.inNeigh)).distinct
-    val unvisitedFringe = fringe filter { priorMFFC(_) == NodeUnreached }
+    val unvisitedFringe = fringe filter { mffc(_) == Unclaimed }
     val newMFFCseeds = unvisitedSinks.toSet ++ unvisitedFringe
     if (newMFFCseeds.isEmpty) {
-      priorMFFC
+      mffc
     } else {
-      newMFFCseeds foreach { id => priorMFFC(id) = id }
-      val nextMFFC = maximizeFFCs(newMFFCseeds, priorMFFC)
-      findMFFCs(nextMFFC)
+      newMFFCseeds foreach { id => mffc(id) = id }
+      maximizeFFCs(newMFFCseeds)
+      findMFFCs()
     }
   }
 
-  def maximizeFFCs(fringe: Set[NodeID], mffc: ArrayBuffer[NodeID]): ArrayBuffer[NodeID] = {
-    val fringeAncestors = fringe flatMap bg.inNeigh filter { mffc(_) == NodeUnreached }
+  def maximizeFFCs(fringe: Set[NodeID]) {
+    val fringeAncestors = fringe flatMap bg.inNeigh filter { mffc(_) == Unclaimed }
     val newMembers = fringeAncestors flatMap { parent => {
       val childrenMFFCs = (bg.outNeigh(parent) map mffc).distinct
-      if ((childrenMFFCs.size == 1) && (childrenMFFCs.head != NodeUnreached)) {
+      if ((childrenMFFCs.size == 1) && (childrenMFFCs.head != Unclaimed)) {
         mffc(parent) = childrenMFFCs.head
         Seq(parent)
       } else Seq()
     }}
-    if (newMembers.isEmpty) mffc
-    else maximizeFFCs(newMembers, mffc)
+    if (newMembers.nonEmpty)
+      maximizeFFCs(newMembers)
   }
 }
 
 
 object MFFC {
-  val NodeUnreached = -1
+  val Unclaimed = -1
 
   def apply(bg: BareGraph): ArrayBuffer[NodeID] = {
     val worker = new MFFC(bg)
-    worker.findMFFCs(worker.initialMFFCs)
+    worker.findMFFCs()
   }
 }
 
