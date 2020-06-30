@@ -129,4 +129,17 @@ class MergeGraphSpec extends FlatSpec {
     assert(mg.inNeigh(5).isEmpty)
     assert(mg.inNeigh(6) == Seq(1))
   }
+
+  it should "be able to tell size of merged nodes" in {
+    val mg = buildStartingMG()
+    mg.mergeGroups(6, Seq(1))
+    assertResult(0){ mg.nodeSize(0) }
+    assertResult(0){ mg.nodeSize(1) }
+    assertResult(0){ mg.nodeSize(2) }
+    assertResult(1){ mg.nodeSize(3) }
+    assertResult(1){ mg.nodeSize(4) }
+    assertResult(0){ mg.nodeSize(5) }
+    assertResult(5){ mg.nodeSize(6) }
+    assertResult(0){ mg.nodeSize(7) }
+  }
 }

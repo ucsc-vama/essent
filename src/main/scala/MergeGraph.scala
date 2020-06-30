@@ -47,6 +47,8 @@ class MergeGraph extends BareGraph {
     mergeSources foreach { id => mergeIDToMembers.remove(id) }
     mergeNodesMutably(mergeDest, mergeSources)
   }
+
+  def nodeSize(n: NodeID) = mergeIDToMembers.getOrElse(n,Seq()).size
 }
 
 
