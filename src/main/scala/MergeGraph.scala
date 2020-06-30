@@ -19,7 +19,7 @@ class MergeGraph extends BareGraph {
 
   // inherits outNeigh and inNeigh from BareGraph
 
-  def buildFromInitialAssignments(initialAssignments: ArrayBuffer[NodeID]) {
+  def applyInitialAssignments(initialAssignments: ArrayBuffer[NodeID]) {
     // FUTURE: support negative (unassigned) initial assignments
     initialAssignments.copyToBuffer(idToMergeID)
     val asMap = Util.groupIndicesByValue(initialAssignments)
@@ -41,12 +41,17 @@ class MergeGraph extends BareGraph {
 
 
 object MergeGraph {
-  def apply(og: BareGraph, initialAssignments: ArrayBuffer[NodeID]) = {
+  def apply(og: BareGraph): MergeGraph = {
     // FUTURE: cleaner way to do this with clone on superclass?
     val mg = new MergeGraph
     og.outNeigh.copyToBuffer(mg.outNeigh)
     og.inNeigh.copyToBuffer(mg.inNeigh)
-    mg.buildFromInitialAssignments(initialAssignments)
+    mg
+  }
+
+  def apply(og: BareGraph, initialAssignments: ArrayBuffer[NodeID]): MergeGraph = {
+    val mg = apply(og)
+    mg.applyInitialAssignments(initialAssignments)
     mg
   }
 }
