@@ -12,7 +12,7 @@ class AcyclicPart(val mg: MergeGraph) {
     mg.applyInitialAssignments(MFFC(mg))
   }
 
-  def mergeSingleInputMFFCsToParents(smallZoneCutoff: Int = 20) {
+  def mergeSingleInputPartsIntoParents(smallZoneCutoff: Int = 20) {
     val singleInputIDs = mg.nodeRange() filter {
       id => (mg.inNeigh(id).size == 1) && (mg.nodeSize(id) < smallZoneCutoff)
     }
@@ -23,8 +23,8 @@ class AcyclicPart(val mg: MergeGraph) {
       val parentID = mg.inNeigh(childID).head
       mg.mergeGroups(parentID, Seq(childID))
     }}
-    if (baseSingleInputIDs.size < singleInputParents.size)
-      mergeSingleInputMFFCsToParents(smallZoneCutoff)
+    if (baseSingleInputIDs.size < singleInputIDs.size)
+      mergeSingleInputPartsIntoParents(smallZoneCutoff)
   }
 }
 

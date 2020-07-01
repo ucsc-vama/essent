@@ -24,7 +24,7 @@ class AcyclicPartSpec extends FlatSpec {
   }
 
   // Test topology, arrows flow left to right
-  // 0 - 1
+  // 0 - 1 - 8
   //
   // 2 - 3
   //   \
@@ -39,6 +39,7 @@ class AcyclicPartSpec extends FlatSpec {
     bg.addEdge(2,4)
     bg.addEdge(5,7)
     bg.addEdge(6,7)
+    bg.addEdge(1,8)
     bg
   }
 
@@ -56,7 +57,7 @@ class AcyclicPartSpec extends FlatSpec {
   // TODO: should actually test smallZoneCutoff argument
   it should "merge single-input partitions into their parents" in {
     val ap = AcyclicPart(buildStartingBG2)
-    ap.mergeSingleInputMFFCsToParents()
-    assertResult(ArrayBuffer(0,0,2,2,2,5,6,7)){ ap.mg.idToMergeID }
+    ap.mergeSingleInputPartsIntoParents()
+    assertResult(ArrayBuffer(0,0,2,2,2,5,6,7,0)){ ap.mg.idToMergeID }
   }
 }
