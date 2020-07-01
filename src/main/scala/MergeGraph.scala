@@ -49,6 +49,8 @@ class MergeGraph extends BareGraph {
   }
 
   def nodeSize(n: NodeID) = mergeIDToMembers.getOrElse(n,Seq()).size
+
+  def iterGroups() = mergeIDToMembers
 }
 
 

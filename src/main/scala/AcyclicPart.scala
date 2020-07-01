@@ -31,6 +31,8 @@ class AcyclicPart(val mg: MergeGraph) {
     coarsenWithMFFCs()
     mergeSingleInputPartsIntoParents()
   }
+
+  def iterParts() = mg.iterGroups
 }
 
 
