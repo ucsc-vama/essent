@@ -26,6 +26,11 @@ class AcyclicPart(val mg: MergeGraph) {
     if (baseSingleInputIDs.size < singleInputIDs.size)
       mergeSingleInputPartsIntoParents(smallZoneCutoff)
   }
+
+  def partition() {
+    coarsenWithMFFCs()
+    mergeSingleInputPartsIntoParents()
+  }
 }
 
 

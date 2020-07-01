@@ -60,4 +60,10 @@ class AcyclicPartSpec extends FlatSpec {
     ap.mergeSingleInputPartsIntoParents()
     assertResult(ArrayBuffer(0,0,2,2,2,5,6,7,0)){ ap.mg.idToMergeID }
   }
+
+  it should "merge single-input MFFCs with their parents" in {
+    val ap = AcyclicPart(buildStartingBG1)
+    ap.partition()
+    assertResult(ArrayBuffer(4,4,4,4,4,4,7,7)){ ap.mg.idToMergeID }
+  }
 }
