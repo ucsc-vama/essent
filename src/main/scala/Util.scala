@@ -1,6 +1,6 @@
 package essent
 
-import collection.mutable.ArrayBuffer
+import collection.mutable.{ArrayBuffer, HashMap}
 
 object Util {
   // Given an array, returns a map of value to all indices that had that value (CAM-like)
@@ -22,5 +22,9 @@ object Util {
   def tidyString(str: String): String = {
     val charsToRemove = Set(' ', ',', '.', '(', ')')
     str filter { !charsToRemove.contains(_) }
+  }
+
+  def sortHashMapValues[K](hm: HashMap[K,Seq[Int]]) {
+    hm.keys foreach { k => hm(k) = hm(k).sorted }
   }
 }
