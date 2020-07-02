@@ -25,8 +25,7 @@ class MFFCSpec extends FlatSpec {
 
   "A MFFC" should "be built from a BareGraph from scratch" in {
     val bg = buildStartingBG()
-    val mffc = MFFC(bg)
-    assert(mffc == ArrayBuffer(2,2,2,4,4,5,7,7))
+    assertResult(ArrayBuffer(2,2,2,4,4,5,7,7)) { MFFC(bg) }
   }
 
   it should "grow initialAssignments appropriately" in {
@@ -36,7 +35,11 @@ class MFFCSpec extends FlatSpec {
     val expectedMFFC = ArrayBuffer( 2, 2, 2, 2, 2, 2,-1,-1)
     mffcWorker.overrideMFFCs(initialMFFC)
     mffcWorker.maximizeFFCs(Set(2,5))
-    val grownMFFC = mffcWorker.mffc
-    assert(grownMFFC == expectedMFFC)
+    assertResult(expectedMFFC) { mffcWorker.mffc }
+  }
+
+  it should "be able to prevent MFFCs from including excluded" in {
+    val bg = buildStartingBG()
+    assertResult(ArrayBuffer(1,1,2,3,4,5,6,7)) { MFFC(bg, Set(2,4,6)) }
   }
 }

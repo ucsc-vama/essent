@@ -6,10 +6,9 @@ import collection.mutable.ArrayBuffer
 
 
 // TODO: add logging back in
-// TODO: add support for excluding nodes
 
 class MFFC(val bg: BareGraph) {
-  import MFFC.Unclaimed
+  import MFFC.{Unclaimed,Excluded}
 
   // numeric vertex ID -> MFFC ID
   val mffc = ArrayBuffer.fill(bg.numNodes)(Unclaimed)
@@ -19,7 +18,7 @@ class MFFC(val bg: BareGraph) {
     newAssignments.copyToBuffer(mffc)
   }
 
-  def findMFFCs(): ArrayBuffer[NodeID] = {
+  def findMFFCs(excludeSet: Set[NodeID]): ArrayBuffer[NodeID] = {
     val unvisitedSinks = bg.nodeRange filter {
       id => mffc(id) == Unclaimed && bg.outNeigh(id).isEmpty
     }
@@ -32,7 +31,7 @@ class MFFC(val bg: BareGraph) {
     } else {
       newMFFCseeds foreach { id => mffc(id) = id }
       maximizeFFCs(newMFFCseeds)
-      findMFFCs()
+      findMFFCs(excludeSet)
     }
   }
 
@@ -53,10 +52,13 @@ class MFFC(val bg: BareGraph) {
 
 object MFFC {
   val Unclaimed = -1
+  val Excluded  = -2
 
-  def apply(bg: BareGraph): ArrayBuffer[NodeID] = {
+  def apply(bg: BareGraph, excludeSet: Set[NodeID] = Set()): ArrayBuffer[NodeID] = {
     val worker = new MFFC(bg)
-    worker.findMFFCs()
+    excludeSet foreach { id => worker.mffc(id) = Excluded }
+    val mffc = worker.findMFFCs(excludeSet)
+    excludeSet foreach { id => mffc(id) = id }
+    mffc
   }
 }
-
