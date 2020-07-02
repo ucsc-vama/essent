@@ -49,28 +49,56 @@ class AcyclicPartSpec extends FlatSpec {
   }
 
   it should "coarsen by MFFCs" in {
-    val expected = Map((2,Seq(0,1,2)), (4, Seq(3,4)), (5, Seq(5)), (7, Seq(6,7)))
+    val expected = Map((2,Seq(0,1,2)), (4,Seq(3,4)), (5,Seq(5)), (7,Seq(6,7)))
     val ap = AcyclicPart(buildStartingBG1)
     ap.coarsenWithMFFCs()
     assertResult(ArrayBuffer(2,2,2,4,4,5,7,7)){ ap.mg.idToMergeID }
     assertResult(expected){ ap.iterParts }
   }
 
+  it should "coarsen by MFFCs w/ exclude set" in {
+    val expected = Map((1,Seq(0,1)), (2,Seq(2)), (3,Seq(3)), (4,Seq(4)),
+                       (5,Seq(5)), (6,Seq(6)), (7,Seq(7)))
+    val ap = AcyclicPart(buildStartingBG1, Set(2,4,6))
+    ap.coarsenWithMFFCs()
+    assertResult(ArrayBuffer(1,1,2,3,4,5,6,7)){ ap.mg.idToMergeID }
+    assertResult(expected){ ap.iterParts }
+  }
+
   // TODO: should actually test smallZoneCutoff argument
   it should "merge single-input partitions into their parents" in {
-    val expected = Map((0,Seq(0,1,8)), (2, Seq(2,3,4)), (5, Seq(5)),
-                       (6, Seq(6)), (7, Seq(7)))
+    val expected = Map((0,Seq(0,1,8)), (2,Seq(2,3,4)), (5,Seq(5)), (6,Seq(6)),
+                       (7,Seq(7)))
     val ap = AcyclicPart(buildStartingBG2)
     ap.mergeSingleInputPartsIntoParents()
     assertResult(ArrayBuffer(0,0,2,2,2,5,6,7,0)){ ap.mg.idToMergeID }
     assertResult(expected){ ap.iterParts }
   }
 
+  it should "merge single-input partitions into their parents w/ exclude set" in {
+    val expected = Map((0,Seq(0)), (1,Seq(1,8)), (2,Seq(2,4)), (3,Seq(3)),
+                       (5,Seq(5)), (6,Seq(6)), (7,Seq(7)))
+    val ap = AcyclicPart(buildStartingBG2, Set(0,3,6))
+    ap.mergeSingleInputPartsIntoParents()
+    assertResult(ArrayBuffer(0,1,2,3,2,5,6,7,1)){ ap.mg.idToMergeID }
+    assertResult(expected){ ap.iterParts }
+  }
+
   it should "merge single-input MFFCs with their parents" in {
-    val expected = Map((4,Seq(0,1,2,3,4,5)), (7, Seq(6,7)))
+    val expected = Map((4,Seq(0,1,2,3,4,5)), (7,Seq(6,7)))
     val ap = AcyclicPart(buildStartingBG1)
     ap.partition()
     assertResult(ArrayBuffer(4,4,4,4,4,4,7,7)){ ap.mg.idToMergeID }
+    Util.sortHashMapValues(ap.mg.mergeIDToMembers)
+    assertResult(expected){ ap.iterParts }
+  }
+
+  it should "merge single-input MFFCs with their parents w/ exclude set" in {
+    val expected = Map((0,Seq(0)), (1,Seq(1)), (2,Seq(2)), (4,Seq(3,4,5)),
+                       (7,Seq(6,7)))
+    val ap = AcyclicPart(buildStartingBG1, Set(1))
+    ap.partition()
+    assertResult(ArrayBuffer(0,1,2,4,4,4,7,7)){ ap.mg.idToMergeID }
     Util.sortHashMapValues(ap.mg.mergeIDToMembers)
     assertResult(expected){ ap.iterParts }
   }
