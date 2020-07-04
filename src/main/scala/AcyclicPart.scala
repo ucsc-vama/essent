@@ -2,7 +2,7 @@ package essent
 
 import essent.BareGraph.NodeID
 
-import collection.mutable.{ArrayBuffer, HashMap, HashSet}
+import collection.mutable.{ArrayBuffer, HashSet}
 
 
 // TODO: take C_p parameter as input
@@ -34,9 +34,21 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   def partition() {
     coarsenWithMFFCs()
     mergeSingleInputPartsIntoParents()
+    assert(checkPartioning())
   }
 
   def iterParts() = mg.iterGroups
+
+  def checkPartioning() = {
+    val includedSoFar = HashSet[NodeID]()
+    val disjoint = mg.iterGroups forall { case (macroID, memberIDs) => {
+      val overlap = includedSoFar.intersect(memberIDs.toSet).nonEmpty
+      includedSoFar ++= memberIDs
+      !overlap
+    }}
+    val complete = includedSoFar == mg.nodeRange.toSet
+    disjoint && complete
+  }
 }
 
 
