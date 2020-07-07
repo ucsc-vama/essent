@@ -6,7 +6,7 @@ import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 
-import collection.mutable.{ArrayBuffer, BitSet, HashMap, HashSet}
+import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.reflect.ClassTag
 
 // Extends BareGraph to include more attributes per node
@@ -30,8 +30,6 @@ class NamedGraph  extends BareGraph {
   val idToStmt = ArrayBuffer[Statement]()
   // Numeric vertex ID -> Boolean indicating whether node should be emitted
   val validNodes = BitSet()
-  // Edge (numeric vertex ID pair) -> Boolean for edge being state ordering
-  val stateOrderingEdge = HashSet[(NodeID,NodeID)]()
 
 
   // Graph building
@@ -118,17 +116,19 @@ class NamedGraph  extends BareGraph {
   //----------------------------------------------------------------------------
   def addOrderingDepsForStateUpdates() {
     def addOrderingEdges(writerID: NodeID, readerTargetID: NodeID) {
-      outNeigh(readerTargetID) foreach { readerID => {
-        if ((readerID != writerID) && (!outNeigh(readerID).contains(writerID)))
-          addEdge(readerID, writerID)
-          stateOrderingEdge += ((readerID, writerID))
-      }}
+      outNeigh(readerTargetID) foreach {
+        readerID => if (readerID != writerID) addEdgeIfNew(readerID, writerID)
+      }
     }
-    // TODO: need to add guards in case state elements not in nameToID?
-    idToStmt.zipWithIndex foreach { case(stmt, id) => stmt match {
-      case ru: RegUpdate => addOrderingEdges(id, nameToID(emitExpr(ru.regRef)))
-      case mw: MemWrite => addOrderingEdges(id, nameToID(mw.memName))
-      case _ =>
+    idToStmt.zipWithIndex foreach { case(stmt, id) => {
+      val readerTargetName = stmt match {
+        case ru: RegUpdate => Some(emitExpr(ru.regRef))
+        case mw: MemWrite => Some(mw.memName)
+        case _ => None
+      }
+      readerTargetName foreach {
+        name => if (nameToID.contains(name)) addOrderingEdges(id, nameToID(name))
+      }
     }}
   }
 
