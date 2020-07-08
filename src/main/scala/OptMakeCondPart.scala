@@ -63,6 +63,7 @@ class MakeCondPart(ng: NamedGraph) {
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     val ap = AcyclicPart(ng, excludedIDs.toSet)
     convertIntoAZStmts(ap, excludedIDs.toSet)
+    println(partitioningQualityStats())
   }
 
   def getNumZones(): Int = ng.idToStmt count { _.isInstanceOf[ActivityZone] }
@@ -99,6 +100,27 @@ class MakeCondPart(ng: NamedGraph) {
     getExternalZoneInputNames() map {
       name => (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
     }
+  }
+
+  def partitioningQualityStats(): String = {
+    val numParts = getNumZones()
+    val partStmts = ng.idToStmt collect { case az: ActivityZone => az }
+    val partSizes = partStmts map { az => az.memberStmts.size }
+    val numStmtsTotal = partSizes.sum
+    val numEdgesOrig = (partStmts flatMap {
+        az => az.memberStmts flatMap { stmt => findDependencesStmt(stmt) map { _.deps.size }}
+    }).sum
+    val allOutputMaps = getZoneInputMap()
+    val numOutputsUnique = allOutputMaps.size
+    val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
+    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
+    f"""|Parts: $numParts
+        |Output nodes: $numOutputsUnique
+        |Nodes in parts: $numStmtsTotal
+        |Edges in parts: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%))
+        |Nodes/part: ${numStmtsTotal.toDouble/numParts}%.1f
+        |Outputs/part: ${numOutputsUnique.toDouble/numParts}%.1f
+        |Part size range: ${partSizes.min} - ${partSizes.max}""".stripMargin
   }
 }
 
