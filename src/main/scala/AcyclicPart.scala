@@ -55,6 +55,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
 object AcyclicPart {
   def apply(og: BareGraph, excludeSet: Set[NodeID] = Set()) = {
     val ap = new AcyclicPart(MergeGraph(og), excludeSet)
+    ap.partition()
     // TODO: what should return type be? a mergegraph?
     ap
   }
