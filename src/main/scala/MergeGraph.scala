@@ -21,8 +21,12 @@ class MergeGraph extends BareGraph {
 
   def buildFromBareGraph(og: BareGraph) {
     // FUTURE: cleaner way to do this with clone on superclass?
-    og.outNeigh.copyToBuffer(outNeigh)
-    og.inNeigh.copyToBuffer(inNeigh)
+    outNeigh.appendAll(ArrayBuffer.fill(og.numNodes)(ArrayBuffer[NodeID]()))
+    inNeigh.appendAll(ArrayBuffer.fill(og.numNodes)(ArrayBuffer[NodeID]()))
+    og.nodeRange foreach { id => {
+      og.outNeigh(id).copyToBuffer(outNeigh(id))
+      og.inNeigh(id).copyToBuffer(inNeigh(id))
+    }}
     ArrayBuffer.range(0, numNodes()).copyToBuffer(idToMergeID)
     nodeRange() foreach { id  => mergeIDToMembers(id) = Seq(id) }
   }
