@@ -32,8 +32,12 @@ class MakeCondPart(ng: NamedGraph) {
       (id -> externalDepNames.toSeq)
     }}
     val allInputs = idToInputNames.values.flatten.toSet
-    val partsTopoSorted = TopologicalSort(ng) filter idToMemberIDs.keys.toSet
-    partsTopoSorted.zipWithIndex foreach { case (id, azIndex) => {
+    val validParts = (idToMemberIDs flatMap { case (id, members) => {
+      if (members.exists(ng.validNodes)) Seq(id)
+      else Seq()
+    }}).toSet
+    val partsTopoSorted = TopologicalSort(ap.mg) filter validParts
+    partsTopoSorted.zipWithIndex foreach { case (id, topoOrder) => {
       val consumedOutputs = idToProducedOutputs(id).toSet.intersect(allInputs)
       val namesToDeclare = consumedOutputs -- alreadyDeclared
       val nameToStmts = idToMemberStmts(id) map { stmt => (findResultName(stmt) -> stmt) }
@@ -41,8 +45,10 @@ class MakeCondPart(ng: NamedGraph) {
         case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
       }
       val alwaysActive = excludedIDs.contains(id)
-      val azStmt = ActivityZone(azIndex, alwaysActive, idToInputNames(id), idToMemberStmts(id), outputsToDeclare.toMap)
+      val azStmt = ActivityZone(topoOrder, alwaysActive, idToInputNames(id),
+                                idToMemberStmts(id), outputsToDeclare.toMap)
       ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), azStmt)
+      assert(ng.validNodes(id))
     }}
   }
 
@@ -61,6 +67,7 @@ class MakeCondPart(ng: NamedGraph) {
   def doOpt() {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
+    excludedIDs ++= (ng.nodeRange filterNot ng.validNodes)
     val ap = AcyclicPart(ng, excludedIDs.toSet)
     convertIntoAZStmts(ap, excludedIDs.toSet)
     println(partitioningQualityStats())
