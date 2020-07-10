@@ -10,7 +10,9 @@ import collection.mutable.{ArrayBuffer, HashSet}
 
 class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   def coarsenWithMFFCs() {
-    mg.applyInitialAssignments(MFFC(mg, excludeSet))
+    val mffcResults = MFFC(mg, excludeSet)
+    excludeSet foreach { id => mffcResults(id) = id }
+    mg.applyInitialAssignments(mffcResults)
   }
 
   def mergeSingleInputPartsIntoParents(smallZoneCutoff: Int = 20) {
