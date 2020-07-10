@@ -87,18 +87,23 @@ class BareGraph {
     val mergedID = mergeDest
     val idsToRemove = mergeSources
     val idsToMerge = mergeSources :+ mergeDest
-    def mergeNodeOneDirection(neighA: AdjacencyList, neighB: AdjacencyList) {
-      val combinedDirNeigh = idsToMerge.flatMap(neighA(_)).distinct diff idsToMerge
-      combinedDirNeigh foreach { id => {
-        neighB(id) --= idsToRemove
-        // TODO: reduce redundancy with AddEdgeIfNew
-        if (!neighB(id).contains(mergedID)) neighB(id) += mergedID
-      }}
-      neighA(mergedID) = combinedDirNeigh.to[ArrayBuffer]
-      idsToRemove foreach { deleteID => neighA(deleteID).clear() }
-    }
-    mergeNodeOneDirection(inNeigh, outNeigh)
-    mergeNodeOneDirection(outNeigh, inNeigh)
+    val combinedInNeigh = idsToMerge.flatMap(inNeigh).distinct diff idsToMerge
+    val combinedOutNeigh = idsToMerge.flatMap(outNeigh).distinct diff idsToMerge
+    // TODO: reduce redundancy with AddEdgeIfNew
+    combinedInNeigh foreach { inNeighID => {
+      outNeigh(inNeighID) --= idsToRemove
+      if (!outNeigh(inNeighID).contains(mergedID)) outNeigh(inNeighID) += mergedID
+    }}
+    combinedOutNeigh foreach { outNeighID => {
+      inNeigh(outNeighID) --= idsToRemove
+      if (!inNeigh(outNeighID).contains(mergedID)) inNeigh(outNeighID) += mergedID
+    }}
+    inNeigh(mergedID) = combinedInNeigh.to[ArrayBuffer]
+    outNeigh(mergedID) = combinedOutNeigh.to[ArrayBuffer]
+    idsToRemove foreach { deleteID => {
+      inNeigh(deleteID).clear()
+      outNeigh(deleteID).clear()
+    }}
   }
 
 
