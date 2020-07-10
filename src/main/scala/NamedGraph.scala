@@ -139,6 +139,7 @@ class NamedGraph  extends BareGraph {
     // NOTE: keeps mappings of name (idToName & nameToID) for debugging dead nodes
     mergeNodesMutably(mergeDest, mergeSources)
     idToStmt(mergeDest) = mergeStmt
+    validNodes(mergeDest) = (mergeSources :+ mergeDest) exists { validNodes }
     validNodes --= idsToRemove
   }
 
