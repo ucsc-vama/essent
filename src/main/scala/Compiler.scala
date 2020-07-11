@@ -464,7 +464,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     // val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
     val doNotDec = ng.stateElemNames.toSet ++ extIOMap.keySet
     if (opt.useZones)
-      condPartWorker.doOpt()
+      condPartWorker.doOpt(opt.zoneCutoff)
     // if (opt.useZones)
     //   sg.coarsenIntoZones(opt.zoneCutoff)
     //   // sg.zoneViaMetis()

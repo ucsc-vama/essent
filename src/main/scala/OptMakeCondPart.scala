@@ -64,11 +64,12 @@ class MakeCondPart(ng: NamedGraph) {
     }
   }
 
-  def doOpt() {
+  def doOpt(smallZoneCutoff: Int = 20) {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (ng.nodeRange filterNot ng.validNodes)
     val ap = AcyclicPart(ng, excludedIDs.toSet)
+    ap.partition(smallZoneCutoff)
     convertIntoAZStmts(ap, excludedIDs.toSet)
     println(partitioningQualityStats())
   }
