@@ -22,6 +22,14 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
     mergesMade
   }
 
+  def numEdgesRemovedByMerge(mergeReq: Seq[NodeID]): Int = {
+    val totalInDegree = (mergeReq map { mg.inNeigh(_).size }).sum
+    val totalOutDegree = (mergeReq map { mg.outNeigh(_).size }).sum
+    val mergedInDegree = ((mergeReq flatMap mg.inNeigh).distinct diff mergeReq).size
+    val mergedOutDegree = ((mergeReq flatMap mg.outNeigh).distinct diff mergeReq).size
+    totalInDegree + totalOutDegree - (mergedInDegree + mergedOutDegree)
+  }
+
   def coarsenWithMFFCs() {
     val mffcResults = MFFC(mg, excludeSet)
     excludeSet foreach { id => mffcResults(id) = id }
@@ -96,12 +104,38 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
     }
   }
 
+  def mergeSmallPartsDown(smallZoneCutoff: Int = 20) {
+    val smallPartIDs = mg.nodeRange filter { id => {
+      val nodeSize = mg.nodeSize(id)
+      (nodeSize > 0) && (nodeSize < smallZoneCutoff) && !excludeSet.contains(id)
+    }}
+    val mergesToConsider = smallPartIDs flatMap { id => {
+      val mergeableChildren = mg.outNeigh(id) filter {
+        childID => mg.mergeIsAcyclic(id, childID) && !excludeSet.contains(childID)
+      }
+      if (mergeableChildren.nonEmpty) {
+        val orderedByEdgesRemoved = mergeableChildren.sortBy {
+          childID => numEdgesRemovedByMerge(Seq(id, childID))
+        }
+        val topChoice = orderedByEdgesRemoved.last
+        Seq(Seq(id, topChoice))
+      } else Seq()
+    }}
+    println(s"Small zones: ${smallPartIDs.size}")
+    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+    if (mergesMade.nonEmpty) {
+      mergeSmallPartsDown(smallZoneCutoff)
+    }
+  }
+
   def partition() {
     val toApply = Seq(
       ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
       ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
       ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings()}),
       ("small", {ap: AcyclicPart => ap.mergeSmallParts()}),
+      ("down", {ap: AcyclicPart => ap.mergeSmallPartsDown()}),
     )
     toApply foreach { case (label, func) => {
       val startTime = System.currentTimeMillis()
