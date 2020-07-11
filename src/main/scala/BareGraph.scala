@@ -71,6 +71,11 @@ class BareGraph {
 
   def mergeIsAcyclic(u: NodeID, v: NodeID): Boolean = !extPathExists(u,v) && !extPathExists(v,u)
 
+  // TODO: speed up by doing a single traversal
+  def mergeIsAcyclic(ids: Set[NodeID]): Boolean = {
+    ids forall { source => !extPathExists(Set(source), ids - source) }
+  }
+
 
   // Mutators
   //----------------------------------------------------------------------------

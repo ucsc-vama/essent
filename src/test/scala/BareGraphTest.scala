@@ -81,7 +81,7 @@ class BareGraphSpec extends FlatSpec {
     assert( bg.extPathExists(Set(0,1),Set(10,11,12)))
   }
 
-  it should "test safety or merges (whether acyclic)" in {
+  it should "test safety of 2-node merge" in {
     val bg = new BareGraph
     bg.addEdge(0,1)
     bg.addEdge(1,2)
@@ -94,5 +94,22 @@ class BareGraphSpec extends FlatSpec {
     bg.addEdge(10,11)
     assert( bg.mergeIsAcyclic(0,10))
     assert( bg.mergeIsAcyclic(11,0))
+  }
+
+  it should "test safety of general merge" in {
+    val bg = new BareGraph
+    bg.addEdge(0,1)
+    bg.addEdge(1,2)
+    assert( bg.mergeIsAcyclic(Set(0,1)))
+    assert( bg.mergeIsAcyclic(Set(1,2)))
+    assert(!bg.mergeIsAcyclic(Set(0,2)))
+    bg.addEdge(0,2)
+    assert( bg.mergeIsAcyclic(Set(0,1)))
+    assert( bg.mergeIsAcyclic(Set(1,2)))
+    assert(!bg.mergeIsAcyclic(Set(0,2)))
+    assert( bg.mergeIsAcyclic(Set(0,1,2)))
+    bg.addEdge(0,3)
+    bg.addEdge(3,2)
+    assert(!bg.mergeIsAcyclic(Set(0,1,2)))
   }
 }
