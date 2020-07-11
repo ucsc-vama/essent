@@ -47,16 +47,18 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def mergeSmallSiblings(smallZoneCutoff: Int = 10) {
-    val smallPartIDs = mg.nodeRange filter {
-      id => (mg.nodeSize(id) < smallZoneCutoff) && (!excludeSet.contains(id))
-    }
+    val smallPartIDs = mg.nodeRange filter { id => {
+      val nodeSize = mg.nodeSize(id)
+      (nodeSize > 0) && (nodeSize < smallZoneCutoff) && (!excludeSet.contains(id))
+    }}
     val inputsAndIDPairs = smallPartIDs map { id => {
       val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
       (inputsCanonicalized, id)
     }}
     val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
+    // NOTE: since inputs *exactly* the same, don't need to do merge safety check
     val mergesToConsider = inputsToSiblings collect {
-      case (inputIDs, siblingIDs) if ((siblingIDs.size > 1) && mg.mergeIsAcyclic(siblingIDs.toSet)) => siblingIDs
+      case (inputIDs, siblingIDs) if (siblingIDs.size > 1) => siblingIDs
     }
     println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
     val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
@@ -66,9 +68,18 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def partition() {
-    coarsenWithMFFCs()
-    mergeSingleInputPartsIntoParents()
-    mergeSmallSiblings()
+    val toApply = Seq(
+      ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
+      ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
+      ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings()}),
+    )
+    toApply foreach { case (label, func) => {
+      val startTime = System.currentTimeMillis()
+      func(this)
+      val stopTime = System.currentTimeMillis()
+      println(s"[$label] took: ${stopTime - startTime}")
+      println(s"Down to ${mg.mergeIDToMembers.size} parts")
+    }}
     assert(checkPartioning())
   }
 
