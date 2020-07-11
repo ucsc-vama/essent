@@ -67,11 +67,41 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
     }
   }
 
+  def mergeSmallParts(smallZoneCutoff: Int = 20, mergeThreshold: Double = 0.5) {
+    val smallPartIDs = mg.nodeRange filter { id => {
+      val nodeSize = mg.nodeSize(id)
+      (nodeSize > 0) && (nodeSize < smallZoneCutoff) && !excludeSet.contains(id)
+    }}
+    val mergesToConsider = smallPartIDs flatMap { id => {
+      val numInputs = mg.inNeigh(id).size.toDouble
+      val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
+      val legalSiblings = siblings filter { sibID => !excludeSet.contains(sibID) }
+      val myInputSet = mg.inNeigh(id).toSet
+      val sibsScored = legalSiblings map {
+        sibID => (mg.inNeigh(sibID).count(myInputSet) / numInputs, sibID)
+      }
+      val choices = sibsScored filter { _._1 >= mergeThreshold }
+      val choicesOrdered = choices.sortWith{_._1 > _._1}
+      val topChoice = choicesOrdered.find {
+        case (score, sibID) => mg.mergeIsAcyclic(sibID, id)
+      }
+      if (topChoice.isEmpty) Seq()
+      else Seq(Seq(topChoice.get._2, id))
+    }}
+    println(s"Small parts: ${smallPartIDs.size}")
+    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+    if (mergesMade.nonEmpty) {
+      mergeSmallParts(smallZoneCutoff, mergeThreshold)
+    }
+  }
+
   def partition() {
     val toApply = Seq(
       ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
       ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
       ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings()}),
+      ("small", {ap: AcyclicPart => ap.mergeSmallParts()}),
     )
     toApply foreach { case (label, func) => {
       val startTime = System.currentTimeMillis()
