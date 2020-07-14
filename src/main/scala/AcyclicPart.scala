@@ -8,6 +8,12 @@ import collection.mutable.{ArrayBuffer, HashSet}
 // TODO: convert back to logging
 
 class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
+  def partsRemaining() = (mg.mergeIDToMembers.keys.toSet - excludeSet).size
+
+  def findSmallParts(smallPartCutoff: Int) = mg.mergeIDToMembers.keys.toSeq filter {
+    id => (mg.nodeSize(id) < smallPartCutoff) && (!excludeSet.contains(id))
+  }
+
   def perfomMergesIfPossible(mergesToConsider: Seq[Seq[NodeID]]) = {
     val mergesMade = mergesToConsider flatMap { mergeReq => {
       assert(mergeReq.size > 1)
@@ -36,14 +42,11 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20) {
-    val singleInputIDs = mg.nodeRange() filter {
-      id => (mg.inNeigh(id).size == 1) &&
-            (mg.nodeSize(id) < smallPartCutoff) &&
-            (!excludeSet.contains(id))
-    }
+    val smallPartIDs = findSmallParts(smallPartCutoff)
+    val singleInputIDs = smallPartIDs filter { id => (mg.inNeigh(id).size == 1) }
     val singleInputParents = (singleInputIDs flatMap mg.inNeigh).distinct
     val baseSingleInputIDs = singleInputIDs diff singleInputParents
-    println(s"Merging up ${baseSingleInputIDs.size} single-input zones")
+    println(s"  merging up ${baseSingleInputIDs.size} single-input zones")
     baseSingleInputIDs foreach { childID => {
       val parentID = mg.inNeigh(childID).head
       if (!excludeSet.contains(parentID))
@@ -54,10 +57,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def mergeSmallSiblings(smallPartCutoff: Int = 10) {
-    val smallPartIDs = mg.nodeRange filter { id => {
-      val nodeSize = mg.nodeSize(id)
-      (nodeSize > 0) && (nodeSize < smallPartCutoff) && (!excludeSet.contains(id))
-    }}
+    val smallPartIDs = findSmallParts(smallPartCutoff)
     val inputsAndIDPairs = smallPartIDs map { id => {
       val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
       (inputsCanonicalized, id)
@@ -67,7 +67,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
     val mergesToConsider = inputsToSiblings collect {
       case (inputIDs, siblingIDs) if (siblingIDs.size > 1) => siblingIDs
     }
-    println(s"Attempting to merge ${mergesToConsider.size} groups of small siblings")
+    println(s"  attempting to merge ${mergesToConsider.size} groups of small siblings")
     val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
     if (mergesMade.nonEmpty) {
       mergeSmallSiblings(smallPartCutoff)
@@ -75,10 +75,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def mergeSmallParts(smallPartCutoff: Int = 20, mergeThreshold: Double = 0.5) {
-    val smallPartIDs = mg.nodeRange filter { id => {
-      val nodeSize = mg.nodeSize(id)
-      (nodeSize > 0) && (nodeSize < smallPartCutoff) && !excludeSet.contains(id)
-    }}
+    val smallPartIDs = findSmallParts(smallPartCutoff)
     val mergesToConsider = smallPartIDs flatMap { id => {
       val numInputs = mg.inNeigh(id).size.toDouble
       val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
@@ -95,8 +92,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
       if (topChoice.isEmpty) Seq()
       else Seq(Seq(topChoice.get._2, id))
     }}
-    println(s"Small parts: ${smallPartIDs.size}")
-    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    println(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging")
     val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
     if (mergesMade.nonEmpty) {
       mergeSmallParts(smallPartCutoff, mergeThreshold)
@@ -104,10 +100,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
   }
 
   def mergeSmallPartsDown(smallPartCutoff: Int = 20) {
-    val smallPartIDs = mg.nodeRange filter { id => {
-      val nodeSize = mg.nodeSize(id)
-      (nodeSize > 0) && (nodeSize < smallPartCutoff) && !excludeSet.contains(id)
-    }}
+    val smallPartIDs = findSmallParts(smallPartCutoff)
     val mergesToConsider = smallPartIDs flatMap { id => {
       val mergeableChildren = mg.outNeigh(id) filter {
         childID => mg.mergeIsAcyclic(id, childID) && !excludeSet.contains(childID)
@@ -120,8 +113,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
         Seq(Seq(id, topChoice))
       } else Seq()
     }}
-    println(s"Small zones: ${smallPartIDs.size}")
-    println(s"Worthwhile merges: ${mergesToConsider.size}")
+    println(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging down")
     val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
     if (mergesMade.nonEmpty) {
       mergeSmallPartsDown(smallPartCutoff)
@@ -135,13 +127,14 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
       ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings(smallPartCutoff)}),
       ("small", {ap: AcyclicPart => ap.mergeSmallParts(smallPartCutoff, 0.5)}),
       ("down", {ap: AcyclicPart => ap.mergeSmallPartsDown(smallPartCutoff)}),
+      ("small2", {ap: AcyclicPart => ap.mergeSmallParts(2*smallPartCutoff, 0.25)}),
     )
     toApply foreach { case (label, func) => {
       val startTime = System.currentTimeMillis()
       func(this)
       val stopTime = System.currentTimeMillis()
       println(s"[$label] took: ${stopTime - startTime}")
-      println(s"Down to ${mg.mergeIDToMembers.size} parts")
+      println(s"Down to ${partsRemaining()} parts")
     }}
     assert(checkPartioning())
   }
