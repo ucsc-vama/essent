@@ -80,8 +80,9 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
       val numInputs = mg.inNeigh(id).size.toDouble
       val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
       val legalSiblings = siblings filter { sibID => !excludeSet.contains(sibID) }
+      val orderConstrSibs = legalSiblings filter { _ < id }
       val myInputSet = mg.inNeigh(id).toSet
-      val sibsScored = legalSiblings map {
+      val sibsScored = orderConstrSibs map {
         sibID => (mg.inNeigh(sibID).count(myInputSet) / numInputs, sibID)
       }
       val choices = sibsScored filter { _._1 >= mergeThreshold }
