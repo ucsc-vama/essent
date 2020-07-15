@@ -262,7 +262,10 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         }}
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
-        writeBodyInner(2, NamedGraph(noRegUpdates), doNotDec, opt)
+        val innerNG = NamedGraph(noRegUpdates)
+        if (opt.conditionalMuxes)
+          MakeCondMux(innerNG, (az.outputsToDeclare map { _._1 }).toSet)
+        writeBodyInner(2, innerNG, doNotDec, opt)
         writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))

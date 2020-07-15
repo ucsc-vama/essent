@@ -7,10 +7,10 @@ import essent.ir._
 import firrtl.ir._
 
 
-class MakeCondMux(val ng: NamedGraph) {
+class MakeCondMux(val ng: NamedGraph, keepAvail: Set[NodeID]) {
   // TODO: pull into generalized MFFC finder
   def findMaxSafeWay(muxID: NodeID, muxCond: Expression, thisWay: Expression, otherWay: Expression) = {
-    val dontPass = ng.extractSourceIDs(muxCond).toSet ++ ng.extractSourceIDs(otherWay)
+    val dontPass = ng.extractSourceIDs(muxCond).toSet ++ ng.extractSourceIDs(otherWay) ++ keepAvail
     def crawlBackToFindMFFC(frontier: Set[NodeID], inMFFC: Set[NodeID]): Set[NodeID] = {
       def allChildrenIncluded(u: NodeID) = ng.outNeigh(u) forall inMFFC
       if (frontier.nonEmpty) {
@@ -78,8 +78,9 @@ class MakeCondMux(val ng: NamedGraph) {
 object MakeCondMux {
   // FUTURE: pull mux chains into if else chains to reduce indent depth
   // FUTURE: consider mux size threshold
-  def apply(ng: NamedGraph) {
-    val optimizer = new MakeCondMux(ng)
+  def apply(ng: NamedGraph, keepAvailNames: Set[String] = Set()) {
+    val keepAvailIDs = keepAvailNames map ng.nameToID
+    val optimizer = new MakeCondMux(ng, keepAvailIDs)
     optimizer.doOpt()
   }
 }
