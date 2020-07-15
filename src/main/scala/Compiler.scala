@@ -87,31 +87,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
 
   // Write General-purpose Eval
   //----------------------------------------------------------------------------
-  def writeBodyInner(indentLevel: Int, sg: StatementGraph, doNotDec: Set[String], opt: OptFlags, keepAvail: Seq[String] = Seq()) {
-    // sg.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
-    if (opt.conditionalMuxes)
-      sg.coarsenMuxShadows(keepAvail)
-    // NOTE: keepAvail not needed because potentially dangerous statements won't be found bottom-up
-    //   potentially dangerous statements have hidden side effects (regs, mem writes, prints, stops)
-    sg.stmtsOrdered foreach { stmt => stmt match {
-      case cm: CondMux => {
-        if (!doNotDec.contains(cm.name))
-          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${cm.name};")
-        val muxCondRaw = emitExpr(cm.mux.cond)
-        val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
-        writeLines(indentLevel, s"if ($muxCond) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), doNotDec + cm.name, opt, keepAvail)
-        writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), doNotDec + cm.name, opt, keepAvail)
-        writeLines(indentLevel, "}")
-      }
-      case _ => {
-        writeLines(indentLevel, emitStmt(doNotDec)(stmt))
-        if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
-      }
-    }}
-  }
-
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
@@ -173,60 +148,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   }
 
   def writeZoningPredecs(
-      sg: StatementGraph,
-      topName: String,
-      extIOtypes: Map[String, Type],
-      startingDoNotDec: Set[String],
-      opt: OptFlags) {
-    // predeclare zone outputs
-    val outputPairs = sg.getZoneOutputsToDeclare()
-    val outputConsumers = sg.getZoneInputMap()
-    writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
-    val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
-    val nonMemCacheDecs = sg.getExternalZoneInputTypes(extIOtypes) map {
-      case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
-    }
-    writeLines(1, nonMemCacheDecs)
-    writeLines(1, s"std::array<bool,${sg.getNumZones()}> $flagVarName;")
-    // FUTURE: worry about namespace collisions with user variables
-    writeLines(1, s"bool sim_cached = false;")
-    writeLines(1, s"bool regs_set = false;")
-    writeLines(1, s"bool update_registers;")
-    writeLines(1, s"bool done_reset;")
-    writeLines(1, s"bool verbose;")
-    writeLines(0, "")
-    sg.stmtsOrdered foreach { stmt => stmt match {
-      case az: ActivityZone => {
-        writeLines(1, s"void ${genZoneFuncName(az.id)}() {")
-        if (!az.alwaysActive)
-          writeLines(2, s"$flagVarName[${az.id}] = false;")
-        if (opt.trackZone)
-          writeLines(2, s"$actVarName[${az.id}]++;")
-        val cacheOldOutputs = az.outputsToDeclare.toSeq map {
-          case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
-        }}
-        writeLines(2, cacheOldOutputs)
-        val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
-        writeBodyInner(2, StatementGraph(noRegUpdates), doNotDec, opt, outputConsumers.keys.toSeq)
-        writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
-        val regUpdateNamesInZone = regUpdates flatMap findResultName
-        writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
-        writeLines(2, regUpdates flatMap emitStmt(doNotDec))
-        // triggers for MemWrites
-        val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
-        val memWriteTriggerZones = memWritesInZone flatMap { mw => {
-          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-          genDepZoneTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
-        }}
-        writeLines(2, memWriteTriggerZones)
-        writeLines(1, "}")
-      }
-      case _ => throw new Exception(s"Statement at top-level is not a zone (${stmt.serialize})")
-    }}
-    writeLines(0, "")
-  }
-
-  def writeZoningPredecs(
       ng: NamedGraph,
       condPartWorker: MakeCondPart,
       topName: String,
@@ -282,43 +203,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       case _ => throw new Exception(s"Statement at top-level is not a zone (${stmt.serialize})")
     }}
     writeLines(0, "")
-  }
-
-  def writeZoningBody(sg: StatementGraph, doNotDec: Set[String], opt: OptFlags) {
-    writeLines(2, "if (reset || !done_reset) {")
-    writeLines(3, "sim_cached = false;")
-    writeLines(3, "regs_set = false;")
-    writeLines(2, "}")
-    writeLines(2, "if (!sim_cached) {")
-    writeLines(3, s"$flagVarName.fill(true);")
-    writeLines(2, "}")
-    writeLines(2, "sim_cached = regs_set;")
-    writeLines(2, "this->update_registers = update_registers;")
-    writeLines(2, "this->done_reset = done_reset;")
-    writeLines(2, "this->verbose = verbose;")
-    val outputConsumers = sg.getZoneInputMap()
-    val externalZoneInputNames = sg.getExternalZoneInputNames()
-    // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(externalZoneInputNames, outputConsumers, "$old"))
-    // cache old versions
-    val nonMemCaches = externalZoneInputNames map { sigName => {
-      val oldVersion = s"${sigName.replace('.','$')}$$old"
-      s"$oldVersion = $sigName;"
-    }}
-    writeLines(2, nonMemCaches.toSeq)
-    sg.stmtsOrdered foreach { stmt => stmt match {
-      case az: ActivityZone => {
-        if (!az.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${az.id}]) ${genZoneFuncName(az.id)}();")
-        else
-          writeLines(2, s"${genZoneFuncName(az.id)}();")
-      }
-      case _ => writeLines(2, emitStmt(doNotDec)(stmt))
-    }}
-    // writeLines(2, "#ifdef ALL_ON")
-    // writeLines(2, "ZONEflags.fill(true);" )
-    // writeLines(2, "#endif")
-    writeLines(2, "regs_set = true;")
   }
 
   def writeZoningBody(ng: NamedGraph, condPartWorker: MakeCondPart, doNotDec: Set[String], opt: OptFlags) {
@@ -458,31 +342,19 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    // val sg = StatementGraph(circuit)
     val ng = NamedGraph(circuit, opt.removeFlatConnects)
     val condPartWorker = MakeCondPart(ng)
-    // val containsAsserts = sg.containsStmtOfType[Stop]()
     val containsAsserts = ng.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
-    // val doNotDec = sg.stateElemNames.toSet ++ extIOMap.keySet
     val doNotDec = ng.stateElemNames.toSet ++ extIOMap.keySet
-    if (opt.useZones)
+    if (opt.useZones) {
       condPartWorker.doOpt(opt.zoneCutoff)
-    // if (opt.useZones)
-    //   sg.coarsenIntoZones(opt.zoneCutoff)
-    //   // sg.zoneViaMetis()
-    // else if (opt.regUpdates)
-    //   sg.elideIntermediateRegUpdates()
-
-    // if (opt.regUpdates)
-    //   OptElideRegUpdates(ng)
-    // if (opt.conditionalMuxes) {
-    //   val startTime = System.currentTimeMillis()
-    //   MakeCondMux(ng)
-    //   val stopTime = System.currentTimeMillis()
-    //   println(s"[MakeCondMux] took: ${stopTime - startTime}")
-    // }
-
+    } else {
+      if (opt.regUpdates)
+        OptElideRegUpdates(ng)
+      if (opt.conditionalMuxes)
+        MakeCondMux(ng)
+    }
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
     // if (opt.trackZone)
@@ -511,24 +383,17 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    // if (opt.useZones)
-    //   writeZoningPredecs(sg, circuit.main, extIOMap, doNotDec, opt)
     if (opt.useZones)
       writeZoningPredecs(ng, condPartWorker, circuit.main, extIOMap, doNotDec, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    // if (opt.trackZone || opt.trackSigs)
-    //   writeLines(2, "cycle_count++;")
-    // if (opt.useZones)
-    //   writeZoningBody(sg, doNotDec, opt)
-    // else
-    //   writeBodyInner(2, sg, doNotDec, opt)
+    if (opt.trackZone || opt.trackSigs)
+      writeLines(2, "cycle_count++;")
     if (opt.useZones)
       writeZoningBody(ng, condPartWorker, doNotDec, opt)
     else
       writeBodyInner(2, ng, doNotDec, opt)
     if (containsAsserts)
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-    // writeRegResetOverrides(sg)
     writeRegResetOverrides(ng)
     writeLines(1, "}")
     // if (opt.trackZone || opt.trackSigs) {
