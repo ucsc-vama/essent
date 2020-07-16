@@ -88,8 +88,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   // Write General-purpose Eval
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
-  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags) {
+  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags,
+                     keepAvail: Set[String] = Set()) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    if (opt.conditionalMuxes)
+      MakeCondMux(ng, keepAvail)
+    val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
     ng.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (!doNotDec.contains(cm.name))
@@ -97,9 +101,9 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         writeLines(indentLevel, s"if ($muxCond) {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), doNotDec + cm.name, opt)
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), doNotDec + cm.name, noMoreMuxOpts)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), doNotDec + cm.name, opt)
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), doNotDec + cm.name, noMoreMuxOpts)
         writeLines(indentLevel, "}")
       }
       case _ => {
@@ -109,9 +113,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }}
   }
 
-  // def writeRegResetOverrides(sg: StatementGraph) {
   def writeRegResetOverrides(ng: NamedGraph) {
-    // val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val updatesWithResets = ng.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
     val overridesToWrite = resetGroups.toSeq flatMap {
@@ -183,10 +185,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         }}
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
-        val innerNG = NamedGraph(noRegUpdates)
-        if (opt.conditionalMuxes)
-          MakeCondMux(innerNG, (az.outputsToDeclare map { _._1 }).toSet)
-        writeBodyInner(2, innerNG, doNotDec, opt)
+        val keepAvail = (az.outputsToDeclare map { _._1 }).toSet
+        writeBodyInner(2, NamedGraph(noRegUpdates), doNotDec, opt, keepAvail)
         writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
@@ -352,8 +352,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(ng)
-      if (opt.conditionalMuxes)
-        MakeCondMux(ng)
     }
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
