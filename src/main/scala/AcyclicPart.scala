@@ -37,8 +37,9 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
 
   def coarsenWithMFFCs() {
     val mffcResults = MFFC(mg, excludeSet)
-    excludeSet foreach { id => mffcResults(id) = id }
     mg.applyInitialAssignments(mffcResults)
+    println(s"  #mffcs found: ${mg.mergeIDToMembers.size - excludeSet.size}")
+    println(s"  largest mffc: ${(mg.mergeIDToMembers.values.map{_.size}).max}")
   }
 
   def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20) {

@@ -18,7 +18,7 @@ class MFFC(val bg: BareGraph) {
     newAssignments.copyToBuffer(mffc)
   }
 
-  def findMFFCs(excludeSet: Set[NodeID]): ArrayBuffer[NodeID] = {
+  def findMFFCs(): ArrayBuffer[NodeID] = {
     val unvisitedSinks = bg.nodeRange filter {
       id => mffc(id) == Unclaimed && bg.outNeigh(id).isEmpty
     }
@@ -31,7 +31,7 @@ class MFFC(val bg: BareGraph) {
     } else {
       newMFFCseeds foreach { id => mffc(id) = id }
       maximizeFFCs(newMFFCseeds)
-      findMFFCs(excludeSet)
+      findMFFCs()
     }
   }
 
@@ -57,7 +57,7 @@ object MFFC {
   def apply(bg: BareGraph, excludeSet: Set[NodeID] = Set()): ArrayBuffer[NodeID] = {
     val worker = new MFFC(bg)
     excludeSet foreach { id => worker.mffc(id) = Excluded }
-    val mffc = worker.findMFFCs(excludeSet)
+    val mffc = worker.findMFFCs()
     excludeSet foreach { id => mffc(id) = id }
     mffc
   }
