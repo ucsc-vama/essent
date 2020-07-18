@@ -10,9 +10,6 @@ import collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
-// TODO: cutoff parameter
-// TODO: compact emitted range IDs
-
 class MakeCondPart(ng: NamedGraph) {
   val alreadyDeclared = ng.stateElemNames().toSet
 
