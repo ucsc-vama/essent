@@ -191,19 +191,19 @@ object Emitter {
     case _ => emitExpr(e)
   }
 
-  def emitStmt(doNotDec: Set[String])(s: Statement): Seq[String] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => emitStmt(doNotDec)(s)}
+  def emitStmt(rn: Renamer)(s: Statement): Seq[String] = s match {
+    case b: Block => b.stmts flatMap {s: Statement => emitStmt(rn)(s)}
     case d: DefNode => {
       val lhs = d.name
       val rhs = emitExpr(d.value)
-      if (doNotDec.contains(lhs)) Seq(s"$lhs = $rhs;")
-      else Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
+      if (rn.decLocal(lhs)) Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
+      else Seq(s"$lhs = $rhs;")
     }
     case c: Connect => {
       val lhs = emitExpr(c.loc)
       val rhs = emitExpr(c.expr)
-      if (doNotDec.contains(lhs)) Seq(s"$lhs = $rhs;")
-      else Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+      if (rn.decLocal(lhs)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+      else Seq(s"$lhs = $rhs;")
     }
     case p: Print => {
       val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList

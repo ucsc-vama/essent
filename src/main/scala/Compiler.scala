@@ -28,6 +28,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   val sigExtName = "SIGext"
   var sigNameToID = Map[String,Int]()
 
+  val rn = new Renamer
+
   // Writing To File
   //----------------------------------------------------------------------------
   def writeLines(indentLevel: Int, lines: String) {
@@ -88,26 +90,26 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   // Write General-purpose Eval
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
-  def writeBodyInner(indentLevel: Int, ng: NamedGraph, doNotDec: Set[String], opt: OptFlags,
+  def writeBodyInner(indentLevel: Int, ng: NamedGraph, opt: OptFlags,
                      keepAvail: Set[String] = Set()) {
-    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(doNotDec)(stmt)) }
+    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(rn)(stmt)) }
     if (opt.conditionalMuxes)
-      MakeCondMux(ng, keepAvail)
+      MakeCondMux(ng, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
     ng.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
-        if (!doNotDec.contains(cm.name))
+        if (rn.nameToMeta(cm.name).decType == MuxOut)
           writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${cm.name};")
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         writeLines(indentLevel, s"if ($muxCond) {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), doNotDec + cm.name, noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), noMoreMuxOpts)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), doNotDec + cm.name, noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), noMoreMuxOpts)
         writeLines(indentLevel, "}")
       }
       case _ => {
-        writeLines(indentLevel, emitStmt(doNotDec)(stmt))
+        writeLines(indentLevel, emitStmt(rn)(stmt))
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
@@ -154,13 +156,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       condPartWorker: MakeCondPart,
       topName: String,
       extIOtypes: Map[String, Type],
-      startingDoNotDec: Set[String],
       opt: OptFlags) {
     // predeclare zone outputs
     val outputPairs = condPartWorker.getZoneOutputsToDeclare()
     val outputConsumers = condPartWorker.getZoneInputMap()
     writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
-    val doNotDec = (outputPairs map { _._1 }).toSet ++ startingDoNotDec
     val nonMemCacheDecs = condPartWorker.getExternalZoneInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
     }
@@ -186,11 +186,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
         val keepAvail = (az.outputsToDeclare map { _._1 }).toSet
-        writeBodyInner(2, NamedGraph(noRegUpdates), doNotDec, opt, keepAvail)
+        writeBodyInner(2, NamedGraph(noRegUpdates), opt, keepAvail)
         writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
-        writeLines(2, regUpdates flatMap emitStmt(doNotDec))
+        writeLines(2, regUpdates flatMap emitStmt(rn))
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggerZones = memWritesInZone flatMap { mw => {
@@ -205,7 +205,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(0, "")
   }
 
-  def writeZoningBody(ng: NamedGraph, condPartWorker: MakeCondPart, doNotDec: Set[String], opt: OptFlags) {
+  def writeZoningBody(ng: NamedGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
     writeLines(2, "if (reset || !done_reset) {")
     writeLines(3, "sim_cached = false;")
     writeLines(3, "regs_set = false;")
@@ -234,7 +234,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         else
           writeLines(2, s"${genZoneFuncName(az.id)}();")
       }
-      case _ => writeLines(2, emitStmt(doNotDec)(stmt))
+      case _ => writeLines(2, emitStmt(rn)(stmt))
     }}
     // writeLines(2, "#ifdef ALL_ON")
     // writeLines(2, "ZONEflags.fill(true);" )
@@ -343,10 +343,10 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
     val ng = NamedGraph(circuit, opt.removeFlatConnects)
-    val condPartWorker = MakeCondPart(ng)
+    val condPartWorker = MakeCondPart(ng, rn)
     val containsAsserts = ng.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
-    val doNotDec = ng.stateElemNames.toSet ++ extIOMap.keySet
+    rn.populateFromNG(ng, extIOMap)
     if (opt.useZones) {
       condPartWorker.doOpt(opt.zoneCutoff)
     } else {
@@ -382,14 +382,14 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "")
     }
     if (opt.useZones)
-      writeZoningPredecs(ng, condPartWorker, circuit.main, extIOMap, doNotDec, opt)
+      writeZoningPredecs(ng, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.trackZone || opt.trackSigs)
       writeLines(2, "cycle_count++;")
     if (opt.useZones)
-      writeZoningBody(ng, condPartWorker, doNotDec, opt)
+      writeZoningBody(ng, condPartWorker, opt)
     else
-      writeBodyInner(2, ng, doNotDec, opt)
+      writeBodyInner(2, ng, opt)
     if (containsAsserts)
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     writeRegResetOverrides(ng)

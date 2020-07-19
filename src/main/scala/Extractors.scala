@@ -106,7 +106,12 @@ object Extract extends LazyLogging {
     case r: DefRegister => r.tpe
     case m: DefMemory => m.dataType
     case ru: RegUpdate => ru.regRef.tpe
-    case _ => throw new Exception(s"not a connect or defnode: ${stmt.serialize}")
+    case cm: CondMux => cm.mux.tpe
+    case mw: MemWrite => mw.wrData.tpe
+    case az: ActivityZone => UnknownType
+    case p: Print => UnknownType
+    case s: Stop => UnknownType
+    case _ => throw new Exception(s"can't find result type of: ${stmt.serialize}")
   }
 
   def findStmtNameAndType(stmt: Statement): Seq[(String, Type)] = stmt match {

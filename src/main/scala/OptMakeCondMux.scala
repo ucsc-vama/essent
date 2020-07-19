@@ -7,7 +7,7 @@ import essent.ir._
 import firrtl.ir._
 
 
-class MakeCondMux(val ng: NamedGraph, keepAvail: Set[NodeID]) {
+class MakeCondMux(val ng: NamedGraph, rn: Renamer, keepAvail: Set[NodeID]) {
   // TODO: pull into generalized MFFC finder
   def findMaxSafeWay(muxID: NodeID, muxCond: Expression, thisWay: Expression, otherWay: Expression) = {
     val dontPass = ng.extractSourceIDs(muxCond).toSet ++ ng.extractSourceIDs(otherWay) ++ keepAvail
@@ -49,6 +49,7 @@ class MakeCondMux(val ng: NamedGraph, keepAvail: Set[NodeID]) {
                        ng.collectValidStmts(tWay) :+ makeMuxOutputStmt(muxID, muxExpr.tval),
                        ng.collectValidStmts(fWay) :+ makeMuxOutputStmt(muxID, muxExpr.fval))
         ng.mergeStmtsMutably(muxID, tWay ++ fWay, cmStmt)
+        rn.mutateDecTypeIfLocal(muxStmtName, MuxOut)
       }}
       makeCondMuxesTopDown(muxesWithMuxesInside.toSet, muxIDToWays)
     }
@@ -78,9 +79,9 @@ class MakeCondMux(val ng: NamedGraph, keepAvail: Set[NodeID]) {
 object MakeCondMux {
   // FUTURE: pull mux chains into if else chains to reduce indent depth
   // FUTURE: consider mux size threshold
-  def apply(ng: NamedGraph, keepAvailNames: Set[String] = Set()) {
+  def apply(ng: NamedGraph, rn: Renamer, keepAvailNames: Set[String] = Set()) {
     val keepAvailIDs = keepAvailNames map ng.nameToID
-    val optimizer = new MakeCondMux(ng, keepAvailIDs)
+    val optimizer = new MakeCondMux(ng, rn, keepAvailIDs)
     optimizer.doOpt()
   }
 }

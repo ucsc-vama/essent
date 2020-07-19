@@ -10,7 +10,7 @@ import collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
-class MakeCondPart(ng: NamedGraph) {
+class MakeCondPart(ng: NamedGraph, rn: Renamer) {
   val alreadyDeclared = ng.stateElemNames().toSet
 
   def convertIntoAZStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
@@ -45,6 +45,7 @@ class MakeCondPart(ng: NamedGraph) {
       val azStmt = ActivityZone(topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), azStmt)
+      namesToDeclare foreach { rn.mutateDecTypeIfLocal(_, PartOut) }
       assert(ng.validNodes(id))
     }}
   }
@@ -130,7 +131,7 @@ class MakeCondPart(ng: NamedGraph) {
 }
 
 object MakeCondPart {
-  def apply(ng: NamedGraph) = {
-    new MakeCondPart(ng)
+  def apply(ng: NamedGraph, rn: Renamer) = {
+    new MakeCondPart(ng, rn)
   }
 }
