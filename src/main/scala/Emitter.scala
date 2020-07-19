@@ -123,8 +123,8 @@ object Emitter {
     s"std::array<uint64_t,$numWords>({$leadingNegStr$arrStr})"
   }
 
-  def emitExpr(e: Expression)(implicit rn: Option[Renamer] = None): String = e match {
-    case w: WRef => if (rn.isDefined) rn.get.emit(w.name) else w.name
+  def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
+    case w: WRef => if (rn != null) rn.emit(w.name) else w.name
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)
@@ -144,9 +144,9 @@ object Emitter {
       s"$condName ? $tvalName : $fvalName"
     }
     case w: WSubField => {
-      val result = s"${emitExpr(w.expr)(None)}.${w.name}"
-      if (rn.isDefined)
-        rn.get.emit(result)
+      val result = s"${emitExpr(w.expr)(null)}.${w.name}"
+      if (rn != null)
+        rn.emit(result)
       else
         result
     }
@@ -192,23 +192,25 @@ object Emitter {
     case _ => throw new Exception(s"Don't yet support $e")
   }
 
-  def emitExprWrap(e: Expression): String = e match {
+  def emitExprWrap(e: Expression)(implicit rn: Renamer): String = e match {
     case DoPrim(_,_,_,_) | Mux(_,_,_,_) => s"(${emitExpr(e)})"
     case _ => emitExpr(e)
   }
 
-  def emitStmt(rn: Renamer)(s: Statement): Seq[String] = s match {
-    case b: Block => b.stmts flatMap {s: Statement => emitStmt(rn)(s)}
+  def emitStmt(s: Statement)(implicit rn: Renamer): Seq[String] = s match {
+    case b: Block => b.stmts flatMap emitStmt
     case d: DefNode => {
-      val lhs = d.name
+      val lhs_orig = d.name
+      val lhs = rn.emit(lhs_orig)
       val rhs = emitExpr(d.value)
-      if (rn.decLocal(lhs)) Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
+      if (rn.decLocal(lhs_orig)) Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
       else Seq(s"$lhs = $rhs;")
     }
     case c: Connect => {
-      val lhs = emitExpr(c.loc)
+      val lhs_orig = emitExpr(c.loc)(null)
+      val lhs = rn.emit(lhs_orig)
       val rhs = emitExpr(c.expr)
-      if (rn.decLocal(lhs)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+      if (rn.decLocal(lhs_orig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
       else Seq(s"$lhs = $rhs;")
     }
     case p: Print => {

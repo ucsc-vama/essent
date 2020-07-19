@@ -28,7 +28,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   val sigExtName = "SIGext"
   var sigNameToID = Map[String,Int]()
 
-  val rn = new Renamer
+  implicit val rn = new Renamer
 
   // Writing To File
   //----------------------------------------------------------------------------
@@ -92,7 +92,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, ng: NamedGraph, opt: OptFlags,
                      keepAvail: Set[String] = Set()) {
-    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(rn)(stmt)) }
+    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
     if (opt.conditionalMuxes)
       MakeCondMux(ng, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
@@ -109,7 +109,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         writeLines(indentLevel, "}")
       }
       case _ => {
-        writeLines(indentLevel, emitStmt(rn)(stmt))
+        writeLines(indentLevel, emitStmt(stmt))
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
@@ -190,7 +190,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
-        writeLines(2, regUpdates flatMap emitStmt(rn))
+        writeLines(2, regUpdates flatMap emitStmt)
         // triggers for MemWrites
         val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggerZones = memWritesInZone flatMap { mw => {
@@ -234,7 +234,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         else
           writeLines(2, s"${genZoneFuncName(az.id)}();")
       }
-      case _ => writeLines(2, emitStmt(rn)(stmt))
+      case _ => writeLines(2, emitStmt(stmt))
     }}
     // writeLines(2, "#ifdef ALL_ON")
     // writeLines(2, "ZONEflags.fill(true);" )
