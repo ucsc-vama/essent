@@ -10,7 +10,9 @@ import collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
-class MakeCondPart(ng: NamedGraph, rn: Renamer) {
+class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
+  val cacheSuffix = "$old"
+
   val alreadyDeclared = ng.stateElemNames().toSet
 
   def convertIntoAZStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
@@ -45,9 +47,16 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer) {
       val azStmt = ActivityZone(topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), azStmt)
-      namesToDeclare foreach { rn.mutateDecTypeIfLocal(_, PartOut) }
+      namesToDeclare foreach { name => {
+        rn.mutateDecTypeIfLocal(name, PartOut) }
+        rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
+      }
       assert(ng.validNodes(id))
     }}
+    val externalInputs = getExternalZoneInputTypes(extIOtypes)
+    externalInputs foreach {
+      case (name, tpe) => rn.addPartCache(name + cacheSuffix, tpe)
+    }
   }
 
   def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
@@ -131,7 +140,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer) {
 }
 
 object MakeCondPart {
-  def apply(ng: NamedGraph, rn: Renamer) = {
-    new MakeCondPart(ng, rn)
+  def apply(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
+    new MakeCondPart(ng, rn, extIOtypes)
   }
 }

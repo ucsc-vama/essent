@@ -12,6 +12,7 @@ case object RegSet extends SigDecType
 case object Local extends SigDecType
 case object MuxOut extends SigDecType
 case object PartOut extends SigDecType
+case object PartCache extends SigDecType
 
 case class SigMeta(decType: SigDecType, sigType: firrtl.ir.Type)
 
@@ -48,7 +49,6 @@ class Renamer {
       case (name, meta) if (shouldBeLocal(meta)) => name
     }
     println(s"localizing ${namesToLocalize.size} variables")
-    def removeDots(s: String) = s.replace('.','$')
     namesToLocalize foreach {
       name => nameToEmitName(name) = removeDots(nameToEmitName(name))
     }
@@ -60,12 +60,19 @@ class Renamer {
       nameToMeta(name) = currentMeta.copy(decType = newDecType)
   }
 
+  def addPartCache(name: String, sigType: firrtl.ir.Type) {
+    nameToEmitName(name) = removeDots(name)
+    nameToMeta(name) = SigMeta(PartCache, sigType)
+  }
+
   def doNotDecLocal() = {
     val notLocalSigs = nameToMeta collect {
       case (name, SigMeta(decType, sigType)) if (decType != Local) => name
     }
     notLocalSigs.toSet
   }
+
+  def removeDots(s: String) = s.replace('.','$')
 
   def decLocal(name: String) = nameToMeta(name).decType == Local
 

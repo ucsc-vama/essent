@@ -146,8 +146,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
       suffix: String): Seq[String] = {
     selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
-      val localName = name.replace('.','$')
-      genDepZoneTriggers(consumerIDs, s"$name != $localName$suffix")
+      genDepZoneTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
     }}
   }
 
@@ -160,11 +159,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     // predeclare zone outputs
     val outputPairs = condPartWorker.getZoneOutputsToDeclare()
     val outputConsumers = condPartWorker.getZoneInputMap()
-    writeLines(0, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} $name;"})
-    val nonMemCacheDecs = condPartWorker.getExternalZoneInputTypes(extIOtypes) map {
-      case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')}$$old;"
+    writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
+    val extIOCacheDecs = condPartWorker.getExternalZoneInputTypes(extIOtypes) map {
+      case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)};"
     }
-    writeLines(1, nonMemCacheDecs)
+    writeLines(1, extIOCacheDecs)
     writeLines(1, s"std::array<bool,${condPartWorker.getNumZones()}> $flagVarName;")
     // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
@@ -181,13 +180,13 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
         if (opt.trackZone)
           writeLines(2, s"$actVarName[${az.id}]++;")
         val cacheOldOutputs = az.outputsToDeclare.toSeq map {
-          case (name, tpe) => { s"${genCppType(tpe)} ${name.replace('.','$')}$$old = $name;"
+          case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
         val keepAvail = (az.outputsToDeclare map { _._1 }).toSet
         writeBodyInner(2, NamedGraph(noRegUpdates), opt, keepAvail)
-        writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, "$old"))
+        writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInZone = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
         writeLines(2, regUpdates flatMap emitStmt)
@@ -220,13 +219,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val outputConsumers = condPartWorker.getZoneInputMap()
     val externalZoneInputNames = condPartWorker.getExternalZoneInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(externalZoneInputNames, outputConsumers, "$old"))
+    writeLines(2, genAllTriggers(externalZoneInputNames, outputConsumers, condPartWorker.cacheSuffix))
     // cache old versions
-    val nonMemCaches = externalZoneInputNames map { sigName => {
-      val oldVersion = s"${sigName.replace('.','$')}$$old"
-      s"$oldVersion = $sigName;"
-    }}
-    writeLines(2, nonMemCaches.toSeq)
+    val extIOCaches = externalZoneInputNames map {
+      sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
+    }
+    writeLines(2, extIOCaches.toSeq)
     ng.stmtsOrdered foreach { stmt => stmt match {
       case az: ActivityZone => {
         if (!az.alwaysActive)
@@ -343,9 +341,9 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
     val ng = NamedGraph(circuit, opt.removeFlatConnects)
-    val condPartWorker = MakeCondPart(ng, rn)
     val containsAsserts = ng.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
+    val condPartWorker = MakeCondPart(ng, rn, extIOMap)
     rn.populateFromNG(ng, extIOMap)
     if (opt.useZones) {
       condPartWorker.doOpt(opt.zoneCutoff)
