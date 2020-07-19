@@ -52,6 +52,8 @@ class Renamer {
   }
 
   def decLocal(name: String) = nameToMeta(name).decType == Local
+
+  def emit(canonicalName: String): String = nameToEmitName(canonicalName)
 }
 
 // object Renamer {

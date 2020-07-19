@@ -123,8 +123,8 @@ object Emitter {
     s"std::array<uint64_t,$numWords>({$leadingNegStr$arrStr})"
   }
 
-  def emitExpr(e: Expression): String = e match {
-    case w: WRef => w.name
+  def emitExpr(e: Expression)(implicit rn: Option[Renamer] = None): String = e match {
+    case w: WRef => if (rn.isDefined) rn.get.emit(w.name) else w.name
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)
@@ -143,7 +143,13 @@ object Emitter {
       val fvalName = emitExprWrap(m.fval)
       s"$condName ? $tvalName : $fvalName"
     }
-    case w: WSubField => s"${emitExpr(w.expr)}.${w.name}"
+    case w: WSubField => {
+      val result = s"${emitExpr(w.expr)(None)}.${w.name}"
+      if (rn.isDefined)
+        rn.get.emit(result)
+      else
+        result
+    }
     case w: WSubAccess => s"${emitExpr(w.expr)}[${emitExprWrap(w.index)}.as_single_word()]"
     case p: DoPrim => p.op match {
       case Add => p.args map emitExprWrap mkString(" + ")
