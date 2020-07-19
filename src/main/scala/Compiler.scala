@@ -99,7 +99,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     ng.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
-          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${cm.name};")
+          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         writeLines(indentLevel, s"if ($muxCond) {")

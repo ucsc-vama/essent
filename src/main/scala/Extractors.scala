@@ -190,16 +190,17 @@ object Extract extends LazyLogging {
 
   def flattenModule(m: Module, prefix: String, circuit: Circuit): Seq[Statement] = {
     val body = addPrefixToNameStmt(prefix)(m.body)
-    val nodeNames = findInstancesOf[DefNode](body) map { _.name }
-    val wireNames = findInstancesOf[DefWire](body) map { _.name }
-    val externalPortNames = findPortNames(m) map { prefix + _ }
-    val internalPortNames = findModuleInstances(m.body) flatMap {
-      case (moduleType, moduleName) =>
-        findPortNames(findModule(moduleType, circuit)) map {prefix + s"$moduleName." + _}
-    }
-    val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
-    val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
-    flattenStmts(replaceNamesStmt(renames)(body))
+    // val nodeNames = findInstancesOf[DefNode](body) map { _.name }
+    // val wireNames = findInstancesOf[DefWire](body) map { _.name }
+    // val externalPortNames = findPortNames(m) map { prefix + _ }
+    // val internalPortNames = findModuleInstances(m.body) flatMap {
+    //   case (moduleType, moduleName) =>
+    //     findPortNames(findModule(moduleType, circuit)) map {prefix + s"$moduleName." + _}
+    // }
+    // val allTempSigs = nodeNames ++ wireNames ++ externalPortNames ++ internalPortNames
+    // val renames = (allTempSigs filter { _.contains('.') } map { s => (s, s.replace('.','$'))}).toMap
+    // flattenStmts(replaceNamesStmt(renames)(body))
+    flattenStmts(body)
   }
 
   def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {

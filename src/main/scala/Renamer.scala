@@ -36,6 +36,22 @@ class Renamer {
       nameToEmitName(name) = name
       nameToMeta(name) = SigMeta(ExtIO, extIOMap(name))
     }}
+    fixEmitNames()
+  }
+
+  def fixEmitNames() {
+    def shouldBeLocal(meta: SigMeta) = meta.decType match {
+      case Local | MuxOut | PartOut => true
+      case _ => false
+    }
+    val namesToLocalize = nameToMeta collect {
+      case (name, meta) if (shouldBeLocal(meta)) => name
+    }
+    println(s"localizing ${namesToLocalize.size} variables")
+    def removeDots(s: String) = s.replace('.','$')
+    namesToLocalize foreach {
+      name => nameToEmitName(name) = removeDots(nameToEmitName(name))
+    }
   }
 
   def mutateDecTypeIfLocal(name: String, newDecType: SigDecType) {
