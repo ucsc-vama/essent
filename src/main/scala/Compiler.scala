@@ -121,7 +121,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val overridesToWrite = resetGroups.toSeq flatMap {
       case (resetName, regDefs) => {
         val body = regDefs map {
-          r => s"$tabs${r.name} = ${emitExpr(r.init)};"
+          r => s"$tabs${rn.emit(r.name)} = ${emitExpr(r.init)};"
         }
         Seq(s"if ($resetName) {") ++ body ++ Seq("}")
       }
