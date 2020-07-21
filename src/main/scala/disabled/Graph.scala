@@ -1,8 +1,9 @@
-package essent
+package disabled
 
 import firrtl._
 import firrtl.ir._
 
+import essent.Util
 import essent.Extract._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}

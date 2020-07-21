@@ -1,4 +1,4 @@
-package essent
+package disabled
 
 import firrtl._
 import firrtl.ir._
@@ -7,7 +7,8 @@ import logger._
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
-import essent.Util._
+import essent.Util
+import essent.OptFlags
 
 import collection.mutable.{ArrayBuffer, BitSet}
 import java.io.{File, FileWriter}
