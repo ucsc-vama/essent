@@ -241,8 +241,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   }
 
 
-  def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
-    val allNamesAndTypes = (sg.validNodes.toSeq map sg.idToStmt) flatMap findStmtNameAndType
+  def declareSigTracking(ng: NamedGraph, topName: String, opt: OptFlags) {
+    val allNamesAndTypes = ng.collectValidStmts(ng.nodeRange) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
     writeLines(0, "")
     writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
@@ -283,7 +283,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }
   }
 
-  def emitJsonWriter(sg: StatementGraph, opt: OptFlags) {
+  def emitJsonWriter(opt: OptFlags, numZones: Int) {
     writeLines(0, "void writeActToJson() {")
     writeLines(1, "std::fstream file(\"activities.json\", std::ios::out | std::ios::binary);")
     writeLines(1, "JSON all_data;")
@@ -296,7 +296,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }
     if (opt.trackZone) {
       writeLines(1, "JSON zone_acts;")
-      writeLines(1, s"for (int i=0; i<${sg.getNumZones()}; i++) {")
+      writeLines(1, s"for (int i=0; i<$numZones; i++) {")
       writeLines(2, s"""zone_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
       writeLines(1, "}")
       writeLines(1, "all_data[\"zone-activities\"] = zone_acts;")
@@ -356,7 +356,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     // if (opt.trackZone)
     //   writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
     // if (opt.trackZone || opt.trackSigs)
-    //   emitJsonWriter(sg, opt)
+    //   emitJsonWriter(opt, condPartWorker.getNumZones())
     // if (opt.zoneStats)
     //   sg.dumpZoneInfoToJson(opt, sigNameToID)
     // if (opt.trackExts)
