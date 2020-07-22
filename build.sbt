@@ -26,3 +26,7 @@ libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.1.3"
 assemblyJarName in assembly := "essent.jar"
 
 assemblyOutputPath in assembly := file("./utils/bin/essent.jar")
+
+
+// Ignore disabled .scala files
+unmanagedSources / excludeFilter := HiddenFileFilter || "*disabled*.scala"
