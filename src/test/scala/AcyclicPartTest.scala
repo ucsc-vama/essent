@@ -72,6 +72,7 @@ class AcyclicPartSpec extends FlatSpec {
     val ap = AcyclicPart(buildStartingBG2)
     ap.mergeSingleInputPartsIntoParents()
     assertResult(ArrayBuffer(0,0,2,2,2,5,6,7,0)){ ap.mg.idToMergeID }
+    Util.sortHashMapValues(ap.mg.mergeIDToMembers)
     assertResult(expected){ ap.iterParts }
   }
 
@@ -87,7 +88,8 @@ class AcyclicPartSpec extends FlatSpec {
   it should "merge single-input MFFCs with their parents" in {
     val expected = Map((4,Seq(0,1,2,3,4,5)), (7,Seq(6,7)))
     val ap = AcyclicPart(buildStartingBG1)
-    ap.partition()
+    ap.coarsenWithMFFCs()
+    ap.mergeSingleInputPartsIntoParents()
     assertResult(ArrayBuffer(4,4,4,4,4,4,7,7)){ ap.mg.idToMergeID }
     Util.sortHashMapValues(ap.mg.mergeIDToMembers)
     assertResult(expected){ ap.iterParts }
@@ -97,7 +99,8 @@ class AcyclicPartSpec extends FlatSpec {
     val expected = Map((0,Seq(0)), (1,Seq(1)), (2,Seq(2)), (4,Seq(3,4,5)),
                        (7,Seq(6,7)))
     val ap = AcyclicPart(buildStartingBG1, Set(1))
-    ap.partition()
+    ap.coarsenWithMFFCs()
+    ap.mergeSingleInputPartsIntoParents()
     assertResult(ArrayBuffer(0,1,2,4,4,4,7,7)){ ap.mg.idToMergeID }
     Util.sortHashMapValues(ap.mg.mergeIDToMembers)
     assertResult(expected){ ap.iterParts }
