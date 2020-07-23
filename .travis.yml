@@ -1,0 +1,11 @@
+language: scala
+scala:
+  - 2.12.4
+
+cache:
+  directories:
+    $HOME/.cache/coursier
+    $HOME/.sbt
+
+script:
+    - sbt test
