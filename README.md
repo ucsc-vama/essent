@@ -1,4 +1,4 @@
-essent (essential signal simulation enabled by netlist transformations)
+essent (essential signal simulation enabled by netlist transformations) [![Build Status](https://travis-ci.org/ucsc-vama/essent.svg?branch=master)](https://travis-ci.org/ucsc-vama/essent)
 ================================================================================
 
 This is a beta of essent, a high-performance RTL simulator generator. Essent operates on hardware designs in the form of [firrtl](https://github.com/freechipsproject/firrtl), an IR for hardware with a well-defined [spec](https://github.com/ucb-bar/firrtl/blob/master/spec/spec.pdf). Given a hardware design in firrtl, essent emits C++ that can be compiled to make a fast simulator of the design. Essent provides several optimizations to improve performance, and they can be turned on or off with command line flags. A typical flow using the tool will: use essent to make C++ from the firrtl input, write a C++ harness for the emitted code, compile everything, and finally run the simulation. To make a simulator with essent, you will need a JVM (compatible with Scala), and a C++ compiler capable of C++11.
