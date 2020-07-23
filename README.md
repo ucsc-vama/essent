@@ -9,7 +9,7 @@ Without optimization, essent will generate a simulator that is a very literal tr
 Running essent
 --------------------------------------------------------------------------------
 
-Essent is written in Scala, which runs on the JVM. To run essent, it's easiest to use the included `essent` bash script, which launches the JVM appropriately with `essent.jar`. For the optimizations, essent uses optimization levels like a compiler, so a higher optimization level includes all optimizations from lower levels.
+Essent is written in Scala, which runs on the JVM. To run essent, it's easiest to use the included `essent` bash script, which launches the JVM appropriately with `essent.jar` (after building it with `sbt assembly`). For the optimizations, essent uses optimization levels like a compiler, so a higher optimization level includes all optimizations from lower levels.
 
 + `O0` - All optimizations disabled, except compressing out long chains of connect statements.
 + `O1` - When possible, registers will be represented by only one variable instead of two (single-phase update).
