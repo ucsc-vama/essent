@@ -40,13 +40,13 @@ case class CondMux(name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[State
   def mapInfo(f: Info => Info): Statement = this
 }
 
-case class ActivityZone(
+case class CondPart(
     id: Int,
     alwaysActive: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
     outputsToDeclare: Map[String,firrtl.ir.Type]) extends Statement {
-  def serialize: String =  "activity zone"
+  def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this

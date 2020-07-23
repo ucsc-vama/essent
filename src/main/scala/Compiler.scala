@@ -21,7 +21,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def outputForm = LowForm
 
   val tabs = "  "
-  val flagVarName = "ZONEflags"
+  val flagVarName = "PARTflags"
   val actVarName = "ACTcounts"
   val sigTrackName = "SIGcounts"
   val sigActName = "SIGact"
@@ -128,7 +128,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }
     if (overridesToWrite.nonEmpty) {
       writeLines(2, "if (update_registers) {")
-      // FUTURE: will overrides need triggers if zoned?
+      // FUTURE: will overrides need triggers if partitioned?
       writeLines(3, overridesToWrite)
       writeLines(2, "}")
     }
@@ -137,16 +137,16 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
 
   // Write Zoning Optimized Eval
   //----------------------------------------------------------------------------
-  def genZoneFuncName(zoneID: Int): String = "EVAL_" + zoneID
+  def genEvalFuncName(partID: Int): String = "EVAL_" + partID
 
-  def genDepZoneTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
+  def genDepPartTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
     consumerIDs.sorted map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
   }
 
   def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
       suffix: String): Seq[String] = {
     selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
-      genDepZoneTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
+      genDepPartTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
     }}
   }
 
@@ -156,15 +156,15 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       topName: String,
       extIOtypes: Map[String, Type],
       opt: OptFlags) {
-    // predeclare zone outputs
-    val outputPairs = condPartWorker.getZoneOutputsToDeclare()
-    val outputConsumers = condPartWorker.getZoneInputMap()
+    // predeclare part outputs
+    val outputPairs = condPartWorker.getPartOutputsToDeclare()
+    val outputConsumers = condPartWorker.getPartInputMap()
     writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
-    val extIOCacheDecs = condPartWorker.getExternalZoneInputTypes(extIOtypes) map {
+    val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)};"
     }
     writeLines(1, extIOCacheDecs)
-    writeLines(1, s"std::array<bool,${condPartWorker.getNumZones()}> $flagVarName;")
+    writeLines(1, s"std::array<bool,${condPartWorker.getNumParts()}> $flagVarName;")
     // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
     writeLines(1, s"bool regs_set = false;")
@@ -173,33 +173,33 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(1, s"bool verbose;")
     writeLines(0, "")
     ng.stmtsOrdered foreach { stmt => stmt match {
-      case az: ActivityZone => {
-        writeLines(1, s"void ${genZoneFuncName(az.id)}() {")
-        if (!az.alwaysActive)
-          writeLines(2, s"$flagVarName[${az.id}] = false;")
-        if (opt.trackZone)
-          writeLines(2, s"$actVarName[${az.id}]++;")
-        val cacheOldOutputs = az.outputsToDeclare.toSeq map {
+      case cp: CondPart => {
+        writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
+        if (!cp.alwaysActive)
+          writeLines(2, s"$flagVarName[${cp.id}] = false;")
+        if (opt.trackParts)
+          writeLines(2, s"$actVarName[${cp.id}]++;")
+        val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
         writeLines(2, cacheOldOutputs)
-        val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](az.memberStmts)
-        val keepAvail = (az.outputsToDeclare map { _._1 }).toSet
+        val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
+        val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
         writeBodyInner(2, NamedGraph(noRegUpdates), opt, keepAvail)
-        writeLines(2, genAllTriggers(az.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
-        val regUpdateNamesInZone = regUpdates flatMap findResultName
-        writeLines(2, genAllTriggers(regUpdateNamesInZone, outputConsumers, "$next"))
+        writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+        val regUpdateNamesInPart = regUpdates flatMap findResultName
+        writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
         writeLines(2, regUpdates flatMap emitStmt)
         // triggers for MemWrites
-        val memWritesInZone = az.memberStmts collect { case mw: MemWrite => mw }
-        val memWriteTriggerZones = memWritesInZone flatMap { mw => {
+        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+        val memWriteTriggers = memWritesInPart flatMap { mw => {
           val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-          genDepZoneTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }}
-        writeLines(2, memWriteTriggerZones)
+        writeLines(2, memWriteTriggers)
         writeLines(1, "}")
       }
-      case _ => throw new Exception(s"Statement at top-level is not a zone (${stmt.serialize})")
+      case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
     }}
     writeLines(0, "")
   }
@@ -216,27 +216,27 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(2, "this->update_registers = update_registers;")
     writeLines(2, "this->done_reset = done_reset;")
     writeLines(2, "this->verbose = verbose;")
-    val outputConsumers = condPartWorker.getZoneInputMap()
-    val externalZoneInputNames = condPartWorker.getExternalZoneInputNames()
+    val outputConsumers = condPartWorker.getPartInputMap()
+    val externalPartInputNames = condPartWorker.getExternalPartInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(externalZoneInputNames, outputConsumers, condPartWorker.cacheSuffix))
+    writeLines(2, genAllTriggers(externalPartInputNames, outputConsumers, condPartWorker.cacheSuffix))
     // cache old versions
-    val extIOCaches = externalZoneInputNames map {
+    val extIOCaches = externalPartInputNames map {
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     writeLines(2, extIOCaches.toSeq)
     ng.stmtsOrdered foreach { stmt => stmt match {
-      case az: ActivityZone => {
-        if (!az.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${az.id}]) ${genZoneFuncName(az.id)}();")
+      case cp: CondPart => {
+        if (!cp.alwaysActive)
+          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}();")
         else
-          writeLines(2, s"${genZoneFuncName(az.id)}();")
+          writeLines(2, s"${genEvalFuncName(cp.id)}();")
       }
       case _ => writeLines(2, emitStmt(stmt))
     }}
-    // writeLines(2, "#ifdef ALL_ON")
-    // writeLines(2, "ZONEflags.fill(true);" )
-    // writeLines(2, "#endif")
+    // writeLines(2,  "#ifdef ALL_ON")
+    // writeLines(2, s"$flagVarName.fill(true);" )
+    // writeLines(2,  "#endif")
     writeLines(2, "regs_set = true;")
   }
 
@@ -283,7 +283,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     }
   }
 
-  def emitJsonWriter(opt: OptFlags, numZones: Int) {
+  def emitJsonWriter(opt: OptFlags, numParts: Int) {
     writeLines(0, "void writeActToJson() {")
     writeLines(1, "std::fstream file(\"activities.json\", std::ios::out | std::ios::binary);")
     writeLines(1, "JSON all_data;")
@@ -294,12 +294,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "}")
       writeLines(1, "all_data[\"signal-activities\"] = sig_acts;")
     }
-    if (opt.trackZone) {
-      writeLines(1, "JSON zone_acts;")
-      writeLines(1, s"for (int i=0; i<$numZones; i++) {")
-      writeLines(2, s"""zone_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
+    if (opt.trackParts) {
+      writeLines(1, "JSON part_acts;")
+      writeLines(1, s"for (int i=0; i<$numParts; i++) {")
+      writeLines(2, s"""part_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
       writeLines(1, "}")
-      writeLines(1, "all_data[\"zone-activities\"] = zone_acts;")
+      writeLines(1, "all_data[\"part-activities\"] = part_acts;")
     }
     if (opt.trackExts) {
       writeLines(1, "JSON sig_exts;")
@@ -334,7 +334,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
     writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
-    if (opt.trackZone || opt.trackSigs) {
+    if (opt.trackParts || opt.trackSigs) {
       writeLines(0, "#include <fstream>")
       writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
       writeLines(0, "using json::JSON;")
@@ -345,20 +345,20 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(ng, rn, extIOMap)
     rn.populateFromNG(ng, extIOMap)
-    if (opt.useZones) {
-      condPartWorker.doOpt(opt.zoneCutoff)
+    if (opt.useCondParts) {
+      condPartWorker.doOpt(opt.partCutoff)
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(ng)
     }
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
-    // if (opt.trackZone)
-    //   writeLines(1, s"std::array<uint64_t,${sg.getNumZones()}> $actVarName{};")
-    // if (opt.trackZone || opt.trackSigs)
-    //   emitJsonWriter(opt, condPartWorker.getNumZones())
-    // if (opt.zoneStats)
-    //   sg.dumpZoneInfoToJson(opt, sigNameToID)
+    // if (opt.trackParts)
+    //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
+    // if (opt.trackParts || opt.trackSigs)
+    //   emitJsonWriter(opt, condPartWorker.getNumParts())
+    // if (opt.partStats)
+    //   sg.dumpPartInfoToJson(opt, sigNameToID)
     // if (opt.trackExts)
     //   sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)
@@ -379,12 +379,12 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    if (opt.useZones)
+    if (opt.useCondParts)
       writeZoningPredecs(ng, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackZone || opt.trackSigs)
+    if (opt.trackParts || opt.trackSigs)
       writeLines(2, "cycle_count++;")
-    if (opt.useZones)
+    if (opt.useCondParts)
       writeZoningBody(ng, condPartWorker, opt)
     else
       writeBodyInner(2, ng, opt)
@@ -392,7 +392,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
     writeRegResetOverrides(ng)
     writeLines(1, "}")
-    // if (opt.trackZone || opt.trackSigs) {
+    // if (opt.trackParts || opt.trackSigs) {
     //   writeLines(1, s"~$topName() {")
     //   writeLines(2, "writeActToJson();")
     //   writeLines(1, "}")

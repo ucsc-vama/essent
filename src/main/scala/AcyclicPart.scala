@@ -47,7 +47,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) {
     val singleInputIDs = smallPartIDs filter { id => (mg.inNeigh(id).size == 1) }
     val singleInputParents = (singleInputIDs flatMap mg.inNeigh).distinct
     val baseSingleInputIDs = singleInputIDs diff singleInputParents
-    println(s"  merging up ${baseSingleInputIDs.size} single-input zones")
+    println(s"  merging up ${baseSingleInputIDs.size} single-input parts")
     baseSingleInputIDs foreach { childID => {
       val parentID = mg.inNeigh(childID).head
       if (!excludeSet.contains(parentID))

@@ -10,14 +10,14 @@ case class OptFlags(
     removeFlatConnects: Boolean = true,
     regUpdates: Boolean = true,
     conditionalMuxes: Boolean = true,
-    useZones: Boolean = true,
+    useCondParts: Boolean = true,
     writeHarness: Boolean = false,
     dumpLoFirrtl: Boolean = false,
     trackSigs: Boolean = false,
-    trackZone: Boolean = false,
+    trackParts: Boolean = false,
     trackExts: Boolean = false,
-    zoneStats: Boolean = false,
-    zoneCutoff: Int = 20,
+    partStats: Boolean = false,
+    partCutoff: Int = 20,
     passLogLevel: String = "warn",
     essentLogLevel: String = "warn")
 
@@ -30,28 +30,28 @@ class ArgsParser {
         removeFlatConnects = false,
         regUpdates = false,
         conditionalMuxes = false,
-        useZones=false)
+        useCondParts=false)
     ).text("disable all optimizations")
 
     opt[Unit]("O1").abbr("O1").action( (_, c) => c.copy(
         removeFlatConnects = true,
         regUpdates = true,
         conditionalMuxes = false,
-        useZones=false)
+        useCondParts=false)
     ).text("enable only optimizations without conditionals")
 
     opt[Unit]("O2").abbr("O2").action( (_, c) => c.copy(
         removeFlatConnects = true,
         regUpdates = true,
         conditionalMuxes = true,
-        useZones=false)
+        useCondParts=false)
     ).text("enable conditional evaluation of mux inputs")
 
     opt[Unit]("O3").abbr("O3").action( (_, c) => c.copy(
         removeFlatConnects = true,
         regUpdates = true,
         conditionalMuxes = true,
-        useZones=true)
+        useCondParts=true)
     ).text("enable all optimizations (default)")
 
     opt[Unit]("dump").action( (_, c) => c.copy(
@@ -84,24 +84,24 @@ class ArgsParser {
         trackSigs = true)
     ).text("track individual signal activities")
 
-    opt[Unit]("activity-zone").action( (_, c) => c.copy(
-        useZones = true,
-        trackZone = true)
-    ).text("print out zone activity stats")
+    opt[Unit]("activity-parts").action( (_, c) => c.copy(
+        useCondParts = true,
+        trackParts = true)
+    ).text("print out partition activity stats")
 
     opt[Unit]("activity-exts").action( (_, c) => c.copy(
         trackSigs = true,
         trackExts = true)
     ).text("track individual signal extinguishes (with activities)")
 
-    opt[Unit]("stats-zone").action( (_, c) => c.copy(
-        useZones = true,
-        zoneStats = true)
-    ).text("output topo information from zoning partitioning")
+    opt[Unit]("stats-parts").action( (_, c) => c.copy(
+        useCondParts = true,
+        partStats = true)
+    ).text("output topo information from partitioning")
 
-    opt[Int]("zone-cutoff").action( (x, c) => c.copy(
-        zoneCutoff = x)
-    ).text("parameter used for zoning")
+    opt[Int]("part-cutoff").action( (x, c) => c.copy(
+        partCutoff = x)
+    ).text("parameter used for partitioning")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())

@@ -15,19 +15,19 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
 
   val alreadyDeclared = ng.stateElemNames().toSet
 
-  def convertIntoAZStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
+  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
     val idToMemberIDs = ap.iterParts
     val idToMemberStmts = (idToMemberIDs map { case (id, members) => {
       val memberStmts = ng.idToStmt(id) match {
-        case az: ActivityZone => az.memberStmts
+        case cp: CondPart => cp.memberStmts
         case _ => members map ng.idToStmt
       }
       (id -> memberStmts)
     }}).toMap
     val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
     val idToInputNames = idToMemberStmts map { case (id, memberStmts) => {
-      val zoneDepNames = memberStmts flatMap findDependencesStmt flatMap { _.deps }
-      val externalDepNames = zoneDepNames.toSet -- (idToProducedOutputs(id).toSet -- alreadyDeclared)
+      val partDepNames = memberStmts flatMap findDependencesStmt flatMap { _.deps }
+      val externalDepNames = partDepNames.toSet -- (idToProducedOutputs(id).toSet -- alreadyDeclared)
       (id -> externalDepNames.toSeq)
     }}
     val allInputs = idToInputNames.values.flatten.toSet
@@ -44,16 +44,16 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
         case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
       }
       val alwaysActive = excludedIDs.contains(id)
-      val azStmt = ActivityZone(topoOrder, alwaysActive, idToInputNames(id),
+      val cpStmt = CondPart(topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
-      ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), azStmt)
+      ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
       namesToDeclare foreach { name => {
         rn.mutateDecTypeIfLocal(name, PartOut) }
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
       }
       assert(ng.validNodes(id))
     }}
-    val externalInputs = getExternalZoneInputTypes(extIOtypes)
+    val externalInputs = getExternalPartInputTypes(extIOtypes)
     externalInputs foreach {
       case (name, tpe) => rn.addPartCache(name + cacheSuffix, tpe)
     }
@@ -65,74 +65,74 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
     else {
       val newGroupID = matchingIDs.min
       val memberStmts = matchingIDs map ng.idToStmt
-      val tempAZstmt = ActivityZone(newGroupID, true, Seq(), memberStmts, Map())
-      ng.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempAZstmt)
+      val tempCPstmt = CondPart(newGroupID, true, Seq(), memberStmts, Map())
+      ng.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
       Some(newGroupID)
     }
   }
 
-  def doOpt(smallZoneCutoff: Int = 20) {
+  def doOpt(smallPartCutoff: Int = 20) {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (ng.nodeRange filterNot ng.validNodes)
     val ap = AcyclicPart(ng, excludedIDs.toSet)
-    ap.partition(smallZoneCutoff)
-    convertIntoAZStmts(ap, excludedIDs.toSet)
+    ap.partition(smallPartCutoff)
+    convertIntoCPStmts(ap, excludedIDs.toSet)
     println(partitioningQualityStats())
   }
 
-  def getNumZones(): Int = ng.idToStmt count { _.isInstanceOf[ActivityZone] }
+  def getNumParts(): Int = ng.idToStmt count { _.isInstanceOf[CondPart] }
 
-  def getZoneInputMap(): Map[String,Seq[Int]] = {
-    val allZoneInputs = ng.validNodes.toSeq flatMap { id => ng.idToStmt(id) match {
-      case az: ActivityZone if !az.alwaysActive => az.inputs map { (_, az.id) }
+  def getPartInputMap(): Map[String,Seq[Int]] = {
+    val allPartInputs = ng.validNodes.toSeq flatMap { id => ng.idToStmt(id) match {
+      case cp: CondPart if !cp.alwaysActive => cp.inputs map { (_, cp.id) }
       case _ => Seq()
     }}
-    Util.groupByFirst(allZoneInputs)
+    Util.groupByFirst(allPartInputs)
   }
 
-  def getZoneOutputsToDeclare(): Seq[(String,Type)] = {
-    val allZoneOutputTypes = ng.idToStmt flatMap { _ match {
-      case az: ActivityZone => az.outputsToDeclare.toSeq
+  def getPartOutputsToDeclare(): Seq[(String,Type)] = {
+    val allPartOutputTypes = ng.idToStmt flatMap { _ match {
+      case cp: CondPart => cp.outputsToDeclare.toSeq
       case _ => Seq()
     }}
-    allZoneOutputTypes
+    allPartOutputTypes
   }
 
-  def getExternalZoneInputNames(): Seq[String] = {
-    val allZoneInputs = (ng.idToStmt flatMap { _ match {
-      case az: ActivityZone => az.inputs
+  def getExternalPartInputNames(): Seq[String] = {
+    val allPartInputs = (ng.idToStmt flatMap { _ match {
+      case cp: CondPart => cp.inputs
       case _ => Seq()
     }}).toSet
-    val allZoneOutputs = (ng.idToStmt flatMap { _ match {
-      case az: ActivityZone => az.outputsToDeclare.keys
+    val allPartOutputs = (ng.idToStmt flatMap { _ match {
+      case cp: CondPart => cp.outputsToDeclare.keys
       case _ => Seq()
     }}).toSet ++ alreadyDeclared.toSet
-    (allZoneInputs -- allZoneOutputs).toSeq
+    (allPartInputs -- allPartOutputs).toSeq
   }
 
-  def getExternalZoneInputTypes(extIOtypes: Map[String, Type]): Seq[(String,Type)] = {
-    getExternalZoneInputNames() map {
+  def getExternalPartInputTypes(extIOtypes: Map[String, Type]): Seq[(String,Type)] = {
+    getExternalPartInputNames() map {
       name => (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
     }
   }
 
   def partitioningQualityStats(): String = {
-    val numParts = getNumZones()
-    val partStmts = ng.idToStmt collect { case az: ActivityZone => az }
-    val partSizes = partStmts map { az => az.memberStmts.size }
+    val numParts = getNumParts()
+    val partStmts = ng.idToStmt collect { case cp: CondPart => cp }
+    val partSizes = partStmts map { cp => cp.memberStmts.size }
     val numStmtsTotal = partSizes.sum
     val numEdgesOrig = (partStmts flatMap {
-        az => az.memberStmts flatMap { stmt => findDependencesStmt(stmt) map { _.deps.size }}
+        cp => cp.memberStmts flatMap { stmt => findDependencesStmt(stmt) map { _.deps.size }}
     }).sum
-    val allOutputMaps = getZoneInputMap()
+    val allOutputMaps = getPartInputMap()
     val numOutputsUnique = allOutputMaps.size
     val numOutputsFlat = (allOutputMaps map { _._2.size }).sum
-    val percEdgesInZones = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
+    val percEdgesInParts = 100d * (numEdgesOrig - numOutputsFlat) / numEdgesOrig
     f"""|Parts: $numParts
         |Output nodes: $numOutputsUnique
         |Nodes in parts: $numStmtsTotal
-        |Edges in parts: ${numEdgesOrig - numOutputsFlat} ($percEdgesInZones%2.1f%%))
+        |Edges in parts: ${numEdgesOrig - numOutputsFlat} ($percEdgesInParts%2.1f%%))
         |Nodes/part: ${numStmtsTotal.toDouble/numParts}%.1f
         |Outputs/part: ${numOutputsUnique.toDouble/numParts}%.1f
         |Part size range: ${partSizes.min} - ${partSizes.max}""".stripMargin

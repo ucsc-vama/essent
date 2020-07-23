@@ -108,7 +108,7 @@ object Extract extends LazyLogging {
     case ru: RegUpdate => ru.regRef.tpe
     case cm: CondMux => cm.mux.tpe
     case mw: MemWrite => mw.wrData.tpe
-    case az: ActivityZone => UnknownType
+    case cp: CondPart => UnknownType
     case p: Print => UnknownType
     case s: Stop => UnknownType
     case _ => throw new Exception(s"can't find result type of: ${stmt.serialize}")
@@ -116,7 +116,7 @@ object Extract extends LazyLogging {
 
   def findStmtNameAndType(stmt: Statement): Seq[(String, Type)] = stmt match {
     case cm: CondMux => (cm.tWay ++ cm.fWay) flatMap findStmtNameAndType
-    case az: ActivityZone => az.memberStmts flatMap findStmtNameAndType
+    case cp: CondPart => cp.memberStmts flatMap findStmtNameAndType
     case mw: MemWrite => Seq()
     case _ => findResultName(stmt) match {
       case Some(name) => Seq((name, findResultType(stmt)))
@@ -182,7 +182,7 @@ object Extract extends LazyLogging {
   //----------------------------------------------------------------------------
   def flattenStmts(s: Statement): Seq[Statement] = s match {
     case b: Block => b.stmts flatMap flattenStmts
-    case az: ActivityZone => az.memberStmts flatMap flattenStmts
+    case cp: CondPart => cp.memberStmts flatMap flattenStmts
     case cm: CondMux => (cm.tWay ++ cm.fWay) flatMap flattenStmts
     case EmptyStmt => Seq()
     case _ => Seq(s)
