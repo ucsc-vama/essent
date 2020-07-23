@@ -1,14 +1,13 @@
 package essent
 
-// TODO: remove this Extract import which is the only way to get logging to work
-import essent.Extract._
 import essent.BareGraph.NodeID
 import essent.ir._
 
+import logger._
 import firrtl.ir._
 
 
-object OptElideRegUpdates {
+object OptElideRegUpdates extends LazyLogging {
   def apply(ng: NamedGraph) {
     def safeToMergeWithParentNextNode(u: NodeID): Boolean = {
       ng.inNeigh(u).nonEmpty &&                              // node u isn't floating (parentless)

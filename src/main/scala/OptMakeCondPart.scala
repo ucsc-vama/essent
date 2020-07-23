@@ -4,6 +4,7 @@ import essent.BareGraph.NodeID
 import essent.Extract._
 import essent.ir._
 
+import logger._
 import firrtl.ir._
 
 import collection.mutable.ArrayBuffer
@@ -78,7 +79,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
     val ap = AcyclicPart(ng, excludedIDs.toSet)
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
-    println(partitioningQualityStats())
+    logger.info(partitioningQualityStats())
   }
 
   def getNumParts(): Int = ng.idToStmt count { _.isInstanceOf[CondPart] }

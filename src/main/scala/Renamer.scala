@@ -48,7 +48,6 @@ class Renamer {
     val namesToLocalize = nameToMeta collect {
       case (name, meta) if (shouldBeLocal(meta)) => name
     }
-    println(s"localizing ${namesToLocalize.size} variables")
     namesToLocalize foreach {
       name => nameToEmitName(name) = removeDots(nameToEmitName(name))
     }

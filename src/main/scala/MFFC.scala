@@ -5,8 +5,6 @@ import BareGraph._
 import collection.mutable.ArrayBuffer
 
 
-// TODO: add logging back in
-
 class MFFC(val bg: BareGraph) {
   import MFFC.{Unclaimed,Excluded}
 
