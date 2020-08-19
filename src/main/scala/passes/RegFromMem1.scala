@@ -63,7 +63,7 @@ object RegFromMem1 extends Pass {
     val memConnects = grabMemConnects(body).toMap
     val memsWithWrites = memsToReplace filter { _.writers.nonEmpty }
     memsWithWrites flatMap { mem => mem.writers map { writePortName => {
-      val selfRef = WRef(mem.name, mem.dataType, firrtl.RegKind, firrtl.BIGENDER)
+      val selfRef = WRef(mem.name, mem.dataType, firrtl.RegKind, firrtl.DuplexFlow)
       val enSig = memConnects(s"${mem.name}.$writePortName.en")
       val wrDataSig = memConnects(s"${mem.name}.$writePortName.data")
       val wrEnableMux = Mux(enSig, wrDataSig, selfRef, mem.dataType)

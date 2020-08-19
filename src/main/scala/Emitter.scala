@@ -89,7 +89,7 @@ object Emitter {
       case w: WSubField => {
         val fullName = emitExpr(w)
         // flattens out nested WSubFields
-        if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.gender)
+        if (renames.contains(fullName)) WRef(renames(fullName), w.tpe, findRootKind(w), w.flow)
         else w
       }
       case _ => e map replaceNamesExpr(renames)
@@ -170,7 +170,7 @@ object Emitter {
       case AsSInt => s"${emitExprWrap(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
       case Shl => s"${emitExprWrap(p.args.head)}.shl<${p.consts.head.toInt}>()"
-      case Shlw => s"${emitExprWrap(p.args.head)}.shlw<${p.consts.head.toInt}>()"
+      // case Shlw => s"${emitExprWrap(p.args.head)}.shlw<${p.consts.head.toInt}>()"
       case Shr => s"${emitExprWrap(p.args.head)}.shr<${p.consts.head.toInt}>()"
       case Dshl => p.args map emitExprWrap mkString(" << ")
       case Dshlw => s"${emitExprWrap(p.args(0))}.dshlw(${emitExpr(p.args(1))})"

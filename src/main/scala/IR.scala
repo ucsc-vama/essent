@@ -12,6 +12,11 @@ case class RegUpdate(info: Info, regRef: Expression, expr: Expression) extends S
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
   def mapInfo(f: Info => Info): Statement = this
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
+  def foreachString(f: String => Unit): Unit = ???
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
 }
 
 case class MemWrite(memName: String,
@@ -29,6 +34,11 @@ case class MemWrite(memName: String,
   def mapString(f: String => String): Statement = this
   def mapInfo(f: Info => Info): Statement = this
   def nodeName(): String = s"$memName.$portName"
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
+  def foreachString(f: String => Unit): Unit = ???
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
 }
 
 case class CondMux(name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[Statement]) extends Statement {
@@ -38,6 +48,11 @@ case class CondMux(name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[State
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
   def mapInfo(f: Info => Info): Statement = this
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
+  def foreachString(f: String => Unit): Unit = ???
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
 }
 
 case class CondPart(
@@ -52,4 +67,9 @@ case class CondPart(
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
   def mapInfo(f: Info => Info): Statement = this
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
+  def foreachString(f: String => Unit): Unit = ???
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
 }

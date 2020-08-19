@@ -38,8 +38,8 @@ object FactorMemReads extends Pass {
         val fullPortName = memName + "." + portName
         if (readPortAddrs.contains(fullPortName)) {
           if (suffix == "addr") {
-            val memRef = WRef(memName, readPortTypes(fullPortName), firrtl.MemKind, FEMALE)
-            val memRead = WSubAccess(memRef, readPortAddrs(fullPortName), readPortTypes(fullPortName), MALE)
+            val memRef = WRef(memName, readPortTypes(fullPortName), firrtl.MemKind, SinkFlow)
+            val memRead = WSubAccess(memRef, readPortAddrs(fullPortName), readPortTypes(fullPortName), SourceFlow)
             DefNode(NoInfo, fullPortName, memRead)
           } else if (suffix == "en") EmptyStmt
           else s

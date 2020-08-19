@@ -19,6 +19,7 @@ import firrtl.Utils._
 class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def inputForm = LowForm
   def outputForm = LowForm
+  val outputSuffix: String = ".h"
 
   val tabs = "  "
   val flagVarName = "PARTflags"

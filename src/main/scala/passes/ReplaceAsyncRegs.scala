@@ -20,17 +20,17 @@ object ReplaceAsyncRegs extends Pass {
     logger.info(s"Replacing ${em.name} (${em.defname})")
     val oneBitType = UIntType(IntWidth(1))
     val zero = UIntLiteral(0,IntWidth(1))
-    val reg = DefRegister(NoInfo, "r", oneBitType, WRef("clk", ClockType, PortKind, MALE), zero, zero)
-    val resetMux = Mux(WRef("rst", oneBitType, PortKind, MALE),
+    val reg = DefRegister(NoInfo, "r", oneBitType, WRef("clk", ClockType, PortKind, SourceFlow), zero, zero)
+    val resetMux = Mux(WRef("rst", oneBitType, PortKind, SourceFlow),
                        zero,
-                       WRef("enMux", oneBitType, NodeKind, MALE), oneBitType)
-    val enableMux = Mux(WRef("en", oneBitType, PortKind, MALE),
-                        WRef("d", oneBitType, PortKind, MALE),
+                       WRef("enMux", oneBitType, NodeKind, SourceFlow), oneBitType)
+    val enableMux = Mux(WRef("en", oneBitType, PortKind, SourceFlow),
+                        WRef("d", oneBitType, PortKind, SourceFlow),
                         WRef(reg), oneBitType)
     val enableMuxStmt = DefNode(NoInfo, "enMux", enableMux)
     val resetMuxStmt = DefNode(NoInfo, "resetMux", resetMux)
-    val connectToReg = Connect(NoInfo, WRef(reg), WRef("resetMux", oneBitType, NodeKind, MALE))
-    val connectFromReg = Connect(NoInfo, WRef("q", oneBitType, PortKind, FEMALE), WRef(reg))
+    val connectToReg = Connect(NoInfo, WRef(reg), WRef("resetMux", oneBitType, NodeKind, SourceFlow))
+    val connectFromReg = Connect(NoInfo, WRef("q", oneBitType, PortKind, SinkFlow), WRef(reg))
     val bodyStmts = Seq(reg, enableMuxStmt, resetMuxStmt, connectToReg, connectFromReg)
     Module(em.info, em.name, em.ports, Block(bodyStmts))
   }
