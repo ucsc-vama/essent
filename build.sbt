@@ -1,10 +1,10 @@
-organization := "lbl.gov"
+organization := "ucsc.edu"
 
-version := "0.1"
+version := "0.8"
 
 name := "essent"
 
-scalaVersion := "2.12.4"
+scalaVersion := "2.12.10"
 
 scalacOptions ++= Seq("-deprecation", "-unchecked")
 
