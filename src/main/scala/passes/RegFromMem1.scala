@@ -49,8 +49,8 @@ object RegFromMem1 extends Pass {
 
   def replaceMemsExpr(memsToTypes: Map[String,Type])(e: Expression): Expression = {
     val replaced = e match {
-      case WSubField(WSubField(WRef(name: String, _, _, g: Gender),_,_,_),"data",_,_) => {
-        if (memsToTypes.contains(name)) WRef(name, memsToTypes(name), firrtl.RegKind, g)
+      case WSubField(WSubField(WRef(name: String, _, _, f: Flow),_,_,_),"data",_,_) => {
+        if (memsToTypes.contains(name)) WRef(name, memsToTypes(name), firrtl.RegKind, f)
         else e
       }
       case _ => e

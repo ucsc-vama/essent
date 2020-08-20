@@ -34,7 +34,7 @@ object FactorMemReads extends Pass {
   def replaceReadConnects(readPortAddrs: Map[String,Expression],
                           readPortTypes: Map[String,Type])(s: Statement): Statement = {
     val readConnectsReplaced = s match {
-      case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), suffix, addrType, addrGender), rhs) =>
+      case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), suffix, addrType, addrFlow), rhs) =>
         val fullPortName = memName + "." + portName
         if (readPortAddrs.contains(fullPortName)) {
           if (suffix == "addr") {
@@ -55,10 +55,10 @@ object FactorMemReads extends Pass {
 
   def replaceReadPortRefsExpr(readPortAddrs: Map[String,Expression])(e: Expression): Expression = {
     val refsReplaced = e match {
-      case WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "data", dataType, dataGender) => {
+      case WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "data", dataType, dataFlow) => {
         val fullPortName = memName + "." + portName
         if (readPortAddrs.contains(fullPortName)) {
-          WRef(fullPortName, dataType, firrtl.MemKind, dataGender)
+          WRef(fullPortName, dataType, firrtl.MemKind, dataFlow)
         } else e
       }
       case _ => e
