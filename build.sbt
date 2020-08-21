@@ -10,15 +10,11 @@ scalacOptions ++= Seq("-deprecation", "-unchecked")
 
 libraryDependencies += "com.github.scopt" %% "scopt" % "3.7.1"
 
-libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0"
-
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
-
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8" % "test"
 
 libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.7"
 
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.2.4"
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.0"
 
 
 // Assembly

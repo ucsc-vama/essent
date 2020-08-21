@@ -4,14 +4,14 @@ import essent.BareGraph.NodeID
 import essent.Extract._
 import essent.ir._
 
-import logger._
 import firrtl.ir._
+import logger._
 
 import collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
-class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) {
+class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) extends LazyLogging {
   val cacheSuffix = "$old"
 
   val alreadyDeclared = ng.stateElemNames().toSet
