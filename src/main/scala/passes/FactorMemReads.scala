@@ -6,6 +6,8 @@ import essent.Extract._
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
+import firrtl.options.Dependency
+import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
@@ -19,8 +21,11 @@ import firrtl.Utils._
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
 // FUTURE: should respect enable for read ports
 
-object FactorMemReads extends Pass {
+object FactorMemReads extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Transforms mem read ports into SubAccesses for easier emission"
+
+  override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))
+  override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
   def findReadPortAddrs(readPorts: Set[String])(s: Statement): Seq[(String,Expression)] = s match {
     case b: Block => b.stmts flatMap findReadPortAddrs(readPorts)

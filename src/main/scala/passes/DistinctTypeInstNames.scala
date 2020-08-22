@@ -2,13 +2,17 @@ package essent.passes
 
 import firrtl._
 import firrtl.ir._
+import firrtl.options.PreservesAll
 import firrtl.Mappers._
 import firrtl.passes._
 
 
-object DistinctTypeInstNames extends Pass {
+object DistinctTypeInstNames extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Ensures modules are instantiations don't have same name as type"
   val suffix = "$$inst"
+
+  override def prerequisites = Seq.empty
+  override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
   def findMatchingInstNames(moduleNames: Set[String])(s: Statement): Seq[String] = s match {
     case b: Block => b.stmts flatMap findMatchingInstNames(moduleNames)

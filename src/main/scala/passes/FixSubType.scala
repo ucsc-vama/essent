@@ -4,14 +4,18 @@ import firrtl._
 import firrtl.ir._
 import firrtl.PrimOps._
 import firrtl.Mappers._
+import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
 
-object FixSubType extends Pass {
+object FixSubType extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Inserts asUInt onto sub of two UInts (should otherwise be an SInt)"
   // due to poorly specified change (firrtl commit ebb471bd3c22e092e5c2ce55284abe8c13b25662)
   // FUTURE: consider change firrtl-sig if this change is permanent
+
+  override def prerequisites = Seq.empty
+  override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
   def allUIntType(p: DoPrim): Boolean = {
     p.tpe.isInstanceOf[UIntType] &&

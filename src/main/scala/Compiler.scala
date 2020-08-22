@@ -11,14 +11,19 @@ import essent.Util._
 import firrtl._
 import firrtl.annotations._
 import firrtl.ir._
+import firrtl.options.Dependency
 import firrtl.Mappers._
 import firrtl.PrimOps._
+import firrtl.stage.TransformManager.TransformDependency
 import firrtl.Utils._
 
 
-class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
+class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransform with firrtl.Emitter {
   def inputForm = LowForm
   def outputForm = LowForm
+
+  override def prerequisites = ESSENTForms.ReadyToEmit
+
   val outputSuffix: String = ".h"
 
   val tabs = "  "
@@ -321,7 +326,10 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   def emit(state: firrtl.CircuitState, writer: java.io.Writer) {}
   // TODO: unimplemented, but also deprecated in firrtl
 
-  def execute(state: CircuitState): CircuitState = {
+  def transforms = new firrtl.stage.TransformManager(
+    ESSENTForms.ReadyToEmit, prerequisites).flattenedTransformOrder
+
+  override def execute(state: CircuitState): CircuitState = {
     val opt = initialOpt
     val circuit = state.circuit
     val topName = circuit.main
@@ -405,32 +413,10 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.Emitter {
   }
 }
 
-class FinalCleanups extends SeqTransform {
-  def inputForm = MidForm
-  def outputForm = LowForm
-  val transforms = Seq(
-    // firrtl.passes.VerilogWrap,
-    // essent.passes.InferAddw,
-    // essent.passes.WireConstProp,
-    // essent.passes.ZeroFromBits,
-    // essent.passes.WireConstProp,
-    // essent.passes.RandInitInvalids,
-    essent.passes.ReplaceAsyncRegs,
-    essent.passes.NoClockConnects,
-    essent.passes.RegFromMem1,
-    essent.passes.FactorMemReads,
-    essent.passes.FactorMemWrites,
-    essent.passes.SplitRegUpdates,
-    essent.passes.FixMulResultWidth,
-    essent.passes.FixSubType,
-    essent.passes.DistinctTypeInstNames)
-    // passes.VerilogRename,
-    // passes.VerilogPrep)
-}
 
-// FUTURE: use functionality within newer firrtl
+// TODO: use functionality within newer firrtl
 class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
-  def inputForm = MidForm
+  def inputForm = LowForm
   def outputForm = LowForm
   def execute(state: CircuitState): CircuitState = {
     loFirWriter foreach { _.write(state.circuit.serialize) }
@@ -438,19 +424,23 @@ class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
   }
 }
 
+object ESSENTForms {
+  val ReadyToEmit: Seq[TransformDependency] =
+    firrtl.stage.Forms.LowFormOptimized ++
+    Seq(
+      Dependency(essent.passes.ReplaceAsyncRegs),
+      Dependency(essent.passes.NoClockConnects),
+      Dependency(essent.passes.RegFromMem1),
+      Dependency(essent.passes.FactorMemReads),
+      Dependency(essent.passes.FactorMemWrites),
+      Dependency(essent.passes.SplitRegUpdates),
+      Dependency(essent.passes.FixMulResultWidth),
+      Dependency(essent.passes.FixSubType),
+      Dependency(essent.passes.DistinctTypeInstNames)
+    )
+}
+
 class CCCompiler(opt: OptFlags, writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
   def emitter = new CppEmitter(opt, writer)
-  def transforms: Seq[Transform] = Seq(
-    new firrtl.ChirrtlToHighFirrtl,
-    new firrtl.IRToWorkingIR,
-    new firrtl.ResolveAndCheck,
-    new firrtl.HighFirrtlToMiddleFirrtl,
-    new firrtl.passes.memlib.InferReadWrite,
-    new firrtl.passes.memlib.ReplSeqMem,
-    new firrtl.MiddleFirrtlToLowFirrtl,
-    // new firrtl.passes.InlineInstances,
-    new firrtl.LowFirrtlOptimization,
-    new FinalCleanups,
-    new DumpLowFIRRTL(loFirWriter)
-  )
+  def transforms: Seq[Transform] = ESSENTForms.ReadyToEmit.map(_.getObject)
 }

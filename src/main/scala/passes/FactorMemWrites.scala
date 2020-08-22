@@ -7,6 +7,8 @@ import essent.Extract._
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
+import firrtl.options.Dependency
+import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
@@ -18,11 +20,15 @@ import firrtl.Utils._
 // - Pass 4) inserts new MemWrite FIRRTL nodes
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
 
-object FactorMemWrites extends Pass {
+object FactorMemWrites extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Transforms mem write ports into MemWrite for easier emission"
 
+  override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))
+  override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
+  override def optionalPrerequisiteOf = Seq(Dependency[essent.CppEmitter])
+
   def memHasRightParams(m: DefMemory) = {
-    (m.writeLatency == 1) && (m.readLatency == 0) && (m.readwriters.isEmpty)
+    (m.writeLatency == 1) && (m.readwriters.isEmpty)
   }
 
   def findWritePortExprs(writePorts: Set[String])(s: Statement): Seq[(String, Expression)] = s match {

@@ -6,11 +6,17 @@ import essent.Extract._
 import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
+import firrtl.options.Dependency
+import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
-object RegFromMem1 extends Pass {
+
+object RegFromMem1 extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Replaces single-element mems with a register"
+
+  override def prerequisites = Seq(Dependency(essent.passes.NoClockConnects))
+  override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
   def memHasRightParams(m: DefMemory) = {
     (m.depth == 1) && (m.writeLatency == 1) && (m.readLatency == 0) &&
