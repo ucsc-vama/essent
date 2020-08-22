@@ -49,7 +49,8 @@ object Driver {
       case "debug" => LogLevel.Debug
       case "trace" => LogLevel.Trace
     }
-    val baseClassNames = Seq("Emitter", "Extract$", "Graph", "StatementGraph")
+    val baseClassNames = Seq("Emitter", "Extract$", "BareGraph", "AcyclicPart",
+                             "OptElideRegUpdates", "OptMakeCondPart")
     val baseLogLevel = parseLevel(opt.essentLogLevel)
     val baseClassLogLevels = (baseClassNames map {
       className => s"essent.$className" -> baseLogLevel}
