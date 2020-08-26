@@ -18,8 +18,8 @@ case class OptFlags(
     trackExts: Boolean = false,
     partStats: Boolean = false,
     partCutoff: Int = 20,
-    passLogLevel: String = "warn",
-    essentLogLevel: String = "warn")
+    essentLogLevel: String = "warn",
+    firrtlLogLevel: String = "warn")
 
 class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {
@@ -68,15 +68,15 @@ class ArgsParser {
       else failure(s"$x bad value must be one of error|warn|info|debug|trace")
     }
     .action( (level, c) => c.copy(essentLogLevel = level ) )
-    .text("Logging level for essent not during passes")
+    .text("logging level for essent processing after firrtl")
 
-    opt[String]("pass-log-level").abbr("pll").valueName("<Error|Warn|Info|Debug|Trace>")
+    opt[String]("firrtl-log-level").abbr("fll").valueName("<Error|Warn|Info|Debug|Trace>")
     .validate { x =>
       if (Array("error", "warn", "info", "debug", "trace").contains(x.toLowerCase)) success
       else failure(s"$x bad value must be one of error|warn|info|debug|trace")
     }
-    .action( (level, c) => c.copy(passLogLevel = level ) )
-    .text("Logging level for essent during passes")
+    .action( (level, c) => c.copy(firrtlLogLevel = level ) )
+    .text("logging level for firrtl preprocessing")
 
     help("help").text("prints this usage text")
 
