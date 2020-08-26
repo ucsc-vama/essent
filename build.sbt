@@ -10,11 +10,11 @@ scalacOptions ++= Seq("-deprecation", "-unchecked")
 
 libraryDependencies += "com.github.scopt" %% "scopt" % "3.7.1"
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.1.2" % "test"
 
 libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.7"
 
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.0"
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.1"
 
 
 // Assembly
