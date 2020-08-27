@@ -435,7 +435,7 @@ object ESSENTForms {
       Dependency(essent.passes.FactorMemWrites),
       Dependency(essent.passes.SplitRegUpdates),
       Dependency(essent.passes.FixMulResultWidth),
-      Dependency(essent.passes.FixSubType),
+      // Dependency(essent.passes.FixSubType),
       Dependency(essent.passes.DistinctTypeInstNames)
     )
 }
