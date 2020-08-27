@@ -1,4 +1,4 @@
-package essent.passes
+package disabled
 
 import firrtl._
 import firrtl.ir._
