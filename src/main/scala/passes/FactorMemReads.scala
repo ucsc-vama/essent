@@ -27,6 +27,10 @@ object FactorMemReads extends Pass with DependencyAPIMigration with PreservesAll
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
+  def memHasRightParams(m: DefMemory) = {
+    (m.readLatency == 0) && (m.readwriters.isEmpty)
+  }
+
   def findReadPortAddrs(readPorts: Set[String])(s: Statement): Seq[(String,Expression)] = s match {
     case b: Block => b.stmts flatMap findReadPortAddrs(readPorts)
     case Connect(_, WSubField(WSubField(WRef(memName,_,_,_), portName, _, _), "addr", _, _), rhs) =>
@@ -73,6 +77,8 @@ object FactorMemReads extends Pass with DependencyAPIMigration with PreservesAll
 
   def FactorMemReadsModule(m: Module): Module = {
     val memsInModule = findInstancesOf[DefMemory](m.body)
+    memsInModule foreach {m =>
+      if(!memHasRightParams(m)) throw new Exception(s"improper mem! $m")}
     val readPortTypes = (memsInModule flatMap {
       mem => mem.readers map { readPortName => (mem.name + "." + readPortName, mem.dataType) }
     }).toMap
