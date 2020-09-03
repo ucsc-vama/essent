@@ -75,7 +75,7 @@ class NamedGraphSpec extends FlatSpec {
     assertResult(EmptyStmt)(ng.idToStmt(ng.nameToID("c")))
     assert( ng.validNodes(ng.nameToID("b")))
     assert(!ng.validNodes(ng.nameToID("c")))
-    // trusts BareGraph's test for mergeNodesMutably
+    // trusts Graph's test for mergeNodesMutably
   }
 
   it should "be able to detect if Statement type anywhere in graph" in {

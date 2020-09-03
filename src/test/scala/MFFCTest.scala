@@ -12,25 +12,25 @@ import org.scalatest._
 // 6 - 7
 
 class MFFCSpec extends FlatSpec {
-  def buildStartingBG() = {
-    val bg = new BareGraph()
-    bg.addEdge(0,1)
-    bg.addEdge(1,2)
-    bg.addEdge(3,4)
-    bg.addEdge(4,5)
-    bg.addEdge(4,2)
-    bg.addEdge(6,7)
-    bg
+  def buildStartingGraph() = {
+    val g = new Graph()
+    g.addEdge(0,1)
+    g.addEdge(1,2)
+    g.addEdge(3,4)
+    g.addEdge(4,5)
+    g.addEdge(4,2)
+    g.addEdge(6,7)
+    g
   }
 
-  "A MFFC" should "be built from a BareGraph from scratch" in {
-    val bg = buildStartingBG()
-    assertResult(ArrayBuffer(2,2,2,4,4,5,7,7)) { MFFC(bg) }
+  "A MFFC" should "be built from a Graph from scratch" in {
+    val g = buildStartingGraph()
+    assertResult(ArrayBuffer(2,2,2,4,4,5,7,7)) { MFFC(g) }
   }
 
   it should "grow initialAssignments appropriately" in {
-    val bg = buildStartingBG()
-    val mffcWorker = new MFFC(bg)
+    val g = buildStartingGraph()
+    val mffcWorker = new MFFC(g)
     val initialMFFC =  ArrayBuffer(-1,-1, 2,-1,-1, 2,-1,-1)
     val expectedMFFC = ArrayBuffer( 2, 2, 2, 2, 2, 2,-1,-1)
     mffcWorker.overrideMFFCs(initialMFFC)
@@ -39,7 +39,7 @@ class MFFCSpec extends FlatSpec {
   }
 
   it should "be able to prevent MFFCs from including excluded" in {
-    val bg = buildStartingBG()
-    assertResult(ArrayBuffer(1,1,2,3,4,5,6,7)) { MFFC(bg, Set(2,4,6)) }
+    val g = buildStartingGraph()
+    assertResult(ArrayBuffer(1,1,2,3,4,5,6,7)) { MFFC(g, Set(2,4,6)) }
   }
 }

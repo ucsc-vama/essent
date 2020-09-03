@@ -1,31 +1,31 @@
 package essent
 
-import BareGraph.NodeID
+import Graph.NodeID
 
 import collection.mutable.{ArrayBuffer, HashMap, HashSet}
 
 
 // Fundamental assumptions:
-//  * IDs match up with IDs in original BareGraph
+//  * IDs match up with IDs in original Graph
 //  * The mergeID is a member of the merged group and ID used
 //  * MergeGraph will not add new nodes after built
 
-class MergeGraph extends BareGraph {
+class MergeGraph extends Graph {
   // node ID -> merge ID
   val idToMergeID = ArrayBuffer[NodeID]()
 
   // merge ID -> [member] node IDs (must include mergeID)
   val mergeIDToMembers = HashMap[NodeID, Seq[NodeID]]()
 
-  // inherits outNeigh and inNeigh from BareGraph
+  // inherits outNeigh and inNeigh from Graph
 
-  def buildFromBareGraph(og: BareGraph) {
+  def buildFromGraph(g: Graph) {
     // FUTURE: cleaner way to do this with clone on superclass?
-    outNeigh.appendAll(ArrayBuffer.fill(og.numNodes)(ArrayBuffer[NodeID]()))
-    inNeigh.appendAll(ArrayBuffer.fill(og.numNodes)(ArrayBuffer[NodeID]()))
-    og.nodeRange foreach { id => {
-      og.outNeigh(id).copyToBuffer(outNeigh(id))
-      og.inNeigh(id).copyToBuffer(inNeigh(id))
+    outNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
+    inNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
+    g.nodeRange foreach { id => {
+      g.outNeigh(id).copyToBuffer(outNeigh(id))
+      g.inNeigh(id).copyToBuffer(inNeigh(id))
     }}
     ArrayBuffer.range(0, numNodes()).copyToBuffer(idToMergeID)
     nodeRange() foreach { id  => mergeIDToMembers(id) = Seq(id) }
@@ -59,15 +59,15 @@ class MergeGraph extends BareGraph {
 
 
 object MergeGraph {
-  def apply(og: BareGraph): MergeGraph = {
+  def apply(g: Graph): MergeGraph = {
     val mg = new MergeGraph
-    mg.buildFromBareGraph(og)
+    mg.buildFromGraph(g)
     mg
   }
 
-  def apply(og: BareGraph, initialAssignments: ArrayBuffer[NodeID]): MergeGraph = {
+  def apply(g: Graph, initialAssignments: ArrayBuffer[NodeID]): MergeGraph = {
     // TODO: remove unecessary building if using initialAssignments
-    val mg = apply(og)
+    val mg = apply(g)
     mg.applyInitialAssignments(initialAssignments)
     mg
   }

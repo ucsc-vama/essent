@@ -4,7 +4,7 @@ import org.scalatest._
 
 class TopologicalSortSpec extends FlatSpec {
   "Topological Sort" should "return a valid ordering" in {
-    val bg = new BareGraph
+    val bg = new Graph
     bg.addEdge(2,3)
     bg.addEdge(2,1)
     bg.addEdge(1,0)
@@ -17,7 +17,7 @@ class TopologicalSortSpec extends FlatSpec {
   }
 
   it should "detect a cycle" in {
-    val bg = new BareGraph
+    val bg = new Graph
     bg.addEdge(2,3)
     bg.addEdge(3,1)
     bg.addEdge(3,4)

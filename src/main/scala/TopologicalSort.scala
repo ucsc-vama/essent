@@ -1,17 +1,17 @@
 package essent
 
-import BareGraph._
+import Graph._
 
 import collection.mutable.{ArrayBuffer, BitSet}
 
 object TopologicalSort {
-  def apply(bg: BareGraph) = {
+  def apply(g: Graph) = {
     val finalOrdering = ArrayBuffer[NodeID]()
     val inStack = BitSet()
     val finished = BitSet()
     def visit(v: NodeID) {
       if (inStack(v)) {
-        findCyclesByTopoSort(bg) match {
+        findCyclesByTopoSort(g) match {
           case None => throw new Exception("Was a cycle but couldn't reproduce")
           case Some(cycle) => {
             cycle foreach println
@@ -20,18 +20,18 @@ object TopologicalSort {
         }
       } else if (!finished(v)) {
         inStack.add(v)
-        bg.inNeigh(v) foreach { u => visit(u) }
+        g.inNeigh(v) foreach { u => visit(u) }
         finished.add(v)
         inStack.remove(v)
         finalOrdering += v
       }
     }
-    bg.nodeRange foreach { startingID => visit(startingID) }
+    g.nodeRange foreach { startingID => visit(startingID) }
     finalOrdering
   }
 
 
-  def findCyclesByTopoSort(bg: BareGraph): Option[Seq[NodeID]] = {
+  def findCyclesByTopoSort(bg: Graph): Option[Seq[NodeID]] = {
     var cycleFound: Option[Seq[NodeID]] = None
     val inStack = BitSet()
     val finished = BitSet()

@@ -1,6 +1,6 @@
 package essent
 
-import essent.BareGraph.NodeID
+import essent.Graph.NodeID
 
 import logger._
 
@@ -157,8 +157,8 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
 
 
 object AcyclicPart {
-  def apply(og: BareGraph, excludeSet: Set[NodeID] = Set()) = {
-    val ap = new AcyclicPart(MergeGraph(og), excludeSet)
+  def apply(g: Graph, excludeSet: Set[NodeID] = Set()) = {
+    val ap = new AcyclicPart(MergeGraph(g), excludeSet)
     ap
   }
 }

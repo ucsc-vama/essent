@@ -7,21 +7,21 @@ import org.scalatest._
 class MergeGraphSpec extends FlatSpec {
   val initialAssignments = ArrayBuffer(1,1,1,3,4,6,6)
 
-  def buildStartingBG() = {
-    val og = new BareGraph()
-    og.addEdge(0,1)
-    og.addEdge(0,2)
-    og.addEdge(1,2)
-    og.addEdge(5,6)
-    og.addEdge(2,5)
-    og.addEdge(5,3)
-    og
+  def buildStartingGraph() = {
+    val g = new Graph()
+    g.addEdge(0,1)
+    g.addEdge(0,2)
+    g.addEdge(1,2)
+    g.addEdge(5,6)
+    g.addEdge(2,5)
+    g.addEdge(5,3)
+    g
   }
 
-  def buildStartingMG() = MergeGraph(buildStartingBG(), initialAssignments)
+  def buildStartingMG() = MergeGraph(buildStartingGraph(), initialAssignments)
 
-  "A MergeGraph" should "be built from a BareGraph with initialAssignments" in {
-    val mg = MergeGraph(buildStartingBG(), initialAssignments)
+  "A MergeGraph" should "be built from a Graph with initialAssignments" in {
+    val mg = MergeGraph(buildStartingGraph(), initialAssignments)
     assert(mg.idToMergeID == initialAssignments)
     assert(mg.iterGroups == Map(
       (1,Seq(0,1,2)), (3,Seq(3)), (4,Seq(4)), (6,Seq(5,6))))
@@ -42,7 +42,7 @@ class MergeGraphSpec extends FlatSpec {
   }
 
   it should "be able to apply initialAssignments later" in {
-    val mg = MergeGraph(buildStartingBG())
+    val mg = MergeGraph(buildStartingGraph())
     mg.applyInitialAssignments(initialAssignments)
     assert(mg.idToMergeID == initialAssignments)
     assert(mg.iterGroups == Map(

@@ -6,9 +6,9 @@ import collection.mutable.ArrayBuffer
 //  - uses numeric vertex identifiers (NodeID  which is type alias for Int)
 //  - tracks edges both in outgoing and incomming directions
 
-class BareGraph {
+class Graph {
   // Access companion object's type aliases without prefix
-  import BareGraph.{NodeID, AdjacencyList}
+  import Graph.{NodeID, AdjacencyList}
   
   // Internal data structures
   //----------------------------------------------------------------------------
@@ -124,7 +124,7 @@ class BareGraph {
   def numEdges() = computeDegrees(outNeigh).sum
 }
 
-object BareGraph {
+object Graph {
   type NodeID = Int
   type AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]
 }

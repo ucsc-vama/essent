@@ -1,6 +1,6 @@
 package essent
 
-import essent.BareGraph.NodeID
+import essent.Graph.NodeID
 import essent.ir._
 
 import logger._

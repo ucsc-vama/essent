@@ -9,15 +9,15 @@ import essent.ir._
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.reflect.ClassTag
 
-// Extends BareGraph to include more attributes per node
+// Extends Graph to include more attributes per node
 //  - Associates a name (String) and Statement with each node
 //  - Name must be unique, since can find nodes by name too
 //  - Nodes can have an EmptyStatement if no need to emit
 
-class NamedGraph  extends BareGraph {
+class NamedGraph  extends Graph {
   // Access companion object's type aliases without prefix
   // TODO: type alias for name type? Hard to imagine other than String?
-  import BareGraph.{NodeID, AdjacencyList}
+  import Graph.{NodeID, AdjacencyList}
 
   
   // Internal data structures
@@ -42,7 +42,7 @@ class NamedGraph  extends BareGraph {
       idToName += vertexName
       idToStmt += EmptyStmt
       growNeighsIfNeeded(newID)
-      // TODO: is it better to trust BareGraph to grow for new ID? (current)
+      // TODO: is it better to trust Graph to grow for new ID? (current)
       newID
     }
   }
