@@ -222,14 +222,14 @@ object Extract extends LazyLogging {
   def squishOutPassThroughConnects(bodies: Seq[Statement],
                                    namesToExclude: Set[String]): Seq[Statement] = {
     def isRef(e: Expression): Boolean = e.isInstanceOf[WRef] || e.isInstanceOf[WSubField]
-    def findChainRenames(ng: NamedGraph): Map[String, String] = {
-      val sourceIDs = ng.nodeRange filter { ng.inNeigh(_).isEmpty }
+    def findChainRenames(sg: StatementGraph): Map[String, String] = {
+      val sourceIDs = sg.nodeRange filter { sg.inNeigh(_).isEmpty }
       def reachableIDs(id: Int): Seq[Int] = {
-        Seq(id) ++ (ng.outNeigh(id) flatMap reachableIDs)
+        Seq(id) ++ (sg.outNeigh(id) flatMap reachableIDs)
       }
       def findChildRenames(sourceID: NodeID) = {
         reachableIDs(sourceID) map {
-          childID => (ng.idToName(childID), ng.idToName(sourceID))
+          childID => (sg.idToName(childID), sg.idToName(sourceID))
         }
       }
       (sourceIDs flatMap findChildRenames).toMap
@@ -239,7 +239,7 @@ object Extract extends LazyLogging {
       case _ => false
     }}
     logger.info(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
-    val chainRenames = findChainRenames(NamedGraph(straightConnects))
+    val chainRenames = findChainRenames(StatementGraph(straightConnects))
     otherStmts map replaceNamesStmt(chainRenames)
   }
 }

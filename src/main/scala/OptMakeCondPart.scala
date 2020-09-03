@@ -11,17 +11,17 @@ import collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
-class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) extends LazyLogging {
+class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) extends LazyLogging {
   val cacheSuffix = "$old"
 
-  val alreadyDeclared = ng.stateElemNames().toSet
+  val alreadyDeclared = sg.stateElemNames().toSet
 
   def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
     val idToMemberIDs = ap.iterParts
     val idToMemberStmts = (idToMemberIDs map { case (id, members) => {
-      val memberStmts = ng.idToStmt(id) match {
+      val memberStmts = sg.idToStmt(id) match {
         case cp: CondPart => cp.memberStmts
-        case _ => members map ng.idToStmt
+        case _ => members map sg.idToStmt
       }
       (id -> memberStmts)
     }}).toMap
@@ -33,7 +33,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
     }}
     val allInputs = idToInputNames.values.flatten.toSet
     val validParts = (idToMemberIDs flatMap { case (id, members) => {
-      if (members.exists(ng.validNodes)) Seq(id)
+      if (members.exists(sg.validNodes)) Seq(id)
       else Seq()
     }}).toSet
     val partsTopoSorted = TopologicalSort(ap.mg) filter validParts
@@ -47,12 +47,12 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
       val alwaysActive = excludedIDs.contains(id)
       val cpStmt = CondPart(topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
-      ng.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
+      sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
       namesToDeclare foreach { name => {
         rn.mutateDecTypeIfLocal(name, PartOut) }
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
       }
-      assert(ng.validNodes(id))
+      assert(sg.validNodes(id))
     }}
     val externalInputs = getExternalPartInputTypes(extIOtypes)
     externalInputs foreach {
@@ -61,13 +61,13 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
   }
 
   def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
-    val matchingIDs = ng.idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
+    val matchingIDs = sg.idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
     if (matchingIDs.isEmpty) None
     else {
       val newGroupID = matchingIDs.min
-      val memberStmts = matchingIDs map ng.idToStmt
+      val memberStmts = matchingIDs map sg.idToStmt
       val tempCPstmt = CondPart(newGroupID, true, Seq(), memberStmts, Map())
-      ng.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
+      sg.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
       Some(newGroupID)
     }
   }
@@ -75,17 +75,17 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
   def doOpt(smallPartCutoff: Int = 20) {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
-    excludedIDs ++= (ng.nodeRange filterNot ng.validNodes)
-    val ap = AcyclicPart(ng, excludedIDs.toSet)
+    excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+    val ap = AcyclicPart(sg, excludedIDs.toSet)
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
   }
 
-  def getNumParts(): Int = ng.idToStmt count { _.isInstanceOf[CondPart] }
+  def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }
 
   def getPartInputMap(): Map[String,Seq[Int]] = {
-    val allPartInputs = ng.validNodes.toSeq flatMap { id => ng.idToStmt(id) match {
+    val allPartInputs = sg.validNodes.toSeq flatMap { id => sg.idToStmt(id) match {
       case cp: CondPart if !cp.alwaysActive => cp.inputs map { (_, cp.id) }
       case _ => Seq()
     }}
@@ -93,7 +93,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
   }
 
   def getPartOutputsToDeclare(): Seq[(String,Type)] = {
-    val allPartOutputTypes = ng.idToStmt flatMap { _ match {
+    val allPartOutputTypes = sg.idToStmt flatMap { _ match {
       case cp: CondPart => cp.outputsToDeclare.toSeq
       case _ => Seq()
     }}
@@ -101,11 +101,11 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
   }
 
   def getExternalPartInputNames(): Seq[String] = {
-    val allPartInputs = (ng.idToStmt flatMap { _ match {
+    val allPartInputs = (sg.idToStmt flatMap { _ match {
       case cp: CondPart => cp.inputs
       case _ => Seq()
     }}).toSet
-    val allPartOutputs = (ng.idToStmt flatMap { _ match {
+    val allPartOutputs = (sg.idToStmt flatMap { _ match {
       case cp: CondPart => cp.outputsToDeclare.keys
       case _ => Seq()
     }}).toSet ++ alreadyDeclared.toSet
@@ -120,7 +120,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
 
   def partitioningQualityStats(): String = {
     val numParts = getNumParts()
-    val partStmts = ng.idToStmt collect { case cp: CondPart => cp }
+    val partStmts = sg.idToStmt collect { case cp: CondPart => cp }
     val partSizes = partStmts map { cp => cp.memberStmts.size }
     val numStmtsTotal = partSizes.sum
     val numEdgesOrig = (partStmts flatMap {
@@ -141,7 +141,7 @@ class MakeCondPart(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) e
 }
 
 object MakeCondPart {
-  def apply(ng: NamedGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
+  def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
     new MakeCondPart(ng, rn, extIOtypes)
   }
 }

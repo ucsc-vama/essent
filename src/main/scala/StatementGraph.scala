@@ -14,12 +14,12 @@ import scala.reflect.ClassTag
 //  - Name must be unique, since can find nodes by name too
 //  - Nodes can have an EmptyStatement if no need to emit
 
-class NamedGraph  extends Graph {
+class StatementGraph extends Graph {
   // Access companion object's type aliases without prefix
   // TODO: type alias for name type? Hard to imagine other than String?
   import Graph.{NodeID, AdjacencyList}
 
-  
+
   // Internal data structures
   //----------------------------------------------------------------------------
   // Vertex name (string of destination variable) -> numeric ID
@@ -148,19 +148,19 @@ class NamedGraph  extends Graph {
   //----------------------------------------------------------------------------
   def numValidNodes() = validNodes.size
 
-  def numNodeRefs() = idToName.size  
+  def numNodeRefs() = idToName.size
 }
 
 
 
-object NamedGraph {
-  def apply(bodies: Seq[Statement]): NamedGraph = {
-    val ng = new NamedGraph
-    ng.buildFromBodies(bodies)
-    ng.addOrderingDepsForStateUpdates()
-    ng
+object StatementGraph {
+  def apply(bodies: Seq[Statement]): StatementGraph = {
+    val sg = new StatementGraph
+    sg.buildFromBodies(bodies)
+    sg.addOrderingDepsForStateUpdates()
+    sg
   }
 
-  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): NamedGraph =
+  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
     apply(flattenWholeDesign(circuit, removeFlatConnects))
 }

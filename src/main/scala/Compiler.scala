@@ -96,22 +96,22 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
   // Write General-purpose Eval
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
-  def writeBodyInner(indentLevel: Int, ng: NamedGraph, opt: OptFlags,
+  def writeBodyInner(indentLevel: Int, sg: StatementGraph, opt: OptFlags,
                      keepAvail: Set[String] = Set()) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
     if (opt.conditionalMuxes)
-      MakeCondMux(ng, rn, keepAvail)
+      MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
-    ng.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
           writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         writeLines(indentLevel, s"if ($muxCond) {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.tWay), noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), noMoreMuxOpts)
         writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, NamedGraph(cm.fWay), noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
         writeLines(indentLevel, "}")
       }
       case _ => {
@@ -121,8 +121,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
     }}
   }
 
-  def writeRegResetOverrides(ng: NamedGraph) {
-    val updatesWithResets = ng.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+  def writeRegResetOverrides(sg: StatementGraph) {
+    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
     val overridesToWrite = resetGroups.toSeq flatMap {
       case (resetName, regDefs) => {
@@ -157,11 +157,11 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
   }
 
   def writeZoningPredecs(
-      ng: NamedGraph,
-      condPartWorker: MakeCondPart,
-      topName: String,
-      extIOtypes: Map[String, Type],
-      opt: OptFlags) {
+                          sg: StatementGraph,
+                          condPartWorker: MakeCondPart,
+                          topName: String,
+                          extIOtypes: Map[String, Type],
+                          opt: OptFlags) {
     // predeclare part outputs
     val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
@@ -178,7 +178,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
     writeLines(1, s"bool done_reset;")
     writeLines(1, s"bool verbose;")
     writeLines(0, "")
-    ng.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach { stmt => stmt match {
       case cp: CondPart => {
         writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         if (!cp.alwaysActive)
@@ -191,7 +191,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
-        writeBodyInner(2, NamedGraph(noRegUpdates), opt, keepAvail)
+        writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
         writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
@@ -210,7 +210,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
     writeLines(0, "")
   }
 
-  def writeZoningBody(ng: NamedGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
+  def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
     writeLines(2, "if (reset || !done_reset) {")
     writeLines(3, "sim_cached = false;")
     writeLines(3, "regs_set = false;")
@@ -231,7 +231,7 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     writeLines(2, extIOCaches.toSeq)
-    ng.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach { stmt => stmt match {
       case cp: CondPart => {
         if (!cp.alwaysActive)
           writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}();")
@@ -247,8 +247,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
   }
 
 
-  def declareSigTracking(ng: NamedGraph, topName: String, opt: OptFlags) {
-    val allNamesAndTypes = ng.collectValidStmts(ng.nodeRange) flatMap findStmtNameAndType
+  def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
+    val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
     writeLines(0, "")
     writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
@@ -349,16 +349,16 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val ng = NamedGraph(circuit, opt.removeFlatConnects)
-    val containsAsserts = ng.containsStmtOfType[Stop]()
+    val sg = StatementGraph(circuit, opt.removeFlatConnects)
+    val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
-    val condPartWorker = MakeCondPart(ng, rn, extIOMap)
-    rn.populateFromNG(ng, extIOMap)
+    val condPartWorker = MakeCondPart(sg, rn, extIOMap)
+    rn.populateFromSG(sg, extIOMap)
     if (opt.useCondParts) {
       condPartWorker.doOpt(opt.partCutoff)
     } else {
       if (opt.regUpdates)
-        OptElideRegUpdates(ng)
+        OptElideRegUpdates(sg)
     }
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
@@ -389,17 +389,17 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
       writeLines(0, "")
     }
     if (opt.useCondParts)
-      writeZoningPredecs(ng, condPartWorker, circuit.main, extIOMap, opt)
+      writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.trackParts || opt.trackSigs)
       writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
-      writeZoningBody(ng, condPartWorker, opt)
+      writeZoningBody(sg, condPartWorker, opt)
     else
-      writeBodyInner(2, ng, opt)
+      writeBodyInner(2, sg, opt)
     if (containsAsserts)
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-    writeRegResetOverrides(ng)
+    writeRegResetOverrides(sg)
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
     //   writeLines(1, s"~$topName() {")

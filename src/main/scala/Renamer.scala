@@ -20,19 +20,19 @@ class Renamer {
   val nameToEmitName = HashMap[String,String]()
   val nameToMeta = HashMap[String,SigMeta]()
 
-  def populateFromNG(ng: NamedGraph, extIOMap: Map[String,Type]) {
-    val stateNames = ng.stateElemNames.toSet
-    ng.nodeRange foreach { id => {
-      val name = ng.idToName(id)
+  def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
+    val stateNames = sg.stateElemNames.toSet
+    sg.nodeRange foreach { id => {
+      val name = sg.idToName(id)
       val decType = if (stateNames.contains(name))        RegSet
                     else if (extIOMap.contains(name))     ExtIO
                     else                                  Local
       val sigType = if (extIOMap.contains(name)) extIOMap(name)
-                    else findResultType(ng.idToStmt(id))
+                    else findResultType(sg.idToStmt(id))
       nameToEmitName(name) = name
       nameToMeta(name) = SigMeta(decType, sigType)
     }}
-    val unusedExtSigs = extIOMap.keys.toSet -- ng.nameToID.keys
+    val unusedExtSigs = extIOMap.keys.toSet -- sg.nameToID.keys
     unusedExtSigs foreach { name => {
       nameToEmitName(name) = name
       nameToMeta(name) = SigMeta(ExtIO, extIOMap(name))
