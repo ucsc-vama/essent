@@ -19,7 +19,10 @@ case class OptFlags(
     partStats: Boolean = false,
     partCutoff: Int = 20,
     essentLogLevel: String = "warn",
-    firrtlLogLevel: String = "warn")
+    firrtlLogLevel: String = "warn") {
+  val inputFileDir = firInputFile.getParent
+  val outputDir = if (inputFileDir == null) "" else inputFileDir
+}
 
 class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {

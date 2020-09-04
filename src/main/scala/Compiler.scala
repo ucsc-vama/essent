@@ -1,21 +1,15 @@
 package essent
 
-import collection.mutable.HashMap
-import java.io.Writer
+import java.io.{File, FileWriter, Writer}
 
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 import essent.Util._
-
 import firrtl._
-import firrtl.annotations._
 import firrtl.ir._
 import firrtl.options.Dependency
-import firrtl.Mappers._
-import firrtl.PrimOps._
 import firrtl.stage.TransformManager.TransformDependency
-import firrtl.Utils._
 import firrtl.stage.transforms
 
 
@@ -400,35 +394,38 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 }
 
 
-// TODO: use functionality within newer firrtl
-class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
-  def inputForm = LowForm
-  def outputForm = LowForm
-  def execute(state: CircuitState): CircuitState = {
-    loFirWriter foreach { _.write(state.circuit.serialize) }
-    state
-  }
-}
-
-
-class EssentCompiler(opt: OptFlags, writer: Writer) {
+class EssentCompiler(opt: OptFlags) {
   val readyForEssent: Seq[TransformDependency] =
     firrtl.stage.Forms.LowFormOptimized ++
-      Seq(
-        Dependency(essent.passes.ReplaceAsyncRegs),
-        Dependency(essent.passes.NoClockConnects),
-        Dependency(essent.passes.RegFromMem1),
-        Dependency(essent.passes.FactorMemReads),
-        Dependency(essent.passes.FactorMemWrites),
-        Dependency(essent.passes.SplitRegUpdates),
-        Dependency(essent.passes.FixMulResultWidth),
-        Dependency(essent.passes.DistinctTypeInstNames)
-      )
+    Seq(
+      Dependency(essent.passes.ReplaceAsyncRegs),
+      Dependency(essent.passes.NoClockConnects),
+      Dependency(essent.passes.RegFromMem1),
+      Dependency(essent.passes.FactorMemReads),
+      Dependency(essent.passes.FactorMemWrites),
+      Dependency(essent.passes.SplitRegUpdates),
+      Dependency(essent.passes.FixMulResultWidth),
+      Dependency(essent.passes.DistinctTypeInstNames)
+    )
 
   def compileAndEmit(circuit: Circuit) {
+    val topName = circuit.main
+    if (opt.writeHarness) {
+      val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
+      val harnessWriter = new FileWriter(harnessFilename)
+      HarnessGenerator.topFile(topName, harnessWriter)
+      harnessWriter.close()
+    }
     val firrtlCompiler = new transforms.Compiler(readyForEssent)
     val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
-    val emitter = new EssentEmitter(opt, writer)
+    if (opt.dumpLoFirrtl) {
+      val debugWriter = new FileWriter(new File(opt.outputDir, s"$topName.lo.fir"))
+      debugWriter.write(resultState.circuit.serialize)
+      debugWriter.close()
+    }
+    val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
+    val emitter = new EssentEmitter(opt, dutWriter)
     emitter.execute(resultState.circuit)
+    dutWriter.close()
   }
 }
