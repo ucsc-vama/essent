@@ -8,3 +8,6 @@ test_fir/
 
 # release related
 utils/bin/essent.jar
+
+# IDE related
+.idea/*
