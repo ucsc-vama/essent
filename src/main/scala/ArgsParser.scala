@@ -20,8 +20,8 @@ case class OptFlags(
     partCutoff: Int = 20,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
-  val inputFileDir = firInputFile.getParent
-  val outputDir = if (inputFileDir == null) "" else inputFileDir
+  def inputFileDir() = firInputFile.getParent
+  def outputDir() = if (inputFileDir == null) "" else inputFileDir()
 }
 
 class ArgsParser {
