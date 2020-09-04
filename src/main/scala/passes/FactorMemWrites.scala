@@ -25,7 +25,6 @@ object FactorMemWrites extends Pass with DependencyAPIMigration with PreservesAl
 
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
-  override def optionalPrerequisiteOf = Seq(Dependency[essent.CppEmitter])
 
   def memHasRightParams(m: DefMemory) = {
     (m.writeLatency == 1) && (m.readwriters.isEmpty)

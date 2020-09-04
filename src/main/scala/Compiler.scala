@@ -16,16 +16,10 @@ import firrtl.Mappers._
 import firrtl.PrimOps._
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.Utils._
+import firrtl.stage.transforms
 
 
-class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransform with firrtl.Emitter {
-  def inputForm = LowForm
-  def outputForm = LowForm
-
-  override def prerequisites = ESSENTForms.ReadyToEmit
-
-  val outputSuffix: String = ".h"
-
+class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   val tabs = "  "
   val flagVarName = "PARTflags"
   val actVarName = "ACTcounts"
@@ -323,15 +317,8 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
-  def emit(state: firrtl.CircuitState, writer: java.io.Writer) {}
-  // TODO: unimplemented, but also deprecated in firrtl
-
-  def transforms = new firrtl.stage.TransformManager(
-    ESSENTForms.ReadyToEmit, prerequisites).flattenedTransformOrder
-
-  override def execute(state: CircuitState): CircuitState = {
+  def execute(circuit: Circuit) {
     val opt = initialOpt
-    val circuit = state.circuit
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -409,7 +396,6 @@ class CppEmitter(initialOpt: OptFlags, writer: Writer) extends firrtl.SeqTransfo
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
-    state
   }
 }
 
@@ -424,22 +410,25 @@ class DumpLowFIRRTL(loFirWriter: Option[Writer]) extends Transform {
   }
 }
 
-object ESSENTForms {
-  val ReadyToEmit: Seq[TransformDependency] =
-    firrtl.stage.Forms.LowFormOptimized ++
-    Seq(
-      Dependency(essent.passes.ReplaceAsyncRegs),
-      Dependency(essent.passes.NoClockConnects),
-      Dependency(essent.passes.RegFromMem1),
-      Dependency(essent.passes.FactorMemReads),
-      Dependency(essent.passes.FactorMemWrites),
-      Dependency(essent.passes.SplitRegUpdates),
-      Dependency(essent.passes.FixMulResultWidth),
-      Dependency(essent.passes.DistinctTypeInstNames)
-    )
-}
 
-class CCCompiler(opt: OptFlags, writer: Writer, loFirWriter: Option[Writer]) extends Compiler {
-  def emitter = new CppEmitter(opt, writer)
-  def transforms: Seq[Transform] = ESSENTForms.ReadyToEmit.map(_.getObject)
+class EssentCompiler(opt: OptFlags, writer: Writer) {
+  val readyForEssent: Seq[TransformDependency] =
+    firrtl.stage.Forms.LowFormOptimized ++
+      Seq(
+        Dependency(essent.passes.ReplaceAsyncRegs),
+        Dependency(essent.passes.NoClockConnects),
+        Dependency(essent.passes.RegFromMem1),
+        Dependency(essent.passes.FactorMemReads),
+        Dependency(essent.passes.FactorMemWrites),
+        Dependency(essent.passes.SplitRegUpdates),
+        Dependency(essent.passes.FixMulResultWidth),
+        Dependency(essent.passes.DistinctTypeInstNames)
+      )
+
+  def compileAndEmit(circuit: Circuit) {
+    val firrtlCompiler = new transforms.Compiler(readyForEssent)
+    val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
+    val emitter = new EssentEmitter(opt, writer)
+    emitter.execute(resultState.circuit)
+  }
 }

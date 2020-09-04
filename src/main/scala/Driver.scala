@@ -1,9 +1,9 @@
 package essent
 
 import java.io.{File, FileWriter}
+
 import scala.io.Source
 import scala.sys.process._
-
 import firrtl._
 import firrtl.ir._
 import logger._
@@ -35,8 +35,8 @@ object Driver {
     val dutWriter = new FileWriter(new File(outputDir, s"$topName.h"))
     val debugWriter = if (opt.dumpLoFirrtl) Some(new FileWriter(new File(outputDir, s"$topName.lo.fir")))
                       else None
-    val compiler = new CCCompiler(opt, dutWriter, debugWriter)
-    compiler.compileAndEmit(CircuitState(circuit, firrtl.ChirrtlForm))
+    val compiler = new EssentCompiler(opt, dutWriter)
+    compiler.compileAndEmit(circuit)
     dutWriter.close()
     debugWriter map { _.close() }
   }
