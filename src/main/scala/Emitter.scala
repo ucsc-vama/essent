@@ -20,6 +20,7 @@ object Emitter {
   def genCppType(tpe: Type) = tpe match {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
     case SIntType(IntWidth(w)) => s"SInt<$w>"
+    case AsyncResetType => "UInt<1>"
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
@@ -169,6 +170,7 @@ object Emitter {
       case AsUInt => s"${emitExprWrap(p.args.head)}.asUInt()"
       case AsSInt => s"${emitExprWrap(p.args.head)}.asSInt()"
       case AsClock => throw new Exception("AsClock unimplemented!")
+      case AsAsyncReset => emitExpr(p.args.head) // TODO: make async
       case Shl => s"${emitExprWrap(p.args.head)}.shl<${p.consts.head.toInt}>()"
       // case Shlw => s"${emitExprWrap(p.args.head)}.shlw<${p.consts.head.toInt}>()"
       case Shr => s"${emitExprWrap(p.args.head)}.shr<${p.consts.head.toInt}>()"
