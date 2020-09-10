@@ -111,21 +111,22 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
   def writeRegResetOverrides(sg: StatementGraph) {
     val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
-    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
-    val overridesToWrite = resetGroups.toSeq flatMap {
-      case (resetName, regDefs) => {
-        val body = regDefs map {
-          r => s"$tabs${rn.emit(r.name)} = ${emitExpr(r.init)};"
-        }
-        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
-      }
-    }
-    if (overridesToWrite.nonEmpty) {
-      writeLines(2, "if (update_registers) {")
-      // FUTURE: will overrides need triggers if partitioned?
-      writeLines(3, overridesToWrite)
-      writeLines(2, "}")
-    }
+    assert(updatesWithResets.isEmpty)
+//    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
+//    val overridesToWrite = resetGroups.toSeq flatMap {
+//      case (resetName, regDefs) => {
+//        val body = regDefs map {
+//          r => s"$tabs${rn.emit(r.name)} = ${emitExpr(r.init)};"
+//        }
+//        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
+//      }
+//    }
+//    if (overridesToWrite.nonEmpty) {
+//      writeLines(2, "if (update_registers) {")
+//      // FUTURE: will overrides need triggers if partitioned?
+//      writeLines(3, overridesToWrite)
+//      writeLines(2, "}")
+//    }
   }
 
 
@@ -405,7 +406,8 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.FactorMemWrites),
       Dependency(essent.passes.SplitRegUpdates),
       Dependency(essent.passes.FixMulResultWidth),
-      Dependency(essent.passes.DistinctTypeInstNames)
+      Dependency(essent.passes.DistinctTypeInstNames),
+      Dependency(essent.passes.RemoveAsAsyncReset)
     )
 
   def compileAndEmit(circuit: Circuit) {

@@ -15,7 +15,7 @@ import firrtl.Utils._
 object SplitRegUpdates extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
   def desc = "Appends $next to the name of any reg being assigned to"
 
-  override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))
+  override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1), Dependency(essent.passes.ReplaceAsyncRegs))
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
 
   def renameRegStmt(s: Statement): Statement = {
