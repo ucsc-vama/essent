@@ -4,17 +4,16 @@ import firrtl._
 import firrtl.ir._
 import firrtl.PrimOps._
 import firrtl.Mappers._
-import firrtl.options.PreservesAll
 import firrtl.passes._
-import firrtl.Utils._
 
 
-object FixMulResultWidth extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
+object FixMulResultWidth extends Pass with DependencyAPIMigration {
   def desc = "Inserts tail operators on mul operators if result width is too small"
   // FUTURE: is this a bug in firrtl width inference?
 
   override def prerequisites = Seq.empty
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
+  override def invalidates(a: Transform) = false
 
   def mulTailExpr(e: Expression): Expression = {
     val replaced = e match {

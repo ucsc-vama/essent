@@ -4,17 +4,17 @@ import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.options.Dependency
-import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
 
-object NoClockConnects extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
+object NoClockConnects extends Pass with DependencyAPIMigration {
   def desc = "Removes Connects or DefNodes to anything that is ClockType"
   // FUTURE: remove this pass and properly support multi-clock
 
   override def prerequisites = Seq(Dependency(essent.passes.ReplaceAsyncRegs))
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
+  override def invalidates(a: Transform) = false
 
   def cutConnectsStmt(s: Statement): Statement = {
     val noConnects = s match {

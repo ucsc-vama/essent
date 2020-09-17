@@ -7,16 +7,16 @@ import firrtl._
 import firrtl.ir._
 import firrtl.Mappers._
 import firrtl.options.Dependency
-import firrtl.options.PreservesAll
 import firrtl.passes._
 import firrtl.Utils._
 
 
-object SplitRegUpdates extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
+object SplitRegUpdates extends Pass with DependencyAPIMigration {
   def desc = "Appends $next to the name of any reg being assigned to"
 
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1), Dependency(essent.passes.ReplaceAsyncRegs))
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
+  override def invalidates(a: Transform) = false
 
   def renameRegStmt(s: Statement): Statement = {
     val replaced = s match {

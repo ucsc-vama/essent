@@ -2,17 +2,16 @@ package essent.passes
 
 import firrtl._
 import firrtl.ir._
-import firrtl.options.Dependency
-import firrtl.options.PreservesAll
 import firrtl.passes._
 
 
-object ReplaceAsyncRegs extends Pass with DependencyAPIMigration with PreservesAll[Transform] {
+object ReplaceAsyncRegs extends Pass with DependencyAPIMigration {
   def desc = "Replaces AsyncResetReg (black-box) with non-external module that behaves the same"
   // this pass is inspired by firebox/sim/src/main/scala/passes/AsyncResetReg.scala
 
   override def prerequisites = Seq.empty
   override def optionalPrerequisites = firrtl.stage.Forms.LowFormOptimized
+  override def invalidates(a: Transform) = false
 
   def isCorrectAsyncRegModule(em: ExtModule): Boolean = {
     val nameCorrect = em.defname == "AsyncResetReg"
