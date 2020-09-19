@@ -45,13 +45,12 @@ object Extract extends LazyLogging {
     def crawlModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] = {
       s match {
         case b: Block => b.stmts flatMap crawlModuleInstances(prefix, circuit)
-        case i: WDefInstance => {
+        case i: WDefInstance =>
           val nestedModules = findModule(i.module, circuit) match {
             case m: Module => crawlModuleInstances(s"$prefix${i.name}.", circuit)(m.body)
             case em: ExtModule => Seq()
           }
           Seq((i.module, s"$prefix${i.name}.")) ++ nestedModules
-        }
         case _ => Seq()
       }
     }
@@ -68,10 +67,9 @@ object Extract extends LazyLogging {
     val allInstances = findAllModuleInstances(circuit)
     val extIOs = allInstances flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => {
+        case m: Module =>
           if (m.name == circuit.main) m.ports map { port => (s"$prefix${port.name}", port.tpe) }
           else None
-        }
         case em: ExtModule => em.ports map { port => (s"$prefix${port.name}", port.tpe) }
       }
     }
@@ -128,11 +126,10 @@ object Extract extends LazyLogging {
     val result = e match {
       case w: WRef => Seq(w.name)
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
-      case w: WSubField => {
+      case w: WSubField =>
         val innerResult = findDependencesExpr(w.expr)
         if (innerResult.isEmpty) Seq()
         else Seq(s"${innerResult.head}.${w.name}")
-      }
       case w: WSubAccess => Seq(w.expr, w.index) flatMap findDependencesExpr
       case p: DoPrim => p.args flatMap findDependencesExpr
       case u: UIntLiteral => Seq()
@@ -147,32 +144,28 @@ object Extract extends LazyLogging {
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
     case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
-    case mw: MemWrite => {
+    case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
       Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
-    }
-    case p: Print => {
+    case p: Print =>
       val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
       val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
       // FUTURE: more efficient unique name (perhaps line number?)
       Seq(HyperedgeDep(uniqueName, deps.distinct, p))
-    }
-    case st: Stop => {
+    case st: Stop =>
       val deps = findDependencesExpr(st.en)
       val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
       // FUTURE: more unique name (perhaps line number?)
       Seq(HyperedgeDep(uniqueName, deps, st))
-    }
     case r: DefRegister => Seq(HyperedgeDep(r.name, Seq(), r))
     case w: DefWire => Seq()
     case m: DefMemory => Seq(HyperedgeDep(m.name, Seq(), m))
     case i: WDefInstance => Seq()
-    case cm: CondMux => {
+    case cm: CondMux =>
       val condDeps = findDependencesExpr(cm.mux.cond)
       val wayHEDeps = (cm.tWay ++ cm.fWay) flatMap findDependencesStmt
       val wayDeps = (wayHEDeps flatMap { _.deps }).distinct
       Seq(HyperedgeDep(cm.name, (condDeps ++ wayDeps).distinct, cm))
-    }
     case EmptyStmt => Seq()
     case _ => throw new Exception(s"unexpected statement type! $s")
   }
@@ -234,10 +227,10 @@ object Extract extends LazyLogging {
       }
       (sourceIDs flatMap findChildRenames).toMap
     }
-    val (straightConnects, otherStmts) = bodies partition { _ match {
+    val (straightConnects, otherStmts) = bodies partition {
       case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
       case _ => false
-    }}
+    }
     logger.info(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
     val chainRenames = findChainRenames(StatementGraph(straightConnects))
     otherStmts map replaceNamesStmt(chainRenames)
