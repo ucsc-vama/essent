@@ -211,7 +211,7 @@ object Emitter {
       if (!(argWidths forall { _ <= 64 })) throw new Exception(s"Can't print wide signals")
       val replacements = formatters zip argWidths map { case(format, width) =>
         if (format == "%h" || format == "%x") {
-          val printWidth = math.ceil((width/4).toDouble).toInt
+          val printWidth = math.ceil(width.toDouble/4).toInt
           (format, s"""%0${printWidth}" PRIx64 """")
         } else {
           val printWidth = math.ceil(math.log10((1l<<width.toInt).toDouble)).toInt
