@@ -66,6 +66,11 @@ An example compile command:
 On macOS, when using clang, we also found `-fno-slp-vectorize` to improve compile time for large designs, and `-fbracket-depth=1024` allows it to handle designs with deeply nested muxes.
 
 
+Examples
+--------------------------------------------------------------------------------
+We provide examples showing how essent can be integrated in [Rocket Chip](https://github.com/ucsc-vama/essent-rocket-demo) and [other projects](https://github.com/ucsc-vama/essent-chisel-gallery).
+
+
 Publications
 --------------------------------------------------------------------------------
 
