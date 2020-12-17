@@ -97,7 +97,6 @@ object Emitter {
     }
   }
 
-
   // Emission
   //----------------------------------------------------------------------------
   def emitPort(topLevel: Boolean)(p: Port): Seq[String] = p.tpe match {

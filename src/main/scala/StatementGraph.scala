@@ -67,6 +67,22 @@ class StatementGraph extends Graph {
     // Don't want to emit state element declarations
     if (!stmt.isInstanceOf[DefRegister] && !stmt.isInstanceOf[DefMemory])
       validNodes += potentiallyNewDestID
+
+    // check if we have a ModuleTagInfo
+    stmt match {
+      case declaration: IsDeclaration =>
+        markModuleTagInfos(potentiallyNewDestID)(declaration.info)
+      case _ =>
+    }
+  }
+
+  /**
+   * Find the ModuleTagInfos. It is possible to have multiple, in that case the last one will be selected
+   */
+  def markModuleTagInfos(potentiallyNewDestID: Int)(info: Info): Unit = info match {
+    case ModuleTagInfo(modName) => idToTag(potentiallyNewDestID) = modName
+    case MultiInfo(infos) => infos.foreach(markModuleTagInfos(potentiallyNewDestID))
+    case _ => // not useful here, ignore
   }
 
   def buildFromBodies(bodies: Seq[Statement]) {

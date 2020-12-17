@@ -45,7 +45,7 @@ class MakeCondMux(val sg: StatementGraph, rn: Renamer, keepAvail: Set[NodeID]) {
         val muxExpr = grabMux(sg.idToStmt(muxID))
         val muxStmtName = sg.idToName(muxID)
         val (tWay, fWay) = muxIDToWays(muxID)
-        val cmStmt = CondMux(muxStmtName, muxExpr,
+        val cmStmt = CondMux(NoInfo, muxStmtName, muxExpr,
                        sg.collectValidStmts(tWay) :+ makeMuxOutputStmt(muxID, muxExpr.tval),
                        sg.collectValidStmts(fWay) :+ makeMuxOutputStmt(muxID, muxExpr.fval))
         sg.mergeStmtsMutably(muxID, tWay ++ fWay, cmStmt)

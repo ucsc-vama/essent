@@ -45,7 +45,12 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         case (Some(name), stmt) if namesToDeclare.contains(name) => (name -> findResultType(stmt))
       }
       val alwaysActive = excludedIDs.contains(id)
-      val cpStmt = CondPart(topoOrder, alwaysActive, idToInputNames(id),
+
+      // annotate the CondPart with the partition info if we have it
+      val cpInfo = if (ap.mg.idToTag(id).nonEmpty) ModuleTagInfo(ap.mg.idToTag(id))
+                   else NoInfo
+
+      val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
       namesToDeclare foreach { name => {
@@ -66,7 +71,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     else {
       val newGroupID = matchingIDs.min
       val memberStmts = matchingIDs map sg.idToStmt
-      val tempCPstmt = CondPart(newGroupID, true, Seq(), memberStmts, Map())
+      val tempCPstmt = CondPart(NoInfo, newGroupID, true, Seq(), memberStmts, Map())
       sg.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
       Some(newGroupID)
     }
@@ -108,7 +113,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val allPartOutputs = (sg.idToStmt flatMap { _ match {
       case cp: CondPart => cp.outputsToDeclare.keys
       case _ => Seq()
-    }}).toSet ++ alreadyDeclared.toSet
+    }}).toSet ++ alreadyDeclared
     (allPartInputs -- allPartOutputs).toSeq
   }
 

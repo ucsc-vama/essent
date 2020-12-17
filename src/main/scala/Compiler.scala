@@ -90,7 +90,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     if (opt.conditionalMuxes)
       MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
           writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
@@ -102,11 +102,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
         writeLines(indentLevel, "}")
       }
-      case _ => {
+      case stmt => {
         writeLines(indentLevel, emitStmt(stmt))
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
-    }}
+    }
   }
 
   def writeRegResetOverrides(sg: StatementGraph) {
@@ -167,35 +167,52 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(1, s"bool done_reset;")
     writeLines(1, s"bool verbose;")
     writeLines(0, "")
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach {
       case cp: CondPart => {
+        cp.info match { // TODO - also handle MultiInfo
+          case ModuleTagInfo(modName) => writeLines(1, s"// Partition ${modName}")
+          case _ => // ignore
+        }
+
         writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         if (!cp.alwaysActive)
           writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
           writeLines(2, s"$actVarName[${cp.id}]++;")
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
-          case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
-        }}
+          case (name, tpe) => {
+            s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
+          }
+        }
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
-        val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
+        val keepAvail = cp.outputsToDeclare.keySet
+
+        writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
+
+        writeLines(2, "// Triggers 1")
         writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+
+        writeLines(2, "// Triggers 2")
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
+
+        writeLines(2, "// Reg updates:")
         writeLines(2, regUpdates flatMap emitStmt)
         // triggers for MemWrites
+        writeLines(2, "// Triggers 3")
         val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggers = memWritesInPart flatMap { mw => {
           val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
           genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
-        }}
+        }
+        }
         writeLines(2, memWriteTriggers)
         writeLines(1, "}")
       }
-      case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
-    }}
+      case stmt => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
+    }
     writeLines(0, "")
   }
 
@@ -220,15 +237,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     writeLines(2, extIOCaches.toSeq)
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered foreach {
       case cp: CondPart => {
         if (!cp.alwaysActive)
           writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}();")
         else
           writeLines(2, s"${genEvalFuncName(cp.id)}();")
       }
-      case _ => writeLines(2, emitStmt(stmt))
-    }}
+      case stmt => writeLines(2, emitStmt(stmt))
+    }
     // writeLines(2,  "#ifdef ALL_ON")
     // writeLines(2, s"$flagVarName.fill(true);" )
     // writeLines(2,  "#endif")
@@ -331,6 +348,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
+    val moduleInstanceGraph = ModuleInstanceGraph(circuit)
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)

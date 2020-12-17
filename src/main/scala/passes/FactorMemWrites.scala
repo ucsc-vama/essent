@@ -58,7 +58,7 @@ object FactorMemWrites extends Pass with DependencyAPIMigration {
         val wrMaskExpr = writePortSigs(s"${mem.name}.$writePortName.mask")
         val wrAddrExpr = writePortSigs(s"${mem.name}.$writePortName.addr")
         val wrDataExpr = writePortSigs(s"${mem.name}.$writePortName.data")
-        MemWrite(mem.name, writePortName, wrEnExpr, wrMaskExpr, wrAddrExpr, wrDataExpr)
+        MemWrite(NoInfo, mem.name, writePortName, wrEnExpr, wrMaskExpr, wrAddrExpr, wrDataExpr)
       }}
     }}
   }

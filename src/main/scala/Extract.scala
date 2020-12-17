@@ -3,11 +3,13 @@ package essent
 import essent.Graph.NodeID
 import essent.Emitter._
 import essent.ir._
-
 import firrtl._
 import firrtl.ir._
+import firrtl.passes.memlib.DefAnnotatedMemory
 import logger.LazyLogging
 
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 
@@ -33,7 +35,18 @@ object Extract extends LazyLogging {
 
   // Searching Module Instance Hierarchy
   //----------------------------------------------------------------------------
-  def findModule(name: String, circuit: Circuit) = circuit.modules.find(_.name == name).get
+  def findModule(name: String, circuit: Circuit, cache: mutable.Map[String, DefModule] = null): DefModule = {
+    if (cache != null && cache.contains(name)) cache(name)
+    else {
+      val mod = circuit.modules.find(_.name == name).get
+
+      // if we have a cache, put the module we found in there
+      if (cache != null) cache(name) = mod
+
+      // return the module we found
+      mod
+    }
+  }
 
   def findModuleInstances(s: Statement): Seq[(String,String)] = s match {
     case b: Block => b.stmts flatMap findModuleInstances
@@ -182,6 +195,7 @@ object Extract extends LazyLogging {
   }
 
   def flattenModule(m: Module, prefix: String, circuit: Circuit): Seq[Statement] = {
+
     val body = addPrefixToNameStmt(prefix)(m.body)
     // val nodeNames = findInstancesOf[DefNode](body) map { _.name }
     // val wireNames = findInstancesOf[DefWire](body) map { _.name }
@@ -197,13 +211,28 @@ object Extract extends LazyLogging {
   }
 
   def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
-    val allInstances = findAllModuleInstances(circuit)
-    val allBodiesFlattened = allInstances flatMap {
+    val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
+    /*val repeatedInstances = allInstances
+      .groupBy(_._1) // Map[String modName, Seq[(String modName, String instName)]]
+      .filter((x) => x._2.size > 1) // find all instances with more than one usage
+      .keySet*/
+    val mig = ModuleInstanceGraph(circuit)
+    val gcsm = mig.getGreatestCommonSharedModule
+
+    // flatten the non-repeated modules
+    val allBodiesFlattened = mig.findAllModuleInstancesNonRepeated flatMap {
       case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => flattenModule(m, prefix, circuit)
+        case m: Module => {
+          val ret = flattenModule(m, prefix, circuit)
+          ret
+        }
         case em: ExtModule => None
       }
     }
+
+    // flatten the repeated modules now
+
+
     if (squishOutConnects) {
       val extIOMap = findExternalPorts(circuit)
       val namesToExclude = extIOMap.keySet

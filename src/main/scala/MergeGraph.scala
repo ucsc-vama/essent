@@ -23,6 +23,7 @@ class MergeGraph extends Graph {
     // FUTURE: cleaner way to do this with clone on superclass?
     outNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
     inNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
+    idToTag.appendAll(g.idToTag)
     g.nodeRange foreach { id => {
       g.outNeigh(id).copyToBuffer(outNeigh(id))
       g.inNeigh(id).copyToBuffer(inNeigh(id))

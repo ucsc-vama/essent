@@ -1,6 +1,6 @@
 package essent
 
-import Graph._
+import Graph.{NodeID, _}
 
 import collection.mutable.ArrayBuffer
 
@@ -37,7 +37,7 @@ class MFFC(val g: Graph) {
     val fringeAncestors = fringe flatMap g.inNeigh filter { mffc(_) == Unclaimed }
     val newMembers = fringeAncestors flatMap { parent => {
       val childrenMFFCs = (g.outNeigh(parent) map mffc).distinct
-      if ((childrenMFFCs.size == 1) && (childrenMFFCs.head != Unclaimed)) {
+      if ((childrenMFFCs.size == 1) && (childrenMFFCs.head != Unclaimed) && g.mergeIsTagSame(childrenMFFCs.head, parent)) {
         mffc(parent) = childrenMFFCs.head
         Seq(parent)
       } else Seq()
@@ -58,5 +58,13 @@ object MFFC {
     val mffc = worker.findMFFCs()
     excludeSet foreach { id => mffc(id) = id }
     mffc
+  }
+
+  // paste into the graph from ModuleInstanceTree
+  def utilGetDot(givenMffc: ArrayBuffer[NodeID]): String = {
+    val retStrings = Util.groupIndicesByValue(givenMffc).map {
+      case (parentID, otherIDs) => s"subgraph cluster_${parentID} {\n\t${otherIDs.mkString("; ")};\n\tgraph[style=dotted];\n}"
+    }
+    retStrings.mkString("\n")
   }
 }

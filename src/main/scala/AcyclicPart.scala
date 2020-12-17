@@ -1,24 +1,31 @@
 package essent
 
 import essent.Graph.NodeID
-
 import logger._
 
 import collection.mutable.{ArrayBuffer, HashSet}
+import scala.annotation.tailrec
 
 
 class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLogging {
   def partsRemaining() = (mg.mergeIDToMembers.keys.toSet - excludeSet).size
 
+  /*
   def findSmallParts(smallPartCutoff: Int) = mg.mergeIDToMembers.keys.toSeq filter {
     id => (mg.nodeSize(id) < smallPartCutoff) && (!excludeSet.contains(id))
-  }
+  }*/
+  // Map[partitionName:String, Seq[NodeID]]
+  def findSmallParts(smallPartCutoff: Int) = mg.mergeIDToMembers.keys
+    .groupBy(mg.idToTag)
+    .mapValues(_.filter({
+      id => (mg.nodeSize(id) < smallPartCutoff) && (!excludeSet.contains(id))
+    }).toSeq)
 
   def perfomMergesIfPossible(mergesToConsider: Seq[Seq[NodeID]]) = {
     val mergesMade = mergesToConsider flatMap { mergeReq => {
       assert(mergeReq.size > 1)
-      val partsStillExist = mergeReq.forall{ mg.mergeIDToMembers.contains(_) }
-      if (partsStillExist && mg.mergeIsAcyclic(mergeReq.toSet)) {
+      val partsStillExist = mergeReq.forall { mg.mergeIDToMembers.contains(_) }
+      if (partsStillExist && mg.mergeIsAcyclic(mergeReq.toSet) && mg.mergeIsTagSame(mergeReq.toSet)) {
         assert(mergeReq forall { id => !excludeSet.contains(id) })
         mg.mergeGroups(mergeReq.head, mergeReq.tail)
         Seq(mergeReq)
@@ -42,84 +49,106 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     logger.info(s"  largest mffc: ${(mg.mergeIDToMembers.values.map{_.size}).max}")
   }
 
-  def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20) {
-    val smallPartIDs = findSmallParts(smallPartCutoff)
-    val singleInputIDs = smallPartIDs filter { id => (mg.inNeigh(id).size == 1) }
-    val singleInputParents = (singleInputIDs flatMap mg.inNeigh).distinct
-    val baseSingleInputIDs = singleInputIDs diff singleInputParents
-    logger.info(s"  merging up ${baseSingleInputIDs.size} single-input parts")
-    baseSingleInputIDs foreach { childID => {
-      val parentID = mg.inNeigh(childID).head
-      if (!excludeSet.contains(parentID))
-        mg.mergeGroups(parentID, Seq(childID))
-    }}
-    if (baseSingleInputIDs.size < singleInputIDs.size)
-      mergeSingleInputPartsIntoParents(smallPartCutoff)
-  }
-
-  def mergeSmallSiblings(smallPartCutoff: Int = 10) {
-    val smallPartIDs = findSmallParts(smallPartCutoff)
-    val inputsAndIDPairs = smallPartIDs map { id => {
-      val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
-      (inputsCanonicalized, id)
-    }}
-    val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
-    // NOTE: since inputs *exactly* the same, don't need to do merge safety check
-    val mergesToConsider = inputsToSiblings collect {
-      case (inputIDs, siblingIDs) if (siblingIDs.size > 1) => siblingIDs
-    }
-    logger.info(s"  attempting to merge ${mergesToConsider.size} groups of small siblings")
-    val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
-    if (mergesMade.nonEmpty) {
-      mergeSmallSiblings(smallPartCutoff)
-    }
-  }
-
-  def mergeSmallParts(smallPartCutoff: Int = 20, mergeThreshold: Double = 0.5) {
-    val smallPartIDs = findSmallParts(smallPartCutoff)
-    val mergesToConsider = smallPartIDs flatMap { id => {
-      val numInputs = mg.inNeigh(id).size.toDouble
-      val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
-      val legalSiblings = siblings filter { sibID => !excludeSet.contains(sibID) }
-      val orderConstrSibs = legalSiblings filter { _ < id }
-      val myInputSet = mg.inNeigh(id).toSet
-      val sibsScored = orderConstrSibs map {
-        sibID => (mg.inNeigh(sibID).count(myInputSet) / numInputs, sibID)
-      }
-      val choices = sibsScored filter { _._1 >= mergeThreshold }
-      val choicesOrdered = choices.sortWith{_._1 > _._1}
-      val topChoice = choicesOrdered.find {
-        case (score, sibID) => mg.mergeIsAcyclic(sibID, id)
-      }
-      if (topChoice.isEmpty) Seq()
-      else Seq(Seq(topChoice.get._2, id))
-    }}
-    logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging")
-    val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
-    if (mergesMade.nonEmpty) {
-      mergeSmallParts(smallPartCutoff, mergeThreshold)
-    }
-  }
-
-  def mergeSmallPartsDown(smallPartCutoff: Int = 20) {
-    val smallPartIDs = findSmallParts(smallPartCutoff)
-    val mergesToConsider = smallPartIDs flatMap { id => {
-      val mergeableChildren = mg.outNeigh(id) filter {
-        childID => mg.mergeIsAcyclic(id, childID) && !excludeSet.contains(childID)
-      }
-      if (mergeableChildren.nonEmpty) {
-        val orderedByEdgesRemoved = mergeableChildren.sortBy {
-          childID => numEdgesRemovedByMerge(Seq(id, childID))
+  @tailrec
+  final def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20) {
+    val doMore = findSmallParts(smallPartCutoff).exists({ case (tagName, smallPartIDs) => {
+      // Executed per partition (tag)
+      // TODO: skip the partitions that are already happy
+      val singleInputIDs = smallPartIDs filter { id => (mg.inNeigh(id).size == 1) }
+      val singleInputParents = (singleInputIDs flatMap mg.inNeigh).distinct
+      val baseSingleInputIDs = singleInputIDs diff singleInputParents
+      logger.info(s"  merging up ${baseSingleInputIDs.size} single-input parts")
+      baseSingleInputIDs foreach { childID => {
+        val parentID = mg.inNeigh(childID).head
+        if (!excludeSet.contains(parentID) && mg.mergeIsTagSame(parentID, childID))
+          mg.mergeGroups(parentID, Seq(childID))
         }
-        val topChoice = orderedByEdgesRemoved.last
-        Seq(Seq(id, topChoice))
-      } else Seq()
-    }}
-    logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging down")
-    val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
-    if (mergesMade.nonEmpty) {
-      mergeSmallPartsDown(smallPartCutoff)
-    }
+      }
+      // Return if there are more to do
+      baseSingleInputIDs.size < singleInputIDs.size
+    }}) // are there any others left to do?
+
+    if (doMore) mergeSingleInputPartsIntoParents(smallPartCutoff)
+  }
+
+  @tailrec
+  final def mergeSmallSiblings(smallPartCutoff: Int = 10) {
+    val doMore = findSmallParts(smallPartCutoff).exists({ case (tagName, smallPartIDs) => {
+      val inputsAndIDPairs = smallPartIDs map { id => {
+        val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
+        (inputsCanonicalized, id)
+      }
+      }
+      val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
+      // NOTE: since inputs *exactly* the same, don't need to do merge safety check
+      val mergesToConsider = inputsToSiblings collect {
+        case (inputIDs, siblingIDs) if (siblingIDs.size > 1) => siblingIDs
+      }
+      logger.info(s"  attempting to merge ${mergesToConsider.size} groups of small siblings")
+      val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+      mergesMade.nonEmpty // if this is non-empty then do it again
+    }})
+
+    if (doMore) mergeSmallSiblings(smallPartCutoff)
+  }
+
+  @tailrec
+  final def mergeSmallParts(smallPartCutoff: Int = 20, mergeThreshold: Double = 0.5) {
+    val doMore = findSmallParts(smallPartCutoff).exists({ case (tagName, smallPartIDs) => {
+      val mergesToConsider = smallPartIDs flatMap { id => {
+        val numInputs = mg.inNeigh(id).size.toDouble
+        val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
+        val legalSiblings = siblings filter { sibID => !excludeSet.contains(sibID) && mg.mergeIsTagSame(id, sibID) }
+        val orderConstrSibs = legalSiblings filter {
+          _ < id
+        }
+        val myInputSet = mg.inNeigh(id).toSet
+        val sibsScored = orderConstrSibs map {
+          sibID => (mg.inNeigh(sibID).count(myInputSet) / numInputs, sibID)
+        }
+        val choices = sibsScored filter {
+          _._1 >= mergeThreshold
+        }
+        val choicesOrdered = choices.sortWith {
+          _._1 > _._1
+        }
+        val topChoice = choicesOrdered.find {
+          case (score, sibID) => mg.mergeIsAcyclic(sibID, id) && mg.mergeIsTagSame(sibID, id)
+        }
+        if (topChoice.isEmpty) Seq()
+        else Seq(Seq(topChoice.get._2, id))
+      }
+      }
+      logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging")
+      val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+      mergesMade.nonEmpty
+    }})
+
+    if (doMore) mergeSmallParts(smallPartCutoff, mergeThreshold)
+  }
+
+  @tailrec
+  final def mergeSmallPartsDown(smallPartCutoff: Int = 20) {
+    val doMore = findSmallParts(smallPartCutoff).exists({ case (tagName, smallPartIDs) => {
+      val mergesToConsider = smallPartIDs flatMap { id => {
+        val mergeableChildren = mg.outNeigh(id) filter {
+          childID => mg.mergeIsAcyclic(id, childID) && mg.mergeIsTagSame(id, childID) && !excludeSet.contains(childID)
+        }
+        if (mergeableChildren.nonEmpty) {
+          val orderedByEdgesRemoved = mergeableChildren.sortBy {
+            childID => numEdgesRemovedByMerge(Seq(id, childID))
+          }
+          val topChoice = orderedByEdgesRemoved.last
+          Seq(Seq(id, topChoice))
+        } else Seq()
+      }
+      }
+      logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging down")
+      val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+      mergesMade.nonEmpty
+    }})
+
+    if (doMore) mergeSmallPartsDown(smallPartCutoff)
   }
 
   def partition(smallPartCutoff: Int = 20) {
@@ -151,6 +180,10 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
       !overlap
     }}
     val complete = includedSoFar == mg.nodeRange.toSet
+
+    // check that all of the partitions contain the same type of element
+    //mg.mergeIDToMembers.map(x => (x._1, x._2.map(mg.idToTag).toSeq.distinct) ).filter(x => x._2.size != 1)
+
     disjoint && complete
   }
 }

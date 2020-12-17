@@ -16,7 +16,8 @@ class Graph {
   val inNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]()
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]()
-
+  // Numeric vertex ID -> module instance name (tag)
+  val idToTag = ArrayBuffer[String]()
 
   // Graph building
   //----------------------------------------------------------------------------
@@ -26,6 +27,7 @@ class Graph {
       val numElemsToGrow = id - outNeigh.size + 1
       outNeigh.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
       inNeigh.appendAll(ArrayBuffer.fill(numElemsToGrow)(ArrayBuffer[NodeID]()))
+      idToTag.appendAll(ArrayBuffer.fill(numElemsToGrow)(""))
     }
   }
 
@@ -76,6 +78,28 @@ class Graph {
     ids forall { source => !extPathExists(Set(source), ids - source) }
   }
 
+  /**
+   * Find the longest path to the root from the given node
+   * @param id the node ID to query
+   * @return number of steps to the root for the given node ID
+   */
+  def nodeDepth(id: NodeID): Int = {
+    if (inNeigh(id).isEmpty) 0 // this is the root
+    else {
+      // for each in neighbor, find the distance to the root
+      inNeigh(id).minBy(1 + nodeDepth(_))
+    }
+  }
+
+  /**
+   * Check if we can merge two nodes on the basis of their tag values
+   */
+  def mergeIsTagSame(u: NodeID, v: NodeID): Boolean = idToTag(u) == idToTag(v)
+  def mergeIsTagSame(ids: Set[NodeID]): Boolean = {
+    val first = idToTag(ids.head)
+    if (ids.tail.isEmpty) false // need at least 2 elements for meaningful result
+    else ids.tail forall { idToTag(_) == first }
+  }
 
   // Mutators
   //----------------------------------------------------------------------------
