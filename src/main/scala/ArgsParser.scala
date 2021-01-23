@@ -7,7 +7,7 @@ import scopt.OptionParser
 
 case class OptFlags(
     firInputFile: File = null,
-    removeFlatConnects: Boolean = true,
+    removeFlatConnects: Boolean = false,
     regUpdates: Boolean = true,
     conditionalMuxes: Boolean = true,
     useCondParts: Boolean = true,

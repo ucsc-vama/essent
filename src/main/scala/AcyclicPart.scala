@@ -144,7 +144,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
       }
       }
       logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging down")
-      val mergesMade = perfomMergesIfPossible(mergesToConsider.toSeq)
+      val mergesMade = perfomMergesIfPossible(mergesToConsider)
       mergesMade.nonEmpty
     }})
 

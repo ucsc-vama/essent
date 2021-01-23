@@ -1,7 +1,7 @@
 package essent
 
 import essent.Extract._
-
+import firrtl.WRef
 import firrtl.ir._
 
 import collection.mutable.HashMap
@@ -73,7 +73,14 @@ class Renamer {
 
   def removeDots(s: String) = s.replace('.','$')
 
-  def decLocal(name: String) = nameToMeta(name).decType == Local
+  def decLocal(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == Local
+  def decLocal(w: WRef): Boolean = decLocal(w.name)
+
+  def decExtIO(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == ExtIO
+  def decExtIO(w: WRef): Boolean = decExtIO(w.name)
+
+  def decRegSet(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == RegSet
+  def decRegSet(w: WRef):  Boolean = decRegSet(w.name)
 
   def emit(canonicalName: String): String = nameToEmitName(canonicalName)
 }

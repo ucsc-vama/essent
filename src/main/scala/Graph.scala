@@ -17,7 +17,7 @@ class Graph {
   // numeric vertex ID -> list outgoing vertex IDs (consumers)
   val outNeigh: AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]()
   // Numeric vertex ID -> module instance name (tag)
-  val idToTag = ArrayBuffer[String]()
+  val idToTag: ArrayBuffer[String] = ArrayBuffer[String]()
 
   // Graph building
   //----------------------------------------------------------------------------
@@ -97,8 +97,7 @@ class Graph {
   def mergeIsTagSame(u: NodeID, v: NodeID): Boolean = idToTag(u) == idToTag(v)
   def mergeIsTagSame(ids: Set[NodeID]): Boolean = {
     val first = idToTag(ids.head)
-    if (ids.tail.isEmpty) false // need at least 2 elements for meaningful result
-    else ids.tail forall { idToTag(_) == first }
+    ids.tail forall { idToTag(_) == first }
   }
 
   // Mutators
@@ -106,7 +105,7 @@ class Graph {
   def removeDuplicateEdges() {
     // will not remove self-loops
     def uniquifyNeighs(neighs: AdjacencyList) {
-      (0 until neighs.size) foreach { id => neighs(id) = neighs(id).distinct }
+      neighs.indices foreach { id => neighs(id) = neighs(id).distinct }
     }
     uniquifyNeighs(outNeigh)
     uniquifyNeighs(inNeigh)

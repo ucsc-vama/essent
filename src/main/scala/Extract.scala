@@ -4,13 +4,14 @@ import essent.Graph.NodeID
 import essent.Emitter._
 import essent.ir._
 import firrtl._
+import firrtl.analyses.InstanceGraph
 import firrtl.ir._
 import firrtl.passes.memlib.DefAnnotatedMemory
 import logger.LazyLogging
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import scala.reflect.ClassTag
+import scala.reflect.{ClassTag, classTag}
 
 
 object Extract extends LazyLogging {
@@ -24,12 +25,13 @@ object Extract extends LazyLogging {
   }
 
   def partitionByType[T <: Statement](stmts: Seq[Statement])(implicit tag: ClassTag[T]): (Seq[T], Seq[Statement]) = {
-    def filterOutType(s: Statement): Seq[Statement] = s match {
-      case t: T => Seq[Statement]()
-      case b: Block => b.stmts flatMap filterOutType
-      case _ => Seq(s)
-    }
-    (stmts flatMap findInstancesOf[T], stmts flatMap filterOutType)
+    val ret = stmts flatMap {
+      case b: Block => b.stmts
+      case s => Seq(s)
+    } partition(classTag[T].runtimeClass.isInstance(_))
+
+    // cast the first one to the right type
+    (ret._1.asInstanceOf[Seq[T]], ret._2)
   }
 
 
@@ -54,6 +56,10 @@ object Extract extends LazyLogging {
     case _ => Seq()
   }
 
+  /**
+   * Find all instances of all modules
+   * @return tuples of (module name, dotted instance names)
+   */
   def findAllModuleInstances(circuit: Circuit): Seq[(String,String)] = {
     def crawlModuleInstances(prefix: String, circuit: Circuit)(s: Statement): Seq[(String,String)] = {
       s match {
@@ -195,7 +201,6 @@ object Extract extends LazyLogging {
   }
 
   def flattenModule(m: Module, prefix: String, circuit: Circuit): Seq[Statement] = {
-
     val body = addPrefixToNameStmt(prefix)(m.body)
     // val nodeNames = findInstancesOf[DefNode](body) map { _.name }
     // val wireNames = findInstancesOf[DefWire](body) map { _.name }
@@ -210,28 +215,84 @@ object Extract extends LazyLogging {
     flattenStmts(body)
   }
 
+  def countStatements(stmt: Statement, circuit: Circuit): Int = stmt match {
+    case b: Block => b.stmts.map(countStatements(_, circuit)).sum
+    case i: WDefInstance => findModule(i.module, circuit) match {
+      case m: Module => countStatements(m.body, circuit)
+      case _ => 0 // ExtModules are ignored
+    }
+    case EmptyStmt => 0
+    case i: IsInvalid => 0
+    case s: Stop => 0
+    case _ => 1
+  }
+
   def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
     /*val repeatedInstances = allInstances
       .groupBy(_._1) // Map[String modName, Seq[(String modName, String instName)]]
       .filter((x) => x._2.size > 1) // find all instances with more than one usage
       .keySet*/
-    val mig = ModuleInstanceGraph(circuit)
-    val gcsm = mig.getGreatestCommonSharedModule
+    //val mig = ModuleInstanceGraph(circuit)
+    val mig = new InstanceGraph(circuit)
+    /*
+    val gcsm = mig.staticInstanceCount.filter(_._2 > 1).minBy({
+      case (ofModule, _) => mig.findInstancesInHierarchy(ofModule.value).maxBy(_.size).size // find the longest instantiation path
+    })._1.value // the GCSM is the module which is used at least twice, and also is the topmost*/
 
-    // flatten the non-repeated modules
-    val allBodiesFlattened = mig.findAllModuleInstancesNonRepeated flatMap {
-      case (modName, prefix) => findModule(modName, circuit) match {
-        case m: Module => {
-          val ret = flattenModule(m, prefix, circuit)
-          ret
-        }
-        case em: ExtModule => None
+    val gcsm1 = mig.staticInstanceCount.filter(_._2 > 1)
+
+    val gcsm = if (gcsm1.isEmpty) ""
+               else gcsm1.maxBy({ // TODO - this is very slow and gross
+      case (ofModule, numberOfInstantiations) => findModule(ofModule.value, circuit) match {
+        case m:Module => countStatements(m.body, circuit) * numberOfInstantiations
+        case _ => 0 // ExtModules don't count
       }
+    })._1.value
+
+    val gcsmInstantiations = allInstances flatMap {
+      case (modName, prefix) if modName == gcsm => Some(prefix)
+      case _ => None
     }
 
-    // flatten the repeated modules now
+    // flatten the non-repeated modules
+    val allBodiesFlattened = allInstances flatMap {
+      case (modName, prefix) => {
+        val mod = findModule(modName, circuit)
+        val stmtsForInstance = mod match {
+          case m: Module => flattenModule(m, prefix, circuit)
+          case em: ExtModule => Seq()
+        }
 
+        // if this is the GCSM, then also apply the label to all statements
+        if (modName == gcsm || gcsmInstantiations.exists(prefix.startsWith(_))) {
+          val gcsmInfo = GCSMInfo(mod, prefix)
+          stmtsForInstance map { // TODO - is there a cleaner way to write this?
+            case s:Attach => s.copy(info = gcsmInfo)
+            case s:IsInvalid => s.copy(info = gcsmInfo)
+            case s:Connect => s.copy(info = gcsmInfo)
+            case s:DefWire => s.copy(info = gcsmInfo)
+            case s:Stop => s.copy(info = gcsmInfo)
+            case s:DefNode => s.copy(info = gcsmInfo)
+            case s:RegUpdate => s.copy(info = gcsmInfo)
+            case s:DefInstance => s.copy(info = gcsmInfo)
+            case s:PartialConnect => s.copy(info = gcsmInfo)
+            case s:Print => s.copy(info = gcsmInfo)
+            case s:CondMux => s.copy(info = gcsmInfo)
+            case s:Conditionally => s.copy(info = gcsmInfo)
+            case s:CDefMPort => s.copy(info = gcsmInfo)
+            case s:DefRegister => s.copy(info = gcsmInfo)
+            case s:CDefMemory => s.copy(info = gcsmInfo)
+            case s:WDefInstanceConnector => s.copy(info = gcsmInfo)
+            case s:MemWrite => s.copy(info = gcsmInfo)
+            case s:CondPart => s.copy(info = gcsmInfo)
+            case s:DefMemory => s.copy(info = gcsmInfo)
+            case s:DefAnnotatedMemory => s.copy(info = gcsmInfo)
+            case s => s // ignore
+          }
+        } else stmtsForInstance
+      }
+    }
 
     if (squishOutConnects) {
       val extIOMap = findExternalPorts(circuit)

@@ -2,12 +2,14 @@ package essent
 
 import essent.Graph.NodeID
 import essent.Extract._
+import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
 import essent.ir._
-
 import firrtl.ir._
-import logger._
+import _root_.logger._
+import firrtl.{MemKind, NodeKind, PortKind, RegKind, WRef, WireKind}
 
 import collection.mutable.ArrayBuffer
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 
@@ -47,8 +49,11 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       val alwaysActive = excludedIDs.contains(id)
 
       // annotate the CondPart with the partition info if we have it
-      val cpInfo = if (ap.mg.idToTag(id).nonEmpty) ModuleTagInfo(ap.mg.idToTag(id))
-                   else NoInfo
+      var cpInfo:Info = NoInfo
+      idToMemberStmts(id).head.foreachInfoRecursive {
+        case i:GCSMInfo => cpInfo = i
+        case _ => // ignore
+      }
 
       val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
@@ -65,6 +70,13 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
   }
 
+  /**
+   * Take all the statements of a given type and merge them together into an always-active [[CondPart]] which replaces
+   * the first occurence of that statement type
+   * @param tag
+   * @tparam T
+   * @return The ID of the clump, or None if there wasn't any of that kind in the graph
+   */
   def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
     val matchingIDs = sg.idToStmt.zipWithIndex collect { case (t: T, id: Int) => id }
     if (matchingIDs.isEmpty) None
@@ -77,7 +89,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
   }
 
-  def doOpt(smallPartCutoff: Int = 20) {
+  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20, doDeduplication: Boolean = true) {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
@@ -85,6 +97,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
+
+    if (doDeduplication) doDedup(circuit)
   }
 
   def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }
@@ -142,6 +156,52 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         |Nodes/part: ${numStmtsTotal.toDouble/numParts}%.1f
         |Outputs/part: ${numOutputsUnique.toDouble/numParts}%.1f
         |Part size range: ${partSizes.min} - ${partSizes.max}""".stripMargin
+  }
+
+  private def doDedup(circuit: Circuit): Unit = {
+    // find all CondParts per GCSM
+    val condPartsPerGCSM = sg.idToStmt flatMap {
+      case cp:CondPart if cp.gcsm.isDefined => Some(cp.gcsm.get -> cp)
+      case _ => None
+    } toMapOfLists
+
+    // take the first one and rewrite names
+    val allInstances = Extract.findAllModuleInstances(circuit).map(_.swap).toMap // prefix -> mod name
+    val (mainGcsm, mainGcsmParts) = condPartsPerGCSM.head
+    val signalTypeMap = mutable.Map[GCSMSignalReference, firrtl.ir.Type]()
+    val newMainGCSMCondParts = mainGcsmParts.map(cp => {
+      // FUTURE - analyze the part flags
+      val newCP = cp.copy(alwaysActive = true).mapStmt(stmt => {
+        // check that the statement is valid
+        stmt.mapExprRecursive {
+          case w:WRef if w.name.startsWith(mainGcsm.instanceName) && !rn.decLocal(w) => // name inside the GCSM, but local vars not needed
+            val newName = w.name.stripPrefix(mainGcsm.instanceName) // remove the instance prefix to get the new name
+            val ret = GCSMSignalReference(newName)
+            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType
+            ret
+          case w:WRef if rn.decExtIO(w) => w // reference to an external IO, leave it alone
+          case w:WRef if rn.decRegSet(w) => // reference to a state element in someone else
+            val instanceHierarchy :+ signalName = w.name.split('.').toSeq
+            val prefix = instanceHierarchy.mkString(".")
+            assert(allInstances(prefix) != mainGcsm.mod.name, "referring to state element from another GCSM instance")
+            val ret = GCSMSignalReference(signalName, Some(prefix))
+            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType // not needed for things
+            ret
+          case WRef(name, _, NodeKind | PortKind | MemKind | RegKind | WireKind, _) if !rn.decLocal(name) => // reference to someone else's signal
+            throw new Exception("not possible - or is it?")
+          case e => e // something else
+        }
+      })
+
+      // replace me in the SG as well
+      val id = sg.idToStmt.indexOf(cp) // FIXME - there must be a better solution
+      //sg.idToStmt(id) = newCP
+
+      newCP
+    })
+
+    // also get the types for those names
+    newMainGCSMCondParts
   }
 }
 

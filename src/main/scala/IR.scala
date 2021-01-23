@@ -1,7 +1,10 @@
 package essent.ir
 
+import essent.Util.StatementUtils
 import firrtl._
 import firrtl.ir._
+
+import scala.+:
 
 // ESSENT's additions to the IR for optimization
 
@@ -12,11 +15,14 @@ case class RegUpdate(info: Info, regRef: Expression, expr: Expression) extends S
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
   def mapInfo(f: Info => Info): Statement = this
-  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
-  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
-  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
-  def foreachString(f: String => Unit): Unit = ???
-  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = {
+    f(regRef)
+    f(expr)
+  }
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = f(info)
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = Unit
+  def foreachString(f: String => Unit): Unit = Unit
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
 case class MemWrite(info: Info,
@@ -28,18 +34,24 @@ case class MemWrite(info: Info,
                     wrData: Expression) extends Statement with HasInfo {
   def serialize: String = s"if (${wrEn.serialize} && ${wrMask.serialize}) $memName[${wrAddr.serialize}] = ${wrData.serialize}"
   def mapStmt(f: Statement => Statement): Statement = this
-  def mapExpr(f: Expression => Expression): Statement = {
-    MemWrite(info, memName, portName, f(wrEn), f(wrMask), f(wrAddr), f(wrData))
-  }
+  def mapExpr(f: Expression => Expression): Statement = this.copy(wrEn = f(wrEn), wrMask = f(wrMask), wrAddr = f(wrAddr), wrData = f(wrData))
   def mapType(f: Type => Type): Statement = this
-  def mapString(f: String => String): Statement = this
-  def mapInfo(f: Info => Info): Statement = this
+  def mapString(f: String => String): Statement = this.copy(memName = f(memName), portName = f(portName))
+  def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
   def nodeName(): String = s"$memName.$portName"
-  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
-  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
-  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
-  def foreachString(f: String => Unit): Unit = ???
-  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = {
+    f(wrEn)
+    f(wrMask)
+    f(wrAddr)
+    f(wrData)
+  }
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = f(info)
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = Unit
+  def foreachString(f: String => Unit): Unit = {
+    f(memName)
+    f(portName)
+  }
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
 case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[Statement]) extends Statement with HasInfo {
@@ -47,13 +59,16 @@ case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWa
   def mapStmt(f: Statement => Statement): Statement = this.copy(tWay = tWay map f, fWay = fWay map f)
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
-  def mapString(f: String => String): Statement = this
-  def mapInfo(f: Info => Info): Statement = this
-  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
-  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
-  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
-  def foreachString(f: String => Unit): Unit = ???
-  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
+  def mapString(f: String => String): Statement = this.copy(name = f(name))
+  def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = Unit
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = f(info)
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = {
+    tWay foreach f
+    fWay foreach f
+  }
+  def foreachString(f: String => Unit): Unit = f(name)
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
 case class CondPart(
@@ -63,56 +78,69 @@ case class CondPart(
     inputs: Seq[String],
     memberStmts: Seq[Statement],
     outputsToDeclare: Map[String,firrtl.ir.Type]) extends Statement with HasInfo {
+  /**
+   * Get the GCSM info, if applicable
+   */
+  lazy val gcsm: Option[GCSMInfo] = {
+    var tmp: Option[GCSMInfo] = None
+    this.foreachInfoRecursive {
+      case i:GCSMInfo => tmp = Some(i)
+      case _ => // ignore
+    }
+
+    tmp
+  }
+
   def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
   def mapExpr(f: Expression => Expression): Statement = this
   def mapType(f: Type => Type): Statement = this
-  def mapString(f: String => String): Statement = this
-  def mapInfo(f: Info => Info): Statement = this
-  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
-  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
-  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
-  def foreachString(f: String => Unit): Unit = ???
-  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
+  def mapString(f: String => String): Statement = this.copy(inputs = inputs map f)
+  def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = Unit
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = f(info)
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = memberStmts foreach f
+  def foreachString(f: String => Unit): Unit = inputs foreach f
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
 /**
- * Module tag to denote the repeated module instances
- * @param modName
+ * Tag to apply to statements to denote that it belongs to the GCSM.
+ * @param mod The module in question
+ * @param instanceName The name of this particular instantiation of the GCSM
  */
-case class ModuleTagInfo(modName: String) extends Info {
-  override def toString: String = "@[Partition: " + modName + "]"
+case class GCSMInfo(mod: DefModule, instanceName: String) extends Info {
+  override def toString: String = s"@[Instance '$instanceName' GCSM ${mod.name}]"
   override def ++(that: Info): Info = if (that == NoInfo) this else MultiInfo(Seq(this, that))
 }
 
 /**
- * Denotes that this is an instantiation of a repeated module.
- *
- * @param info
- * @param name
- * @param module
- * @param tpe
+ * Meant to be applied to a [[Statement]], and says that one of the names that an expression refers to is renamed from
+ * something else. Can have multiple of these on one statement
+ * @param originalName
+ * @param newName
  */
-case class DefRepeatedInstance(info: Info, name: String, module: String, tpe: Type)
-  extends Statement with IsDeclaration {
-  def serialize: String = s"repeated_inst $name of $module" + info.serialize
-  def mapExpr(f: Expression => Expression): Statement = this
-  def mapStmt(f: Statement => Statement): Statement = this
-  def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
-  def mapString(f: String => String): Statement = this.copy(name = f(name))
-  def mapInfo(f: Info => Info): Statement = this.copy(f(info))
-  def foreachStmt(f: Statement => Unit): Unit = Unit
-  def foreachExpr(f: Expression => Unit): Unit = Unit
-  def foreachType(f: Type => Unit): Unit = f(tpe)
-  def foreachString(f: String => Unit): Unit = f(name)
-  def foreachInfo(f: Info => Unit): Unit = f(info)
+case class RenamedSignalInfo(originalName: String, newName: String) extends Info {
+  override def toString: String = s"@[RenamedSignal: $originalName -> $newName]"
+  override def ++(that: Info): Info = that match {
+    case MultiInfo(infos) => MultiInfo(infos ++ Seq(this))
+    case NoInfo => this
+    case _ => MultiInfo(Seq(this, that))
+  }
 }
 
-object DefRepeatedInstance {
-  /**
-   * Turn a [[WDefInstance]] into a DefRepeatedInstance
-   * @param orig
-   * @return
-   */
-  def apply(orig: WDefInstance): DefRepeatedInstance = new DefRepeatedInstance(orig.info, orig.name, orig.module, orig.tpe)
+/**
+ * Wrapper for a [[WRef]] to denote that it's part of the GCSM
+ * @param name the name of the signal
+ * @param externalReference if this is an external reference, then the instance name of that location
+ */
+case class GCSMSignalReference(name: String, externalReference: Option[String] = None) extends Expression {
+  override def foreachExpr(f: Expression => Unit): Unit = Unit
+  override def foreachType(f: Type => Unit): Unit = Unit
+  override def foreachWidth(f: Width => Unit): Unit = Unit
+  override def mapExpr(f: Expression => Expression): Expression = this
+  override def mapType(f: Type => Type): Expression = this
+  override def mapWidth(f: Width => Width): Expression = this
+  override def serialize: String = s"signal reference: ${name} in ${externalReference}"
+  override def tpe: Type = UnknownType
 }

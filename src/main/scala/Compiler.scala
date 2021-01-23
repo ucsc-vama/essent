@@ -154,11 +154,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     // predeclare part outputs
     val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
+    writeLines(1, "// output pairs")
     writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
+    writeLines(1, "// external part input types")
     val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)};"
     }
+    writeLines(1, "// ext io cache decs")
     writeLines(1, extIOCacheDecs)
+    writeLines(1, "")
     writeLines(1, s"std::array<bool,${condPartWorker.getNumParts()}> $flagVarName;")
     // FUTURE: worry about namespace collisions with user variables
     writeLines(1, s"bool sim_cached = false;")
@@ -170,7 +174,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     sg.stmtsOrdered foreach {
       case cp: CondPart => {
         cp.info match { // TODO - also handle MultiInfo
-          case ModuleTagInfo(modName) => writeLines(1, s"// Partition ${modName}")
+          case GCSMInfo(mod, prefix) => writeLines(1, s"// Partition for ${mod.name}, instance $prefix")
           case _ => // ignore
         }
 
@@ -348,14 +352,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val moduleInstanceGraph = ModuleInstanceGraph(circuit)
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
     if (opt.useCondParts) {
-      condPartWorker.doOpt(opt.partCutoff)
+      condPartWorker.doOpt(circuit, opt.partCutoff, !opt.removeFlatConnects) // TODO - make dedup work with flat connect
+      // OptDoRepeated.doThing(condPartWorker)
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)

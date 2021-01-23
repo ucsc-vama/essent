@@ -1,12 +1,12 @@
 package essent
 
 import firrtl.ir._
-
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 // Extends Graph to include more attributes per node
@@ -68,20 +68,21 @@ class StatementGraph extends Graph {
     if (!stmt.isInstanceOf[DefRegister] && !stmt.isInstanceOf[DefMemory])
       validNodes += potentiallyNewDestID
 
-    // check if we have a ModuleTagInfo
+    // check if we have a GCSMInfo
     stmt match {
       case declaration: IsDeclaration =>
-        markModuleTagInfos(potentiallyNewDestID)(declaration.info)
+        markGCSMInfo(potentiallyNewDestID)(declaration.info)
       case _ =>
     }
   }
 
   /**
-   * Find the ModuleTagInfos. It is possible to have multiple, in that case the last one will be selected
+   * Apply the GCSM tag labels to the graph.
+   * If there are multiple such [[Info]]s, then the last [[GCSMInfo]] is chosen.
    */
-  def markModuleTagInfos(potentiallyNewDestID: Int)(info: Info): Unit = info match {
-    case ModuleTagInfo(modName) => idToTag(potentiallyNewDestID) = modName
-    case MultiInfo(infos) => infos.foreach(markModuleTagInfos(potentiallyNewDestID))
+  private def markGCSMInfo(potentiallyNewDestID: Int)(info: Info): Unit = info match {
+    case GCSMInfo(_, prefix) => idToTag(potentiallyNewDestID) = prefix // want to partition by instance later
+    case MultiInfo(infos) => infos.foreach(markGCSMInfo(potentiallyNewDestID))
     case _ => // not useful here, ignore
   }
 
