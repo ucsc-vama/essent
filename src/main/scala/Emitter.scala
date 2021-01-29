@@ -21,6 +21,7 @@ object Emitter {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
     case SIntType(IntWidth(w)) => s"SInt<$w>"
     case AsyncResetType => "UInt<1>"
+    case UnknownType => "UnknownType" // TODO - delete this after fixing GCSMSignalReference
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
@@ -142,6 +143,7 @@ object Emitter {
 
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
+    case w: GCSMSignalReference => s"*(${EssentEmitter.gcsmVarName}->${w.name})"
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)
@@ -226,7 +228,11 @@ object Emitter {
     }
     case c: Connect => {
       val lhs_orig = emitExpr(c.loc)(null)
-      val lhs = rn.emit(lhs_orig)
+      //val lhs = rn.emit(lhs_orig)
+      val lhs = c.loc match { // TODO - might not be needed since GCSM sig references never have their types emitted here
+        case _:GCSMSignalReference => lhs_orig
+        case _ => rn.emit(lhs_orig)
+      }
       val rhs = emitExpr(c.expr)
       if (rn.decLocal(lhs_orig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
       else Seq(s"$lhs = $rhs;")

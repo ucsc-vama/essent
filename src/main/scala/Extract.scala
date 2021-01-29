@@ -144,6 +144,7 @@ object Extract extends LazyLogging {
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
+      case w: GCSMSignalReference => Seq(w.name)
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField =>
         val innerResult = findDependencesExpr(w.expr)
@@ -266,11 +267,27 @@ object Extract extends LazyLogging {
 
         // if this is the GCSM, then also apply the label to all statements
         if (modName == gcsm || gcsmInstantiations.exists(prefix.startsWith(_))) {
+          def isConnectToSameInstance(that: Connect): Boolean = {
+            assert(that.loc.isInstanceOf[WRef], s"connect must be to a WRef but got $that in $modName")
+
+            // get the references to check. the expr might not be a reference, so we can ignore that
+            /*val exprs: Seq[WRef] = Seq(that.loc) ++ (that.expr match {
+              case w: WRef => Some(w)
+              case _:DoPrim => None
+              case _:Literal => None
+              case _:Mux => None
+            }) */
+
+            // the last element is the signal name, so we want everything before
+            val thatPrefix = that.loc.asInstanceOf[WRef].name.split('.').init.mkString(".") + "." // TODO - rewrite as regex
+            thatPrefix == prefix
+          }
+
           val gcsmInfo = GCSMInfo(mod, prefix)
           stmtsForInstance map { // TODO - is there a cleaner way to write this?
             case s:Attach => s.copy(info = gcsmInfo)
             case s:IsInvalid => s.copy(info = gcsmInfo)
-            case s:Connect => s.copy(info = gcsmInfo)
+            case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
             case s:DefWire => s.copy(info = gcsmInfo)
             case s:Stop => s.copy(info = gcsmInfo)
             case s:DefNode => s.copy(info = gcsmInfo)

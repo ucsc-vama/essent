@@ -6,6 +6,7 @@ import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
 import essent.ir._
 import firrtl.ir._
 import _root_.logger._
+import essent.MakeCondPart.{SignalPlaceholderMap, SignalTypeMap}
 import firrtl.{MemKind, NodeKind, PortKind, RegKind, WRef, WireKind}
 
 import collection.mutable.ArrayBuffer
@@ -89,7 +90,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
   }
 
-  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20, doDeduplication: Boolean = true) {
+  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20) {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
@@ -97,8 +98,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
-
-    if (doDeduplication) doDedup(circuit)
   }
 
   def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }
@@ -158,18 +157,22 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         |Part size range: ${partSizes.min} - ${partSizes.max}""".stripMargin
   }
 
-  private def doDedup(circuit: Circuit): Unit = {
+  def doDedup(circuit: Circuit): DedupResult = {
     // find all CondParts per GCSM
     val condPartsPerGCSM = sg.idToStmt flatMap {
       case cp:CondPart if cp.gcsm.isDefined => Some(cp.gcsm.get -> cp)
       case _ => None
     } toMapOfLists
 
+    // data structures to collect info about the GCSM CPs
+    val signalTypeMap = mutable.Map[GCSMSignalReference, firrtl.ir.Type]()
+    val signalPlaceholderValues = mutable.Map[GCSMSignalReference, WRef]() // maps the GCSM signal reference to the original one
+    var placeholderNum = 0
+
     // take the first one and rewrite names
     val allInstances = Extract.findAllModuleInstances(circuit).map(_.swap).toMap // prefix -> mod name
     val (mainGcsm, mainGcsmParts) = condPartsPerGCSM.head
-    val signalTypeMap = mutable.Map[GCSMSignalReference, firrtl.ir.Type]()
-    val newMainGCSMCondParts = mainGcsmParts.map(cp => {
+    mainGcsmParts.foreach(cp => {
       // FUTURE - analyze the part flags
       val newCP = cp.copy(alwaysActive = true).mapStmt(stmt => {
         // check that the statement is valid
@@ -179,34 +182,45 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
             val ret = GCSMSignalReference(newName)
             signalTypeMap(ret) = rn.nameToMeta(w.name).sigType
             ret
-          case w:WRef if rn.decExtIO(w) => w // reference to an external IO, leave it alone
+          case w:WRef if !rn.decLocal(w) && Seq(NodeKind, PortKind, MemKind, RegKind, WireKind).contains(w.kind) => // reference to an external IO or another CP's value     /*if rn.decExtIO(w) || rn.isDec(w, PartOut) || rn.isDec(w, RegSet)*/
+            // put a placeholder and fill in the first occurence since we're looking at it
+            val ret = GCSMSignalReference(s"_placeholder_${placeholderNum}")
+            placeholderNum += 1
+
+            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType
+            signalPlaceholderValues(ret) = w
+            ret
+            /*
           case w:WRef if rn.decRegSet(w) => // reference to a state element in someone else
             val instanceHierarchy :+ signalName = w.name.split('.').toSeq
             val prefix = instanceHierarchy.mkString(".")
             assert(allInstances(prefix) != mainGcsm.mod.name, "referring to state element from another GCSM instance")
             val ret = GCSMSignalReference(signalName, Some(prefix))
             signalTypeMap(ret) = rn.nameToMeta(w.name).sigType // not needed for things
-            ret
-          case WRef(name, _, NodeKind | PortKind | MemKind | RegKind | WireKind, _) if !rn.decLocal(name) => // reference to someone else's signal
-            throw new Exception("not possible - or is it?")
+            ret*/
+          /*case WRef(name, _, NodeKind | PortKind | MemKind | RegKind | WireKind, _) if !rn.decLocal(name) => // reference to someone else's signal
+            throw new Exception("not possible - or is it?")*/
           case e => e // something else
         }
       })
 
       // replace me in the SG as well
       val id = sg.idToStmt.indexOf(cp) // FIXME - there must be a better solution
-      //sg.idToStmt(id) = newCP
-
-      newCP
+      sg.idToStmt(id) = newCP
     })
 
-    // also get the types for those names
-    newMainGCSMCondParts
+    DedupResult(signalTypeMap, signalPlaceholderValues)
   }
 }
 
 object MakeCondPart {
+  type SignalTypeMap = collection.Map[GCSMSignalReference, firrtl.ir.Type]
+  type SignalPlaceholderMap = collection.Map[GCSMSignalReference, WRef]
+
   def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
     new MakeCondPart(ng, rn, extIOtypes)
   }
 }
+
+// a little better than a tuple
+case class DedupResult(typeMap: SignalTypeMap, placeholderMap: SignalPlaceholderMap)

@@ -73,6 +73,7 @@ class Renamer {
 
   def removeDots(s: String) = s.replace('.','$')
 
+  // TODO - clean up these methods
   def decLocal(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == Local
   def decLocal(w: WRef): Boolean = decLocal(w.name)
 
@@ -81,6 +82,9 @@ class Renamer {
 
   def decRegSet(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == RegSet
   def decRegSet(w: WRef):  Boolean = decRegSet(w.name)
+
+  def isDec(name: String, decType: SigDecType): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == decType
+  def isDec(w: WRef, decType: SigDecType): Boolean = isDec(w.name, decType)
 
   def emit(canonicalName: String): String = nameToEmitName(canonicalName)
 }

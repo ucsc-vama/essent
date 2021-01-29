@@ -1,9 +1,10 @@
 package essent
 
 import java.io.{File, FileWriter, Writer}
-
 import essent.Emitter._
+import essent.EssentEmitter.gcsmStructType
 import essent.Extract._
+import essent.MakeCondPart.SignalTypeMap
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -173,12 +174,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(0, "")
     sg.stmtsOrdered foreach {
       case cp: CondPart => {
-        cp.info match { // TODO - also handle MultiInfo
-          case GCSMInfo(mod, prefix) => writeLines(1, s"// Partition for ${mod.name}, instance $prefix")
-          case _ => // ignore
+        // if this is a GCSM CP then it takes a param to the GCSM struct
+        GCSMInfo.is(cp) match {
+          case Some(gcsmInfo) => writeLines(1, Seq(
+            s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.mod.name}",
+            s"void ${genEvalFuncName(cp.id)}(${EssentEmitter.gcsmStructType} *${EssentEmitter.gcsmVarName}) {"))
+          case None => writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         }
 
-        writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         if (!cp.alwaysActive)
           writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
@@ -357,9 +360,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
+
     if (opt.useCondParts) {
-      condPartWorker.doOpt(circuit, opt.partCutoff, !opt.removeFlatConnects) // TODO - make dedup work with flat connect
-      // OptDoRepeated.doThing(condPartWorker)
+      condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
+      if (!opt.removeFlatConnects) {
+        val gcsmSignalMap = condPartWorker.doDedup(circuit)
+        writeLines(0, s"struct ${gcsmStructType} {")
+        gcsmSignalMap.typeMap foreach {
+          case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.name};")
+        }
+        writeLines(0, "}")
+      }
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
@@ -414,6 +425,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
   }
+}
+
+object EssentEmitter {
+  val gcsmStructType = "GCSMData"
+  val gcsmVarName = "gcsm"
 }
 
 

@@ -114,6 +114,22 @@ case class GCSMInfo(mod: DefModule, instanceName: String) extends Info {
   override def ++(that: Info): Info = if (that == NoInfo) this else MultiInfo(Seq(this, that))
 }
 
+object GCSMInfo {
+  /**
+   * Is the given statement a GCSM-related one?
+   * @return The GCSMInfo, if any
+   */
+  def is(stmt: Statement): Option[GCSMInfo] = {
+    var ret: Option[GCSMInfo] = None
+    stmt.foreachInfoRecursive({
+      case i:GCSMInfo => ret = Some(i)
+      case _ => // ignore
+    })
+
+    ret
+  }
+}
+
 /**
  * Meant to be applied to a [[Statement]], and says that one of the names that an expression refers to is renamed from
  * something else. Can have multiple of these on one statement
@@ -134,6 +150,7 @@ case class RenamedSignalInfo(originalName: String, newName: String) extends Info
  * @param name the name of the signal
  * @param externalReference if this is an external reference, then the instance name of that location
  */
+// TODO - make this a wrapper for WRef, can delete the externalReference since it's probably not needed?
 case class GCSMSignalReference(name: String, externalReference: Option[String] = None) extends Expression {
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = Unit
