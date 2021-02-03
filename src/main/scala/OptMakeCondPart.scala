@@ -6,7 +6,7 @@ import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
 import essent.ir._
 import firrtl.ir._
 import _root_.logger._
-import essent.MakeCondPart.{SignalPlaceholderMap, SignalTypeMap}
+import essent.MakeCondPart.{InstanceAndConnectionMap, ConnectionMap, SignalTypeMap, getInstanceMemberName}
 import firrtl.{MemKind, NodeKind, PortKind, RegKind, WRef, WireKind}
 
 import collection.mutable.ArrayBuffer
@@ -166,11 +166,11 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
     // data structures to collect info about the GCSM CPs
     val signalTypeMap = mutable.Map[GCSMSignalReference, firrtl.ir.Type]()
-    val signalPlaceholderValues = mutable.Map[GCSMSignalReference, WRef]() // maps the GCSM signal reference to the original one
+    val mainGcsmSignalConnections = mutable.Map[GCSMSignalReference, WRef]() // maps the GCSM signal reference to the original one
     var placeholderNum = 0
 
     // take the first one and rewrite names
-    val allInstances = Extract.findAllModuleInstances(circuit).map(_.swap).toMap // prefix -> mod name
+    //val allInstances = Extract.findAllModuleInstances(circuit).map(_.swap).toMap // prefix -> mod name
     val (mainGcsm, mainGcsmParts) = condPartsPerGCSM.head
     mainGcsmParts.foreach(cp => {
       // FUTURE - analyze the part flags
@@ -180,26 +180,17 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
           case w:WRef if w.name.startsWith(mainGcsm.instanceName) && !rn.decLocal(w) => // name inside the GCSM, but local vars not needed
             val newName = w.name.stripPrefix(mainGcsm.instanceName) // remove the instance prefix to get the new name
             val ret = GCSMSignalReference(newName)
-            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType
+            signalTypeMap(ret) = rn.getSigType(w)
+            mainGcsmSignalConnections(ret) = w
             ret
           case w:WRef if !rn.decLocal(w) && Seq(NodeKind, PortKind, MemKind, RegKind, WireKind).contains(w.kind) => // reference to an external IO or another CP's value     /*if rn.decExtIO(w) || rn.isDec(w, PartOut) || rn.isDec(w, RegSet)*/
             // put a placeholder and fill in the first occurence since we're looking at it
             val ret = GCSMSignalReference(s"_placeholder_${placeholderNum}")
             placeholderNum += 1
 
-            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType
-            signalPlaceholderValues(ret) = w
+            signalTypeMap(ret) = rn.getSigType(w)
+            mainGcsmSignalConnections(ret) = w
             ret
-            /*
-          case w:WRef if rn.decRegSet(w) => // reference to a state element in someone else
-            val instanceHierarchy :+ signalName = w.name.split('.').toSeq
-            val prefix = instanceHierarchy.mkString(".")
-            assert(allInstances(prefix) != mainGcsm.mod.name, "referring to state element from another GCSM instance")
-            val ret = GCSMSignalReference(signalName, Some(prefix))
-            signalTypeMap(ret) = rn.nameToMeta(w.name).sigType // not needed for things
-            ret*/
-          /*case WRef(name, _, NodeKind | PortKind | MemKind | RegKind | WireKind, _) if !rn.decLocal(name) => // reference to someone else's signal
-            throw new Exception("not possible - or is it?")*/
           case e => e // something else
         }
       })
@@ -209,18 +200,58 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       sg.idToStmt(id) = newCP
     })
 
-    DedupResult(signalTypeMap, signalPlaceholderValues)
+    // TODO - do the other instances
+    val tmp = Seq(getInstanceMemberName(mainGcsm) -> mainGcsmSignalConnections) ++ (condPartsPerGCSM.tail map {
+      case (gcsmInfo, condPartsForInstance) =>
+        placeholderNum = 0 // reset it
+        val thisGcsmSignalConnections = mutable.Map[GCSMSignalReference, WRef]()
+
+        // just like the main GCSM, iterate over each CP for this GCSM instance
+        condPartsForInstance.foreach(cp => {
+          // FUTURE - analyze the part flags
+          val newCP = cp.copy(alwaysActive = true).mapStmt(stmt => {
+            stmt.mapExprRecursive {
+              case w:WRef if w.name.startsWith(gcsmInfo.instanceName) && !rn.decLocal(w) => // name inside the GCSM, but local vars not needed
+                val newName = w.name.stripPrefix(gcsmInfo.instanceName) // remove the instance prefix to get the new name
+                val ret = GCSMSignalReference(newName)
+                assert(rn.getSigType(w) == signalTypeMap(ret), "paradox! the type I see this time is not the same as in the main gCSM")
+                thisGcsmSignalConnections(ret) = w
+                ret
+              case w:WRef if !rn.decLocal(w) && Seq(NodeKind, PortKind, MemKind, RegKind, WireKind).contains(w.kind) => // reference to an external IO or another CP's value     /*if rn.decExtIO(w) || rn.isDec(w, PartOut) || rn.isDec(w, RegSet)*/
+                // put a placeholder and fill in the first occurence since we're looking at it
+                val ret = GCSMSignalReference(s"_placeholder_${placeholderNum}")
+                placeholderNum += 1
+                assert(rn.getSigType(w) == signalTypeMap(ret), "paradox! the type I see this time is not the same as in the main gCSM")
+                thisGcsmSignalConnections(ret) = w
+                ret
+              case e => e // something else
+            }
+          })
+
+          // replace me in the SG as well
+          val id = sg.idToStmt.indexOf(cp) // FIXME - there must be a better solution
+          sg.idToStmt(id) = newCP
+        })
+
+        getInstanceMemberName(gcsmInfo) -> thisGcsmSignalConnections
+    })
+
+    DedupResult(signalTypeMap, tmp)
   }
 }
 
 object MakeCondPart {
   type SignalTypeMap = collection.Map[GCSMSignalReference, firrtl.ir.Type]
-  type SignalPlaceholderMap = collection.Map[GCSMSignalReference, WRef]
+  type ConnectionMap = collection.Map[GCSMSignalReference, WRef]
+  type InstanceAndConnectionMap = (String, ConnectionMap) // FIXME - this is getting too complex
 
   def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
     new MakeCondPart(ng, rn, extIOtypes)
   }
+
+  private def removeDots(s: String) = s.replace('.','$') // FIXME - copied from Renamer
+  def getInstanceMemberName(gcsmInfo: GCSMInfo): String = s"instance_${removeDots(gcsmInfo.instanceName)}_"
 }
 
 // a little better than a tuple
-case class DedupResult(typeMap: SignalTypeMap, placeholderMap: SignalPlaceholderMap)
+case class DedupResult(typeMap: SignalTypeMap, placeholderMap: Seq[InstanceAndConnectionMap])

@@ -87,6 +87,10 @@ class Renamer {
   def isDec(w: WRef, decType: SigDecType): Boolean = isDec(w.name, decType)
 
   def emit(canonicalName: String): String = nameToEmitName(canonicalName)
+  def emit(wref: WRef): String = emit(wref.name)
+
+  def getSigType(name: String): firrtl.ir.Type = nameToMeta(name).sigType
+  def getSigType(w: WRef): firrtl.ir.Type = getSigType(w.name)
 }
 
 // object Renamer {

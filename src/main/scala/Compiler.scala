@@ -13,6 +13,8 @@ import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 
+import scala.collection.mutable.ArrayBuffer
+
 
 class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   val tabs = "  "
@@ -246,10 +248,16 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(2, extIOCaches.toSeq)
     sg.stmtsOrdered foreach {
       case cp: CondPart => {
+        // is it a GCSM?
+        val maybeGcsmInstanceVar = cp.gcsm match {
+          case Some(gcsm) => s"&${MakeCondPart.getInstanceMemberName(gcsm)}"
+          case None => ""
+        }
+
         if (!cp.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}();")
+          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}($maybeGcsmInstanceVar);")
         else
-          writeLines(2, s"${genEvalFuncName(cp.id)}();")
+          writeLines(2, s"${genEvalFuncName(cp.id)}($maybeGcsmInstanceVar);")
       }
       case stmt => writeLines(2, emitStmt(stmt))
     }
@@ -361,15 +369,29 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
 
+    // if there is deduping, this contains the code to initialize the structs, meant to go as class instance fields at the top level
+    val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
+
     if (opt.useCondParts) {
       condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
       if (!opt.removeFlatConnects) {
         val gcsmSignalMap = condPartWorker.doDedup(circuit)
-        writeLines(0, s"struct ${gcsmStructType} {")
+
+        // write out the struct that gets passed to GCSM partitions
+        writeLines(0, "typedef struct {")
         gcsmSignalMap.typeMap foreach {
           case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.name};")
         }
-        writeLines(0, "}")
+        writeLines(0, s"} ${gcsmStructType};")
+
+        // prepare the code for the structs
+        gcsmStructInit.appendAll(gcsmSignalMap.placeholderMap flatMap {
+          case (gcsmInstanceName, placeholderMap) =>
+            Seq(s"$gcsmStructType $gcsmInstanceName = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
+            placeholderMap.map({
+              case (gcsr, origWRef) => s"  .${gcsr.name} = &(${rn.emit(origWRef)})," // init each member of the struct
+            }) ++ Seq("};")
+        })
       }
     } else {
       if (opt.regUpdates)
@@ -421,6 +443,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     //   writeLines(2, "writeActToJson();")
     //   writeLines(1, "}")
     // }
+
+    // output the GCSM instance fields, if any
+    writeLines(0, "private:")
+    gcsmStructInit.foreach(writeLines(1, _))
+
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
