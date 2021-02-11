@@ -182,9 +182,12 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     val complete = includedSoFar == mg.nodeRange.toSet
 
     // check that all of the partitions contain the same type of element
+    val allTagsSame = mg.iterGroups forall {
+      case (macroID, memberIDs) => mg.mergeIsTagSame(memberIDs.toSet + macroID)
+    }
     //mg.mergeIDToMembers.map(x => (x._1, x._2.map(mg.idToTag).toSeq.distinct) ).filter(x => x._2.size != 1)
 
-    disjoint && complete
+    disjoint && complete && allTagsSame
   }
 }
 

@@ -70,7 +70,7 @@ class StatementGraph extends Graph {
 
     // check if we have a GCSMInfo
     stmt match {
-      case declaration: IsDeclaration =>
+      case declaration: HasInfo =>
         markGCSMInfo(potentiallyNewDestID)(declaration.info)
       case _ =>
     }

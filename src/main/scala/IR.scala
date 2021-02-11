@@ -147,17 +147,29 @@ case class RenamedSignalInfo(originalName: String, newName: String) extends Info
 
 /**
  * Wrapper for a [[WRef]] to denote that it's part of the GCSM
- * @param name the name of the signal
- * @param externalReference if this is an external reference, then the instance name of that location
+ * @param ref The original reference
+ * @param gcsmInstanceName The name of the GCSM instance
  */
 // TODO - make this a wrapper for WRef, can delete the externalReference since it's probably not needed?
-case class GCSMSignalReference(name: String, externalReference: Option[String] = None) extends Expression {
+case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expression {
+  /**
+   * The short name of this signal, suitable for use in the GCSM struct
+   */
+  val shortName: String = ref.name.stripPrefix(gcsmInstanceName)
+
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = Unit
   override def foreachWidth(f: Width => Unit): Unit = Unit
   override def mapExpr(f: Expression => Expression): Expression = this
   override def mapType(f: Type => Type): Expression = this
   override def mapWidth(f: Width => Width): Expression = this
-  override def serialize: String = s"signal reference: ${name} in ${externalReference}"
+  override def serialize: String = s"signal reference: $shortName in ${gcsmInstanceName}"
   override def tpe: Type = UnknownType
+
+  // When comparing signal references, only the shortName is important
+  override def hashCode(): Int = shortName.hashCode()
+  override def equals(that: Any): Boolean = that match {
+    case x: GCSMSignalReference => x.shortName == this.shortName
+    case _ => false
+  }
 }

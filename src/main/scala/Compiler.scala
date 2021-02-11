@@ -177,7 +177,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     sg.stmtsOrdered foreach {
       case cp: CondPart => {
         // if this is a GCSM CP then it takes a param to the GCSM struct
-        GCSMInfo.is(cp) match {
+        val gcsmInfo = GCSMInfo.is(cp)
+        gcsmInfo match {
           case Some(gcsmInfo) => writeLines(1, Seq(
             s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.mod.name}",
             s"void ${genEvalFuncName(cp.id)}(${EssentEmitter.gcsmStructType} *${EssentEmitter.gcsmVarName}) {"))
@@ -195,7 +196,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         }
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
-        val keepAvail = cp.outputsToDeclare.keySet
+        val keepAvail = cp.outputsToDeclare.keySet.flatMap { name =>
+          // if we have a GCSM here, then we need to construct the C++ expr since that's used further down
+          val possibleNames = Set(name) ++ (gcsmInfo match {
+            case Some(gcsmInfo) => Set(emitExpr(GCSMSignalReference(WRef(name), gcsmInfo.instanceName)))
+            case None => Set.empty
+          })
+
+          // now determine which name is possible, based on the SG
+          possibleNames.find(sg.nameToID.contains)
+        }
+        assert(cp.outputsToDeclare.size == keepAvail.size, "missing some names?")
 
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
@@ -372,6 +383,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     // if there is deduping, this contains the code to initialize the structs, meant to go as class instance fields at the top level
     val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
 
+    val tmp4567 = sg.idToStmt.filter(_.serialize.contains("tail"))
+
     if (opt.useCondParts) {
       condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
       if (!opt.removeFlatConnects) {
@@ -380,7 +393,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         // write out the struct that gets passed to GCSM partitions
         writeLines(0, "typedef struct {")
         gcsmSignalMap.typeMap foreach {
-          case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.name};")
+          case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.shortName};")
         }
         writeLines(0, s"} ${gcsmStructType};")
 
@@ -389,7 +402,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           case (gcsmInstanceName, placeholderMap) =>
             Seq(s"$gcsmStructType $gcsmInstanceName = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
             placeholderMap.map({
-              case (gcsr, origWRef) => s"  .${gcsr.name} = &(${rn.emit(origWRef)})," // init each member of the struct
+              case (gcsr, origWRef) => s"  .${gcsr.shortName} = &(${rn.emit(origWRef)})," // init each member of the struct
             }) ++ Seq("};")
         })
       }

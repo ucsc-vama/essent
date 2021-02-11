@@ -143,7 +143,7 @@ object Emitter {
 
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
-    case w: GCSMSignalReference => s"*(${EssentEmitter.gcsmVarName}->${w.name})"
+    case w: GCSMSignalReference => s"*(${EssentEmitter.gcsmVarName}->${w.shortName})"
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)

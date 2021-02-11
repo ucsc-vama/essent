@@ -144,7 +144,7 @@ object Extract extends LazyLogging {
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
-      case w: GCSMSignalReference => Seq(w.name)
+      case w: GCSMSignalReference => Seq(w.ref.name) // maybe?
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField =>
         val innerResult = findDependencesExpr(w.expr)
@@ -268,7 +268,12 @@ object Extract extends LazyLogging {
         // if this is the GCSM, then also apply the label to all statements
         if (modName == gcsm || gcsmInstantiations.exists(prefix.startsWith(_))) {
           def isConnectToSameInstance(that: Connect): Boolean = {
-            assert(that.loc.isInstanceOf[WRef], s"connect must be to a WRef but got $that in $modName")
+            //assert(that.loc.isInstanceOf[WRef], s"connect must be to a WRef but got ${that.loc} in $modName")
+            val thatLoc = that.loc match {
+              case WRef(name, tpe, kind, flow) => name
+              case WSubField(expr: WRef, name, tpe, flow) => expr.name
+              case WSubIndex(expr: WRef, value, tpe, flow) => expr.name
+            }
 
             // get the references to check. the expr might not be a reference, so we can ignore that
             /*val exprs: Seq[WRef] = Seq(that.loc) ++ (that.expr match {
@@ -279,7 +284,7 @@ object Extract extends LazyLogging {
             }) */
 
             // the last element is the signal name, so we want everything before
-            val thatPrefix = that.loc.asInstanceOf[WRef].name.split('.').init.mkString(".") + "." // TODO - rewrite as regex
+            val thatPrefix = thatLoc.split('.').init.mkString(".") + "." // TODO - rewrite as regex
             thatPrefix == prefix
           }
 
@@ -335,7 +340,7 @@ object Extract extends LazyLogging {
       (sourceIDs flatMap findChildRenames).toMap
     }
     val (straightConnects, otherStmts) = bodies partition {
-      case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(emitExpr(c.loc))
+      case c: Connect => isRef(c.loc) && isRef(c.expr) && !namesToExclude.contains(c.loc.serialize)
       case _ => false
     }
     logger.info(s"Found straight connects in ${straightConnects.size}/${bodies.size} statements")
