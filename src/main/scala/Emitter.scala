@@ -141,9 +141,12 @@ object Emitter {
     s"std::array<uint64_t,$numWords>({$leadingNegStr$arrStr})"
   }
 
+  // rn is not null in C++ code emission
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
-    case w: GCSMSignalReference => s"*(${EssentEmitter.gcsmVarName}->${w.shortName})"
+    case w: GCSMSignalReference => {
+      if (rn != null) s"*(${EssentEmitter.gcsmVarName}->${w.shortName})" else w.shortName
+    } // TODO - clean this up
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
       val width = bitWidth(u.tpe)
@@ -227,15 +230,18 @@ object Emitter {
       else Seq(s"$lhs = $rhs;")
     }
     case c: Connect => {
-      val lhs_orig = emitExpr(c.loc)(null)
+      //val lhs_orig = emitExpr(c.loc) // was: rn=null
       //val lhs = rn.emit(lhs_orig)
-      val lhs = c.loc match { // TODO - might not be needed since GCSM sig references never have their types emitted here
-        case _:GCSMSignalReference => lhs_orig
-        case _ => rn.emit(lhs_orig)
+      val localAndLhs = c.loc match {
+        case gcsr: GCSMSignalReference => (rn.decLocal(gcsr.ref), emitExpr(gcsr))
+        case wref: Expression => {
+          val e = emitExpr(wref)
+          (rn.decLocal(e), e)
+        }
       }
       val rhs = emitExpr(c.expr)
-      if (rn.decLocal(lhs_orig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
-      else Seq(s"$lhs = $rhs;")
+      if (localAndLhs._1) Seq(s"${genCppType(c.loc.tpe)} ${localAndLhs._2} = $rhs;")
+      else Seq(s"${localAndLhs._2} = $rhs;")
     }
     case p: Print => {
       val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList

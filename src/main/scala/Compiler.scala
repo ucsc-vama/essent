@@ -196,7 +196,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         }
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
-        val keepAvail = cp.outputsToDeclare.keySet.flatMap { name =>
+        //val keepAvail = cp.outputsToDeclare.keySet
+        /*val keepAvail = cp.outputsToDeclare.keySet.flatMap { name =>
           // if we have a GCSM here, then we need to construct the C++ expr since that's used further down
           val possibleNames = Set(name) ++ (gcsmInfo match {
             case Some(gcsmInfo) => Set(emitExpr(GCSMSignalReference(WRef(name), gcsmInfo.instanceName)))
@@ -205,6 +206,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
           // now determine which name is possible, based on the SG
           possibleNames.find(sg.nameToID.contains)
+        }*/
+        val keepAvail = cp.outputsToDeclare.keySet.map { name =>
+          cp.gcsmConnectionMap.find({
+            case (gcsr, origWRef) => origWRef.name == name
+          }) match { // find if it's a renamed GCSM placeholder signal
+            case Some((gcsr, origWRef)) => gcsr.shortName
+            case None => name
+          }
         }
         assert(cp.outputsToDeclare.size == keepAvail.size, "missing some names?")
 

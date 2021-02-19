@@ -1,5 +1,6 @@
 package essent.ir
 
+import essent.MakeCondPart.{ConnectionMap, SignalTypeMap}
 import essent.Util.StatementUtils
 import firrtl._
 import firrtl.ir._
@@ -77,7 +78,8 @@ case class CondPart(
     alwaysActive: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
-    outputsToDeclare: Map[String,firrtl.ir.Type]) extends Statement with HasInfo {
+    outputsToDeclare: Map[String,firrtl.ir.Type],
+    gcsmConnectionMap: ConnectionMap = Map.empty) extends Statement with HasInfo {
   /**
    * Get the GCSM info, if applicable
    */
@@ -136,6 +138,7 @@ object GCSMInfo {
  * @param originalName
  * @param newName
  */
+@Deprecated
 case class RenamedSignalInfo(originalName: String, newName: String) extends Info {
   override def toString: String = s"@[RenamedSignal: $originalName -> $newName]"
   override def ++(that: Info): Info = that match {
@@ -170,6 +173,7 @@ case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expr
   override def hashCode(): Int = shortName.hashCode()
   override def equals(that: Any): Boolean = that match {
     case x: GCSMSignalReference => x.shortName == this.shortName
+    case x: String => x == this.shortName || x == this.ref.name
     case _ => false
   }
 }
