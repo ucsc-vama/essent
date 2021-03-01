@@ -72,10 +72,16 @@ case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWa
   def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
+/**
+ * Conditional Partition
+ * @param isRepeated if true, then the id refers to another existing partition* @param inputs
+ * @param memberStmts if repeated, may be empty
+ */
 case class CondPart(
     info: Info,
     id: Int,
     alwaysActive: Boolean,
+    isRepeated: Boolean,
     inputs: Seq[String],
     memberStmts: Seq[Statement],
     outputsToDeclare: Map[String,firrtl.ir.Type],

@@ -227,21 +227,21 @@ object Emitter {
       val lhs = rn.emit(lhs_orig)
       val rhs = emitExpr(d.value)
       if (rn.decLocal(lhs_orig)) Seq(s"${genCppType(d.value.tpe)} $lhs = $rhs;")
-      else Seq(s"$lhs = $rhs;")
+      else Seq(s"$lhs = $rhs; // DefNode")
     }
     case c: Connect => {
-      //val lhs_orig = emitExpr(c.loc) // was: rn=null
+      //val lhs_orig = emitExpr(c.loc)(null)
       //val lhs = rn.emit(lhs_orig)
-      val localAndLhs = c.loc match {
-        case gcsr: GCSMSignalReference => (rn.decLocal(gcsr.ref), emitExpr(gcsr))
-        case wref: Expression => {
-          val e = emitExpr(wref)
-          (rn.decLocal(e), e)
+      val (lhsOrig, lhs) = c.loc match {
+        case gcsr: GCSMSignalReference => (emitExpr(gcsr.ref)(null), emitExpr(gcsr))
+        case e: Expression => {
+          val o = emitExpr(e)(null)
+          (o, rn.emit(o))
         }
       }
       val rhs = emitExpr(c.expr)
-      if (localAndLhs._1) Seq(s"${genCppType(c.loc.tpe)} ${localAndLhs._2} = $rhs;")
-      else Seq(s"${localAndLhs._2} = $rhs;")
+      if (rn.decLocal(lhsOrig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
+      else Seq(s"$lhs = $rhs; // Connect")
     }
     case p: Print => {
       val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList

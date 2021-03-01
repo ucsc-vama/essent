@@ -175,18 +175,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(1, s"bool verbose;")
     writeLines(0, "")
     sg.stmtsOrdered foreach {
-      case cp: CondPart => {
+      case cp: CondPart if !cp.isRepeated => {
         // if this is a GCSM CP then it takes a param to the GCSM struct
-        val gcsmInfo = GCSMInfo.is(cp)
-        gcsmInfo match {
+        cp.gcsm match {
           case Some(gcsmInfo) => writeLines(1, Seq(
             s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.mod.name}",
             s"void ${genEvalFuncName(cp.id)}(${EssentEmitter.gcsmStructType} *${EssentEmitter.gcsmVarName}) {"))
           case None => writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         }
 
-        if (!cp.alwaysActive)
-          writeLines(2, s"$flagVarName[${cp.id}] = false;")
+        //if (!cp.alwaysActive) // TODO - put this back later
+        //  writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
           writeLines(2, s"$actVarName[${cp.id}]++;")
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
@@ -220,26 +219,31 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
 
-        writeLines(2, "// Triggers 1")
-        writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+        if (cp.gcsm.isEmpty) {
+          writeLines(2, "// Triggers 1")
+          writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
 
-        writeLines(2, "// Triggers 2")
-        val regUpdateNamesInPart = regUpdates flatMap findResultName
-        writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
+          writeLines(2, "// Triggers 2")
+          val regUpdateNamesInPart = regUpdates flatMap findResultName
+          writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
+        }
 
         writeLines(2, "// Reg updates:")
         writeLines(2, regUpdates flatMap emitStmt)
+
         // triggers for MemWrites
-        writeLines(2, "// Triggers 3")
-        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
-        val memWriteTriggers = memWritesInPart flatMap { mw => {
-          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+        if (cp.gcsm.isEmpty) {
+          writeLines(2, "// Triggers 3")
+          val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+          val memWriteTriggers = memWritesInPart flatMap { mw =>
+            val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+            genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+          }
+          writeLines(2, memWriteTriggers)
         }
-        }
-        writeLines(2, memWriteTriggers)
         writeLines(1, "}")
       }
+      case _: CondPart => // this is a repeated CondPart, nothing to generate here
       case stmt => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
     }
     writeLines(0, "")
@@ -365,7 +369,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
   def execute(circuit: Circuit) {
-    val opt = initialOpt
+    val opt = initialOpt.copy(conditionalMuxes = false, regUpdates = false) // FIXME
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
@@ -383,6 +387,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
+
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)

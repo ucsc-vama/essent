@@ -57,7 +57,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         case _ => // ignore
       }
 
-      val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, idToInputNames(id),
+      val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, isRepeated = false, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
       namesToDeclare foreach { name => {
@@ -85,7 +85,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     else {
       val newGroupID = matchingIDs.min
       val memberStmts = matchingIDs map sg.idToStmt
-      val tempCPstmt = CondPart(NoInfo, newGroupID, true, Seq(), memberStmts, Map())
+      val tempCPstmt = CondPart(NoInfo, newGroupID, alwaysActive = true, isRepeated = false, Seq(), memberStmts, Map())
       sg.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
       Some(newGroupID)
     }
@@ -219,20 +219,30 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         val thisGcsmSignalConnections = mutable.Map[GCSMSignalReference, WRef]()
 
         // just like the main GCSM, iterate over each CP for this GCSM instance
-        condPartsForInstance.foreach(cp => {
+        assert(condPartsForInstance.size == mainGcsmParts.size, "partitioned differently");
+        condPartsForInstance.zipWithIndex.foreach({ case (cp, i) =>
           // FUTURE - analyze the part flags
-          val newCP = cp.copy(alwaysActive = true, gcsmConnectionMap = thisGcsmSignalConnections).mapStmt(stmt => {
+          val newCP = cp.copy(
+            alwaysActive = true,
+            isRepeated = true,
+            id = mainGcsmParts(i).id,
+            gcsmConnectionMap = thisGcsmSignalConnections
+          ).mapStmt(stmt => {
             stmt.mapExprRecursive {
               case w:WRef if (!rn.decLocal(w) || cp.outputsToDeclare.contains(w.name)) && Seq(NodeKind, PortKind, MemKind, RegKind, WireKind).contains(w.kind) => // reference to an external IO or another CP's value     /*if rn.decExtIO(w) || rn.isDec(w, PartOut) || rn.isDec(w, RegSet)*/
                 // put a placeholder and fill in the first occurence since we're looking at it
                 val newName = s"${gcsmInfo.instanceName}_placeholder_${placeholderNum}"
                 val ret = GCSMSignalReference(w.copy(name = newName), gcsmInfo.instanceName)
                 placeholderNum += 1
+                val tmp1 = rn.getSigType(w)
+                val tmp2 = signalTypeMap(ret)
                 assert(rn.getSigType(w) == signalTypeMap(ret), "paradox! the type I see this time is not the same as in the main GCSM")
                 thisGcsmSignalConnections(ret) = w
                 ret
               case w:WRef if w.name.startsWith(gcsmInfo.instanceName) && !rn.decLocal(w) => // name inside the GCSM, but local vars not needed
                 val ret = GCSMSignalReference(w, gcsmInfo.instanceName)
+                val tmp1 = rn.getSigType(w)
+                val tmp2 = signalTypeMap(ret)
                 assert(rn.getSigType(w) == signalTypeMap(ret), "paradox! the type I see this time is not the same as in the main GCSM")
                 thisGcsmSignalConnections(ret) = w
                 ret
@@ -242,7 +252,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
           // replace me in the SG as well
           val id = sg.idToStmt.indexOf(cp) // FIXME - there must be a better solution
-          sg.idToStmt(id) = newCP // TODO - replace with EmptyStmt
+          sg.idToStmt(id) = newCP
         })
 
         getInstanceMemberName(gcsmInfo) -> thisGcsmSignalConnections
