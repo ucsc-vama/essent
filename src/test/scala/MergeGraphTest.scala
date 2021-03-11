@@ -2,9 +2,9 @@ package essent
 
 import collection.mutable.ArrayBuffer
 
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
-class MergeGraphSpec extends FlatSpec {
+class MergeGraphSpec extends AnyFlatSpec {
   val initialAssignments = ArrayBuffer(1,1,1,3,4,6,6)
 
   def buildStartingGraph() = {

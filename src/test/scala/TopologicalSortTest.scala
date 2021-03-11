@@ -1,8 +1,8 @@
 package essent
 
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
-class TopologicalSortSpec extends FlatSpec {
+class TopologicalSortSpec extends AnyFlatSpec {
   "Topological Sort" should "return a valid ordering" in {
     val bg = new Graph
     bg.addEdge(2,3)
