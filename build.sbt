@@ -1,10 +1,12 @@
 organization := "ucsc.edu"
-version := "0.4.8"
+version := "0.5-SNAPSHOT"
 name := "essent"
 scalaVersion := "2.12.11"
 
 scalacOptions ++= Seq("-deprecation", "-unchecked")
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.4.2"
+
+resolvers ++= Seq(Resolver.sonatypeRepo("snapshots"))
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.5-SNAPSHOT"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test"
 
 // Assembly
