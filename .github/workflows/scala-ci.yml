@@ -16,12 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: build
-        run: sbt compile
-
-      - name: run tests
-        run: sbt test
-
       - name: cache SBT deps
         uses: actions/cache@v2
         with:
@@ -29,3 +23,9 @@ jobs:
             ~/.cache/coursier
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+
+      - name: build
+        run: sbt compile
+
+      - name: run tests
+        run: sbt test
