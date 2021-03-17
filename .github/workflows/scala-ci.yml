@@ -26,6 +26,6 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ~/.ivy2/cache
+            ~/.cache/coursier
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
