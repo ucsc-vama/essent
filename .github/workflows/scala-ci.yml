@@ -14,7 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Cache SBT
+      - name: check out source to find deps
+        uses: actions/checkout@v2
+
+      - name: launch SBT to pull in deps
+        run: sbt
+
+      - name: cache SBT
         uses: actions/cache@v2
         with:
           path: |
