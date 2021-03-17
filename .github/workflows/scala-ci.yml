@@ -9,7 +9,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  small-designs:
+
+  sbt cache:
+    runs-on: ubuntu-latest
+
+    - name: Cache SBT
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.ivy2/cache
+          ~/.sbt
+        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+
+  unit tests:
     runs-on: ubuntu-latest
 
     steps:
