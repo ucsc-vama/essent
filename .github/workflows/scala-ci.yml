@@ -10,24 +10,6 @@ on:
 
 jobs:
 
-  sbt-cache:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: check out source to find deps
-        uses: actions/checkout@v2
-
-      - name: launch SBT to pull in deps
-        run: sbt
-
-      - name: cache SBT
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.ivy2/cache
-            ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
-
   unit-tests:
     runs-on: ubuntu-latest
 
@@ -37,5 +19,13 @@ jobs:
       - name: build
         run: sbt compile
 
-      - name: unit tests
+      - name: run tests
         run: sbt test
+
+      - name: cache SBT deps
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.ivy2/cache
+            ~/.sbt
+          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
