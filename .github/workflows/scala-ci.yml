@@ -10,7 +10,7 @@ on:
 
 jobs:
 
-  sbt cache:
+  sbt-cache:
     runs-on: ubuntu-latest
 
     - name: Cache SBT
@@ -21,7 +21,7 @@ jobs:
           ~/.sbt
         key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
 
-  unit tests:
+  unit-tests:
     runs-on: ubuntu-latest
 
     steps:
