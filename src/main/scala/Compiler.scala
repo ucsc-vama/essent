@@ -179,7 +179,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         // if this is a GCSM CP then it takes a param to the GCSM struct
         cp.gcsm match {
           case Some(gcsmInfo) => writeLines(1, Seq(
-            s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.mod.name}",
+            s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.modName}",
             s"void ${genEvalFuncName(cp.id)}(${EssentEmitter.gcsmStructType} *${EssentEmitter.gcsmVarName}) {"))
           case None => writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         }

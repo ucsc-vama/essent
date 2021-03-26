@@ -1,6 +1,6 @@
 package essent
 
-import firrtl.ir.{Expression, Info, MultiInfo, Statement}
+import firrtl.ir.{Expression, Info, MultiInfo, NoInfo, Statement}
 
 import collection.mutable.{ArrayBuffer, HashMap, ListBuffer}
 import scala.collection.{GenTraversableOnce, IterableLike, immutable, mutable}
@@ -65,7 +65,6 @@ object Util {
       for ((k:T, v:U) <- iter) {
         b.getOrElseUpdate(k, new mutable.ListBuffer[U]()).append(v)
       }
-
       b
     }
   }
@@ -84,6 +83,19 @@ object Util {
       }
 
       stmt foreachInfo foreachInfoRecursiveHelper
+    }
+
+    /**
+     * Filter the infos to find the ones matching the given type.
+     * The first one matching will be returned
+     */
+    def getInfoByType[T <: Info]()(implicit tagT: ClassTag[T]): Option[T] = {
+      var result: Option[T] = None
+      stmt.foreachInfoRecursive {
+        case i: T if result.isEmpty => result = Some(i)
+        case _ =>
+      }
+      result
     }
 
     /**
@@ -111,6 +123,18 @@ object Util {
 
       f(expr)
       expr foreachExpr foreachExprRecursiveHelper
+    }
+
+    /**
+     * Filter the expressions to find the ones matching the given type.
+     */
+    def filterExprByType[T <: Expression]()(implicit tagT: ClassTag[T]): ListBuffer[T] = {
+      val result = mutable.ListBuffer[T]()
+      expr.foreachExprRecursive {
+        case i: T => result += i
+        case _ =>
+      }
+      result
     }
   }
 }

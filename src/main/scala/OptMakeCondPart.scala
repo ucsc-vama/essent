@@ -52,10 +52,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
       // annotate the CondPart with the partition info if we have it
       var cpInfo:Info = NoInfo
-      idToMemberStmts(id).head.foreachInfoRecursive {
-        case i:GCSMInfo => cpInfo = i
-        case _ => // ignore
-      }
+      idToMemberStmts(id).head.getInfoByType[GCSMInfo]()
 
       val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, isRepeated = false, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)

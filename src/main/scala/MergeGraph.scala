@@ -46,7 +46,7 @@ class MergeGraph extends Graph {
   }
 
   def mergeGroups(mergeDest: NodeID, mergeSources: Seq[NodeID]) {
-    val newMembers = (mergeSources map mergeIDToMembers).flatten
+    val newMembers = mergeSources flatMap mergeIDToMembers
     newMembers foreach { id => idToMergeID(id) = mergeDest}
     mergeIDToMembers(mergeDest) ++= newMembers
     mergeSources foreach { id => mergeIDToMembers.remove(id) }

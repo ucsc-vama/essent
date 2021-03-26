@@ -13,6 +13,12 @@ import firrtl.Utils._
 import scala.util.Random
 
 object Emitter {
+  /**
+   * Directed edge
+   * @param name source signal name
+   * @param deps destination signal names
+   * @param stmt the statement in question
+   */
   case class HyperedgeDep(name: String, deps: Seq[String], stmt: Statement)
 
   // Type Declaration & Initialization
@@ -70,29 +76,12 @@ object Emitter {
 
   def replaceNamesStmt(renames: Map[String, String])(s: Statement): Statement = {
     val nodeReplaced = s match {
-      case n: DefNode if (renames.contains(n.name)) => n.copy(name = renames(n.name), info = RenamedSignalInfo(n.name, renames(n.name)) ++ n.info)
-      case cm: CondMux if (renames.contains(cm.name)) => cm.copy(name = renames(cm.name), info = RenamedSignalInfo(cm.name, renames(cm.name)) ++ cm.info)
-      case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName), info = RenamedSignalInfo(mw.memName, renames(mw.memName)) ++ mw.info)
+      case n: DefNode if (renames.contains(n.name)) => n.copy(name = renames(n.name))
+      case cm: CondMux if (renames.contains(cm.name)) => cm.copy(name = renames(cm.name))
+      case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName))
       case _ => s
     }
-
-    var renamedInfosFromExpr:Info = NoInfo // keeps track of
-    val ret = nodeReplaced map replaceNamesStmt(renames) map { e:Expression =>
-        // replace the names
-        val maybeRenamed = replaceNamesExpr(renames)(e)
-
-        // was anything renamed?
-        Utils.diff(e, maybeRenamed) foreach {
-          case (orig:WRef, changed:WRef) => renamedInfosFromExpr = RenamedSignalInfo(orig.name, changed.name) ++ renamedInfosFromExpr
-          case _ =>
-        }
-
-        maybeRenamed
-    }
-
-    // if any of the expressions had names changed, we should put that on this statement
-    val tmp1 = ret.mapInfo(i => renamedInfosFromExpr ++ i)
-    tmp1
+    nodeReplaced map replaceNamesStmt(renames) map replaceNamesExpr(renames)
   }
 
   def replaceNamesExpr(renames: Map[String, String])(e: Expression): Expression = {

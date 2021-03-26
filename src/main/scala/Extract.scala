@@ -2,6 +2,7 @@ package essent
 
 import essent.Graph.NodeID
 import essent.Emitter._
+import essent.Util.{StatementUtils, ExpressionUtils, TraversableOnceUtils}
 import essent.ir._
 import firrtl._
 import firrtl.analyses.InstanceGraph
@@ -12,9 +13,16 @@ import logger.LazyLogging
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.reflect.{ClassTag, classTag}
+import scala.util.matching.Regex
 
 
 object Extract extends LazyLogging {
+  /**
+   * Pattern to match fully-qualified signal names.
+   * For example, "top.modulename.bla" matches into ("top.modulename.", "bla")
+   */
+  val signalNamePat = new Regex("""^(.*\.)?(.*)$""", "prefix", "signalName")
+
   // Finding Statements by Type
   //----------------------------------------------------------------------------
   // https://medium.com/@sinisalouc/overcoming-type-erasure-in-scala-8f2422070d20
@@ -37,7 +45,7 @@ object Extract extends LazyLogging {
 
   // Searching Module Instance Hierarchy
   //----------------------------------------------------------------------------
-  def findModule(name: String, circuit: Circuit, cache: mutable.Map[String, DefModule] = null): DefModule = {
+  def findModule(name: String, circuit: Circuit)(implicit cache: mutable.Map[String, DefModule] = null): DefModule = {
     if (cache != null && cache.contains(name)) cache(name)
     else {
       val mod = circuit.modules.find(_.name == name).get
@@ -128,6 +136,7 @@ object Extract extends LazyLogging {
     case cp: CondPart => UnknownType
     case p: Print => UnknownType
     case s: Stop => UnknownType
+    case EmptyStmt => UnknownType
     case _ => throw new Exception(s"can't find result type of: ${stmt.serialize}")
   }
 
@@ -216,6 +225,11 @@ object Extract extends LazyLogging {
     flattenStmts(body)
   }
 
+  def findAndFlatten(modName: String, prefix: String, circuit: Circuit): Seq[Statement] = findModule(modName, circuit) match {
+    case m: Module => flattenModule(m, prefix, circuit)
+    case _: ExtModule => Seq.empty
+  }
+
   def countStatements(stmt: Statement, circuit: Circuit): Int = stmt match {
     case b: Block => b.stmts.map(countStatements(_, circuit)).sum
     case i: WDefInstance => findModule(i.module, circuit) match {
@@ -230,97 +244,167 @@ object Extract extends LazyLogging {
 
   def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
-    /*val repeatedInstances = allInstances
-      .groupBy(_._1) // Map[String modName, Seq[(String modName, String instName)]]
-      .filter((x) => x._2.size > 1) // find all instances with more than one usage
-      .keySet*/
-    //val mig = ModuleInstanceGraph(circuit)
-    val mig = new InstanceGraph(circuit)
-    /*
-    val gcsm = mig.staticInstanceCount.filter(_._2 > 1).minBy({
-      case (ofModule, _) => mig.findInstancesInHierarchy(ofModule.value).maxBy(_.size).size // find the longest instantiation path
-    })._1.value // the GCSM is the module which is used at least twice, and also is the topmost*/
 
-    val gcsm1 = mig.staticInstanceCount.filter(_._2 > 1)
-
-    val gcsm = if (gcsm1.isEmpty) ""
-               else gcsm1.maxBy({ // TODO - this is very slow and gross
-      case (ofModule, numberOfInstantiations) => findModule(ofModule.value, circuit) match {
-        case m:Module => countStatements(m.body, circuit) * numberOfInstantiations
-        case _ => 0 // ExtModules don't count
+    // Determine GCSM
+    // FIXME: handle case where there is no GCSM (no re-used modules at all)
+    val modulesToInstances = allInstances.toMapOfLists
+    val gcsmModName = if (modulesToInstances.isEmpty) ""
+               else modulesToInstances.maxBy({
+      case (modName, instanceNames) => findModule(modName, circuit) match {
+        case m:Module if instanceNames.size > 1 => instanceNames.size * countStatements(m.body, circuit)
+        case _ => 0 // ExtModules and single-use modules don't count
       }
-    })._1.value
+    })._1
 
-    val gcsmInstantiations = allInstances flatMap {
-      case (modName, prefix) if modName == gcsm => Some(prefix)
-      case _ => None
+    // designate the first instance the one whose logic will get reused
+    val firstGcsmPrefix +: otherGcsmPrefixes = modulesToInstances(gcsmModName) // FIXME - un-reverse
+    val gcsmMod = findModule(gcsmModName, circuit).asInstanceOf[Module]
+
+    // for the contents of the instances, find refs to the signals in the GCSM instances, and create fake references to it
+    // it doesn't matter that they all point to the main GCSM since the actual logic for the other instances never gets used
+    def isInOtherGCSMPrefix(name: String): Boolean = name match {
+      case signalNamePat(thatPrefix, _) => {
+        val tmp1 = thatPrefix
+        val tmp2 = otherGcsmPrefixes.contains(thatPrefix)
+        tmp2
+      }
+    }
+    def rewriteSignalName(origName: String): String = origName match {
+      case signalNamePat(_, signalName) => firstGcsmPrefix + signalName
+    }
+    def maybeFakeConnectIntoGCSM(e: Expression) = {
+      val result = mutable.ListBuffer[FakeConnection]()
+      e.foreachExprRecursive {
+        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(w.name, rewriteSignalName(w.name)))
+        case WSubField(WRef(prefix, _, _, _), name, _, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
+          val fullName = s"$prefix.$name"
+          result ++= Some(FakeConnection(fullName, rewriteSignalName(fullName)))
+        case _ => None
+      }
+      result
+    }
+    def maybeFakeConnectFromGCSM(e: Expression) = {
+      val result = mutable.ListBuffer[FakeConnection]()
+      e.foreachExprRecursive {
+        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(rewriteSignalName(w.name), w.name))
+        case WSubField(WRef(prefix, _, _, _), name, _, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
+          val fullName = s"$prefix.$name"
+          result ++= Some(FakeConnection(rewriteSignalName(fullName), fullName))
+        case _ => None
+      }
+      result
+    }
+    // crawl the statement and find required fake connects
+    def makeFakeConnects(stmt: Statement): Seq[Statement] = {
+      val tmp = stmt match {
+        // check connections to know when we need to insert fake connections
+        // ignore the things already in the GCSM!
+        case c: Connect /*if c.getInfoByType[GCSMInfo]().isEmpty*/ => maybeFakeConnectIntoGCSM(c.loc) ++ maybeFakeConnectIntoGCSM(c.expr)
+        case d: DefNode => maybeFakeConnectFromGCSM(d.value)
+        case d: DefRegister => maybeFakeConnectFromGCSM(d.clock) ++ maybeFakeConnectFromGCSM(d.reset) ++ maybeFakeConnectFromGCSM(d.init)
+        case p: Print => maybeFakeConnectFromGCSM(p.clk) ++ maybeFakeConnectFromGCSM(p.en) ++ (p.args flatMap maybeFakeConnectFromGCSM)
+        case s: Stop => maybeFakeConnectFromGCSM(s.clk) ++ maybeFakeConnectFromGCSM(s.en)
+        case _ => Seq.empty
+      }
+      tmp
     }
 
     // flatten the non-repeated modules
     val allBodiesFlattened = allInstances flatMap {
-      case (modName, prefix) => {
-        val mod = findModule(modName, circuit)
-        val stmtsForInstance = mod match {
-          case m: Module => flattenModule(m, prefix, circuit)
-          case em: ExtModule => Seq()
+      // the main GCSM to flatten
+      case (modName, prefix) if prefix.startsWith(firstGcsmPrefix) => {
+        def isConnectToSameInstance(that: Connect): Boolean = {
+          val thatLoc = that.loc match {
+            case WRef(name, _, _, _) => name
+            case WSubField(expr: WRef, _, _, _) => expr.name
+            case WSubIndex(expr: WRef, _, _, _) => expr.name
+          }
+          thatLoc match {
+            case signalNamePat(thatPrefix, _) => thatPrefix == prefix
+          }
         }
 
-        // if this is the GCSM, then also apply the label to all statements
-        if (modName == gcsm || gcsmInstantiations.exists(prefix.startsWith(_))) {
-          def isConnectToSameInstance(that: Connect): Boolean = {
-            //assert(that.loc.isInstanceOf[WRef], s"connect must be to a WRef but got ${that.loc} in $modName")
-            val thatLoc = that.loc match {
-              case WRef(name, tpe, kind, flow) => name
-              case WSubField(expr: WRef, name, tpe, flow) => expr.name
-              case WSubIndex(expr: WRef, value, tpe, flow) => expr.name
-            }
+        // flatten and apply the annotation
+        val gcsmInfo = GCSMInfo(modName, firstGcsmPrefix)
+        flattenModule(gcsmMod, prefix, circuit) map { // TODO - is there a cleaner way to write this?
+          case s:Attach => s.copy(info = gcsmInfo)
+          case s:IsInvalid => s.copy(info = gcsmInfo)
+          case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
+          case s:DefWire => s.copy(info = gcsmInfo)
+          case s:Stop => s.copy(info = gcsmInfo)
+          case s:DefNode => s.copy(info = gcsmInfo)
+          case s:RegUpdate => s.copy(info = gcsmInfo)
+          case s:DefInstance => s.copy(info = gcsmInfo)
+          case s:PartialConnect => s.copy(info = gcsmInfo)
+          case s:Print => s.copy(info = gcsmInfo)
+          case s:CondMux => s.copy(info = gcsmInfo)
+          case s:Conditionally => s.copy(info = gcsmInfo)
+          case s:CDefMPort => s.copy(info = gcsmInfo)
+          case s:DefRegister => s.copy(info = gcsmInfo)
+          case s:CDefMemory => s.copy(info = gcsmInfo)
+          case s:WDefInstanceConnector => s.copy(info = gcsmInfo)
+          case s:MemWrite => s.copy(info = gcsmInfo)
+          case s:CondPart => s.copy(info = gcsmInfo)
+          case s:DefMemory => s.copy(info = gcsmInfo)
+          case s:DefAnnotatedMemory => s.copy(info = gcsmInfo)
+          case s => s // ignore
+        }
+      }
 
-            // get the references to check. the expr might not be a reference, so we can ignore that
-            /*val exprs: Seq[WRef] = Seq(that.loc) ++ (that.expr match {
-              case w: WRef => Some(w)
-              case _:DoPrim => None
-              case _:Literal => None
-              case _:Mux => None
-            }) */
+      // already seen the first instance of the GCSM, no need to re-flatten
+      // instead, take the ports since those names can be referenced
+      // create some fake nodes to keep the names around
+      // and keep state elements
+      case (modName, prefix) if otherGcsmPrefixes.contains(prefix) => {
+        val gcsmInfo = GCSMInfo(modName, prefix)
 
-            // the last element is the signal name, so we want everything before
-            val thatPrefix = thatLoc.split('.').init.mkString(".") + "." // TODO - rewrite as regex
-            thatPrefix == prefix
-          }
+        // only handle state elements here, port stuff comes after
+        flattenModule(gcsmMod, prefix, circuit) flatMap {
+          case m: DefMemory => Some(m.copy(info = gcsmInfo))
+          case m: DefRegister => Some(m.copy(info = gcsmInfo))
+          case _ => None
+        } flatMap { s => Seq(s) ++ makeFakeConnects(s) }
+      }
 
-          val gcsmInfo = GCSMInfo(mod, prefix)
-          stmtsForInstance map { // TODO - is there a cleaner way to write this?
-            case s:Attach => s.copy(info = gcsmInfo)
-            case s:IsInvalid => s.copy(info = gcsmInfo)
-            case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
-            case s:DefWire => s.copy(info = gcsmInfo)
-            case s:Stop => s.copy(info = gcsmInfo)
-            case s:DefNode => s.copy(info = gcsmInfo)
-            case s:RegUpdate => s.copy(info = gcsmInfo)
-            case s:DefInstance => s.copy(info = gcsmInfo)
-            case s:PartialConnect => s.copy(info = gcsmInfo)
-            case s:Print => s.copy(info = gcsmInfo)
-            case s:CondMux => s.copy(info = gcsmInfo)
-            case s:Conditionally => s.copy(info = gcsmInfo)
-            case s:CDefMPort => s.copy(info = gcsmInfo)
-            case s:DefRegister => s.copy(info = gcsmInfo)
-            case s:CDefMemory => s.copy(info = gcsmInfo)
-            case s:WDefInstanceConnector => s.copy(info = gcsmInfo)
-            case s:MemWrite => s.copy(info = gcsmInfo)
-            case s:CondPart => s.copy(info = gcsmInfo)
-            case s:DefMemory => s.copy(info = gcsmInfo)
-            case s:DefAnnotatedMemory => s.copy(info = gcsmInfo)
-            case s => s // ignore
-          }
-        } else stmtsForInstance
+      // this is an instance inside something used from one of the other GCSM instances
+      // (i.e., one of the GCSM prefixes matches this instance's prefix)
+      // ignore this since it won't get used anyway
+      case (modName, prefix) if otherGcsmPrefixes.exists(prefix.startsWith) => {
+        // make fake connections if needed
+        findAndFlatten(modName, prefix, circuit) flatMap makeFakeConnects
+      }
+
+      // not in the GCSM, just flatten
+      case (modName, prefix) => {
+        findAndFlatten(modName, prefix, circuit) flatMap { s =>
+          // return the statement as well as any fake connections, as needed
+          Seq(s) ++ makeFakeConnects(s)
+        }
       }
     }
 
+    /*
+    val tmp = allBodiesFlattened map { s => s.mapExprRecursive {
+      case w: WRef => {
+        val tmp1 = signalNamePat.findFirstMatchIn(w.name)
+        tmp1 match {
+          case Some(m) if gcsmPrefixes.contains(m.group("prefix")) => {
+            w.copy(name = firstGcsmPrefix + m.group("signalName"))
+          }
+          case _ => w // some other signal
+        }
+      }
+      case e => e
+    }}*/
+
+    /*
     if (squishOutConnects) {
       val extIOMap = findExternalPorts(circuit)
       val namesToExclude = extIOMap.keySet
       squishOutPassThroughConnects(allBodiesFlattened, namesToExclude)
     } else allBodiesFlattened
+     */
+    allBodiesFlattened
   }
 
   // FUTURE: are there lame DefNodes I should also be grabbing?

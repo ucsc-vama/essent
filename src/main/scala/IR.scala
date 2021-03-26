@@ -89,15 +89,7 @@ case class CondPart(
   /**
    * Get the GCSM info, if applicable
    */
-  lazy val gcsm: Option[GCSMInfo] = {
-    var tmp: Option[GCSMInfo] = None
-    this.foreachInfoRecursive {
-      case i:GCSMInfo => tmp = Some(i)
-      case _ => // ignore
-    }
-
-    tmp
-  }
+  lazy val gcsm: Option[GCSMInfo] = this.getInfoByType[GCSMInfo]()
 
   def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
@@ -114,11 +106,11 @@ case class CondPart(
 
 /**
  * Tag to apply to statements to denote that it belongs to the GCSM.
- * @param mod The module in question
+ * @param modName The module in question
  * @param instanceName The name of this particular instantiation of the GCSM
  */
-case class GCSMInfo(mod: DefModule, instanceName: String) extends Info {
-  override def toString: String = s"@[Instance '$instanceName' GCSM ${mod.name}]"
+case class GCSMInfo(modName: String, instanceName: String) extends Info {
+  override def toString: String = s"@[Instance '$instanceName' GCSM $modName]"
   override def ++(that: Info): Info = if (that == NoInfo) this else MultiInfo(Seq(this, that))
 }
 
@@ -127,31 +119,7 @@ object GCSMInfo {
    * Is the given statement a GCSM-related one?
    * @return The GCSMInfo, if any
    */
-  def is(stmt: Statement): Option[GCSMInfo] = {
-    var ret: Option[GCSMInfo] = None
-    stmt.foreachInfoRecursive({
-      case i:GCSMInfo => ret = Some(i)
-      case _ => // ignore
-    })
-
-    ret
-  }
-}
-
-/**
- * Meant to be applied to a [[Statement]], and says that one of the names that an expression refers to is renamed from
- * something else. Can have multiple of these on one statement
- * @param originalName
- * @param newName
- */
-@Deprecated
-case class RenamedSignalInfo(originalName: String, newName: String) extends Info {
-  override def toString: String = s"@[RenamedSignal: $originalName -> $newName]"
-  override def ++(that: Info): Info = that match {
-    case MultiInfo(infos) => MultiInfo(infos ++ Seq(this))
-    case NoInfo => this
-    case _ => MultiInfo(Seq(this, that))
-  }
+  def is(stmt: Statement): Option[GCSMInfo] = stmt.getInfoByType[GCSMInfo]()
 }
 
 /**
@@ -182,4 +150,30 @@ case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expr
     case x: String => x == this.shortName || x == this.ref.name
     case _ => false
   }
+}
+
+case class FakeConnection(source: String, dest: String) extends Statement {
+ //require(this.getInfoByType[GCSMInfo]().isDefined, "must have a GCSM info here")
+
+  override def mapStmt(f: Statement => Statement): Statement = ???
+
+  override def mapExpr(f: Expression => Expression): Statement = ???
+
+  override def mapType(f: Type => Type): Statement = ???
+
+  override def mapString(f: String => String): Statement = ???
+
+  override def mapInfo(f: Info => Info): Statement = ???
+
+  override def foreachStmt(f: Statement => Unit): Unit = ???
+
+  override def foreachExpr(f: Expression => Unit): Unit = ???
+
+  override def foreachType(f: Type => Unit): Unit = ???
+
+  override def foreachString(f: String => Unit): Unit = ???
+
+  override def foreachInfo(f: Info => Unit): Unit = ???
+
+  override def serialize: String = ???
 }
