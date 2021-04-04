@@ -232,6 +232,7 @@ object Emitter {
       if (rn.decLocal(lhsOrig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
       else Seq(s"$lhs = $rhs; // Connect")
     }
+    case c: GCSMBlackboxConnection => Seq() // nothing to emit for this
     case p: Print => {
       val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
       val argWidths = p.args map {e: Expression => bitWidth(e.tpe)}

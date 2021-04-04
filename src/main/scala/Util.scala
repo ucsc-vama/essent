@@ -61,7 +61,7 @@ object Util {
      * @tparam U value type
      */
     def toMapOfLists[T, U](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U)): mutable.Map[T, ListBuffer[U]] = {
-      val b = mutable.Map[T, mutable.ListBuffer[U]]()
+      val b = mutable.Map[T, mutable.ListBuffer[U]]() // TODO - instead of hardcoding list type, use Builder to keep original type
       for ((k:T, v:U) <- iter) {
         b.getOrElseUpdate(k, new mutable.ListBuffer[U]()).append(v)
       }

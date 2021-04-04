@@ -388,7 +388,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
 
-    val sg = StatementGraph(circuit, opt.removeFlatConnects)
+    val sg = TopLevelStatementGraph(circuit, opt.removeFlatConnects)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
@@ -396,8 +396,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
     // if there is deduping, this contains the code to initialize the structs, meant to go as class instance fields at the top level
     val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
-
-    val tmp4567 = sg.idToStmt.filter(_.serialize.contains("tail"))
 
     if (opt.useCondParts) {
       condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect

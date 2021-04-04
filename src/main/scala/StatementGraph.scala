@@ -6,7 +6,7 @@ import essent.Extract._
 import essent.ir._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
-import scala.collection.mutable
+import scala.collection.{AbstractSeq, mutable}
 import scala.reflect.ClassTag
 
 // Extends Graph to include more attributes per node
@@ -178,6 +178,28 @@ object StatementGraph {
     sg
   }
 
-  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
-    apply(flattenWholeDesign(circuit, removeFlatConnects))
+  //def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
+  //  apply(flattenWholeDesign(circuit, removeFlatConnects))
+}
+
+/**
+ * Extension of StatementGraph but also containing GCSM info.
+ * Only useful at the top level
+ */
+class TopLevelStatementGraph(val gcsmInstances: Seq[String]) extends StatementGraph {
+  /**
+   * Convenience method to see if there is any GCSM.
+   * There must be at least 2 copies to be useful
+   */
+  val hasGCSM: Boolean = gcsmInstances.size > 1
+}
+
+object TopLevelStatementGraph {
+  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): TopLevelStatementGraph = {
+    val (bodies, gcsmInstances) = flattenWholeDesign(circuit, removeFlatConnects)
+    val sg = new TopLevelStatementGraph(gcsmInstances)
+    sg.buildFromBodies(bodies)
+    sg.addOrderingDepsForStateUpdates()
+    sg
+  }
 }

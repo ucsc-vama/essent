@@ -152,28 +152,43 @@ case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expr
   }
 }
 
-case class FakeConnection(source: String, dest: String) extends Statement {
+case class FakeConnection(source: String, dest: String, tpe: Type) extends Statement {
  //require(this.getInfoByType[GCSMInfo]().isDefined, "must have a GCSM info here")
 
-  override def mapStmt(f: Statement => Statement): Statement = ???
+  override def mapStmt(f: Statement => Statement): Statement = this
+  override def mapExpr(f: Expression => Expression): Statement = this
+  override def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
+  override def mapString(f: String => String): Statement = this.copy(source = f(source), dest = f(dest))
+  override def mapInfo(f: Info => Info): Statement = this
+  override def foreachStmt(f: Statement => Unit): Unit = Unit
+  override def foreachExpr(f: Expression => Unit): Unit = Unit
+  override def foreachType(f: Type => Unit): Unit = f(tpe)
+  override def foreachString(f: String => Unit): Unit = {
+    f(source)
+    f(dest)
+  }
+  override def foreachInfo(f: Info => Unit): Unit = Unit
+  override def serialize: String = s"FakeConnect: $source -> $dest ($tpe)"
+}
 
-  override def mapExpr(f: Expression => Expression): Statement = ???
+/**
+ * Blackbox connection node for the secondary GCSM instance connections
+ * @param name the name of the signal
+ * @param flow from the perspective of the main design: sink = instance input; source = instance output
+ */
+case class GCSMBlackboxConnection(name: String, tpe: Type, flow: Flow) extends Statement {
+  // the flow must be either source or sink
+  require(flow == SourceFlow || flow == SinkFlow, "this only understands source or sink flows")
 
-  override def mapType(f: Type => Type): Statement = ???
-
-  override def mapString(f: String => String): Statement = ???
-
-  override def mapInfo(f: Info => Info): Statement = ???
-
-  override def foreachStmt(f: Statement => Unit): Unit = ???
-
-  override def foreachExpr(f: Expression => Unit): Unit = ???
-
-  override def foreachType(f: Type => Unit): Unit = ???
-
-  override def foreachString(f: String => Unit): Unit = ???
-
-  override def foreachInfo(f: Info => Unit): Unit = ???
-
-  override def serialize: String = ???
+  override def mapStmt(f: Statement => Statement): Statement = this
+  override def mapExpr(f: Expression => Expression): Statement = this
+  override def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
+  override def mapString(f: String => String): Statement = this.copy(name = f(name))
+  override def mapInfo(f: Info => Info): Statement = this
+  override def foreachStmt(f: Statement => Unit): Unit = Unit
+  override def foreachExpr(f: Expression => Unit): Unit = Unit
+  override def foreachType(f: Type => Unit): Unit = f(tpe)
+  override def foreachString(f: String => Unit): Unit = f(name)
+  override def foreachInfo(f: Info => Unit): Unit = Unit
+  override def serialize: String = s"GCSMBlackboxConnection: $flow for $name"
 }

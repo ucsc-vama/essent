@@ -2,7 +2,7 @@ package essent
 
 import essent.Graph.NodeID
 import essent.Emitter._
-import essent.Util.{StatementUtils, ExpressionUtils, TraversableOnceUtils}
+import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
 import essent.ir._
 import firrtl._
 import firrtl.analyses.InstanceGraph
@@ -10,6 +10,7 @@ import firrtl.ir._
 import firrtl.passes.memlib.DefAnnotatedMemory
 import logger.LazyLogging
 
+import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.reflect.{ClassTag, classTag}
@@ -114,6 +115,8 @@ object Extract extends LazyLogging {
   def findResultName(stmt: Statement): Option[String] = stmt match {
     case d: DefNode => Some(d.name)
     case c: Connect => Some(emitExpr(c.loc))
+    //case f: FakeConnection => Some(f.dest)
+    case c: GCSMBlackboxConnection => Some(c.name)
     case cm: CondMux => Some(cm.name)
     case ru: RegUpdate => Some(emitExpr(ru.regRef))
     case mw: MemWrite => Some(mw.memName)
@@ -136,6 +139,8 @@ object Extract extends LazyLogging {
     case cp: CondPart => UnknownType
     case p: Print => UnknownType
     case s: Stop => UnknownType
+    //case f: FakeConnection => f.tpe
+    case c: GCSMBlackboxConnection => c.tpe
     case EmptyStmt => UnknownType
     case _ => throw new Exception(s"can't find result type of: ${stmt.serialize}")
   }
@@ -172,6 +177,8 @@ object Extract extends LazyLogging {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
+    //case f: FakeConnection => Seq(HyperedgeDep(f.dest, Seq(f.source), s))
+    case c: GCSMBlackboxConnection => Seq(HyperedgeDep(c.name, Seq(), s))
     case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
     case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
@@ -242,7 +249,17 @@ object Extract extends LazyLogging {
     case _ => 1
   }
 
-  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
+  def rewriteSignalName(origName: String, newPrefix: String): String = origName match {
+    case signalNamePat(_, signalName) => newPrefix + signalName
+  }
+
+  /**
+   * Flatten design and identify GCSM, removing all hierarchy except GCSM
+   * @param circuit
+   * @param squishOutConnects
+   * @return (bodies list, list of all GCSM prefixes where the first one is the "main" one, list of the ports to the GCSM module)
+   */
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): (Seq[Statement], Seq[String]) = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
 
     // Determine GCSM
@@ -262,23 +279,17 @@ object Extract extends LazyLogging {
 
     // for the contents of the instances, find refs to the signals in the GCSM instances, and create fake references to it
     // it doesn't matter that they all point to the main GCSM since the actual logic for the other instances never gets used
-    def isInOtherGCSMPrefix(name: String): Boolean = name match {
-      case signalNamePat(thatPrefix, _) => {
-        val tmp1 = thatPrefix
-        val tmp2 = otherGcsmPrefixes.contains(thatPrefix)
-        tmp2
-      }
+    /*def isInOtherGCSMPrefix(name: String): Boolean = name match {
+      case signalNamePat(thatPrefix, _) => otherGcsmPrefixes.contains(thatPrefix)
     }
-    def rewriteSignalName(origName: String): String = origName match {
-      case signalNamePat(_, signalName) => firstGcsmPrefix + signalName
-    }
+
     def maybeFakeConnectIntoGCSM(e: Expression) = {
       val result = mutable.ListBuffer[FakeConnection]()
       e.foreachExprRecursive {
-        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(w.name, rewriteSignalName(w.name)))
-        case WSubField(WRef(prefix, _, _, _), name, _, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
+        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(w.name, rewriteSignalName(w.name), w.tpe))
+        case WSubField(WRef(prefix, _, _, _), name, tpe, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
           val fullName = s"$prefix.$name"
-          result ++= Some(FakeConnection(fullName, rewriteSignalName(fullName)))
+          result ++= Some(FakeConnection(fullName, rewriteSignalName(fullName), tpe))
         case _ => None
       }
       result
@@ -286,10 +297,10 @@ object Extract extends LazyLogging {
     def maybeFakeConnectFromGCSM(e: Expression) = {
       val result = mutable.ListBuffer[FakeConnection]()
       e.foreachExprRecursive {
-        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(rewriteSignalName(w.name), w.name))
-        case WSubField(WRef(prefix, _, _, _), name, _, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
+        case w: WRef if isInOtherGCSMPrefix(w.name) => result ++= Some(FakeConnection(rewriteSignalName(w.name), w.name, w.tpe))
+        case WSubField(WRef(prefix, _, _, _), name, tpe, _) if isInOtherGCSMPrefix(s"$prefix.$name") =>
           val fullName = s"$prefix.$name"
-          result ++= Some(FakeConnection(rewriteSignalName(fullName), fullName))
+          result ++= Some(FakeConnection(rewriteSignalName(fullName), fullName, tpe))
         case _ => None
       }
       result
@@ -307,7 +318,8 @@ object Extract extends LazyLogging {
         case _ => Seq.empty
       }
       tmp
-    }
+    }*/
+    def makeFakeConnects(statement: Statement) = Seq()
 
     // flatten the non-repeated modules
     val allBodiesFlattened = allInstances flatMap {
@@ -355,24 +367,34 @@ object Extract extends LazyLogging {
       // instead, take the ports since those names can be referenced
       // create some fake nodes to keep the names around
       // and keep state elements
-      case (modName, prefix) if otherGcsmPrefixes.contains(prefix) => {
+      case (modName, prefix) if otherGcsmPrefixes.exists(prefix.startsWith)  /*if otherGcsmPrefixes.contains(prefix)*/ => {
         val gcsmInfo = GCSMInfo(modName, prefix)
 
+        // get the ports - but only for the GCSM module itself
+        val ports =
+          if (otherGcsmPrefixes.contains(prefix)) gcsmMod.ports.map {
+            case Port(_, name, Input, tpe) => GCSMBlackboxConnection(prefix + name, tpe, SinkFlow)
+            case Port(_, name, Output, tpe) => GCSMBlackboxConnection(prefix + name, tpe, SourceFlow)
+          }
+          else Seq()
+
         // only handle state elements here, port stuff comes after
-        flattenModule(gcsmMod, prefix, circuit) flatMap {
+        val stateElems = flattenModule(gcsmMod, prefix, circuit) flatMap {
           case m: DefMemory => Some(m.copy(info = gcsmInfo))
           case m: DefRegister => Some(m.copy(info = gcsmInfo))
           case _ => None
-        } flatMap { s => Seq(s) ++ makeFakeConnects(s) }
+        }
+
+        stateElems ++ ports
       }
 
       // this is an instance inside something used from one of the other GCSM instances
       // (i.e., one of the GCSM prefixes matches this instance's prefix)
       // ignore this since it won't get used anyway
-      case (modName, prefix) if otherGcsmPrefixes.exists(prefix.startsWith) => {
+      /*case (modName, prefix) if otherGcsmPrefixes.exists(prefix.startsWith) => {
         // make fake connections if needed
         findAndFlatten(modName, prefix, circuit) flatMap makeFakeConnects
-      }
+      }*/
 
       // not in the GCSM, just flatten
       case (modName, prefix) => {
@@ -384,27 +406,14 @@ object Extract extends LazyLogging {
     }
 
     /*
-    val tmp = allBodiesFlattened map { s => s.mapExprRecursive {
-      case w: WRef => {
-        val tmp1 = signalNamePat.findFirstMatchIn(w.name)
-        tmp1 match {
-          case Some(m) if gcsmPrefixes.contains(m.group("prefix")) => {
-            w.copy(name = firstGcsmPrefix + m.group("signalName"))
-          }
-          case _ => w // some other signal
-        }
-      }
-      case e => e
-    }}*/
-
-    /*
     if (squishOutConnects) {
       val extIOMap = findExternalPorts(circuit)
       val namesToExclude = extIOMap.keySet
       squishOutPassThroughConnects(allBodiesFlattened, namesToExclude)
     } else allBodiesFlattened
      */
-    allBodiesFlattened
+
+    (allBodiesFlattened, modulesToInstances(gcsmModName))
   }
 
   // FUTURE: are there lame DefNodes I should also be grabbing?
