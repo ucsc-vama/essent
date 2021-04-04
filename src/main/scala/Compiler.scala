@@ -264,12 +264,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     val outputConsumers = condPartWorker.getPartInputMap()
     val externalPartInputNames = condPartWorker.getExternalPartInputNames()
     // do activity detection on other inputs (external IOs and resets)
+    writeLines(2, "// output consumers triggers")
     writeLines(2, genAllTriggers(externalPartInputNames, outputConsumers, condPartWorker.cacheSuffix))
     // cache old versions
     val extIOCaches = externalPartInputNames map {
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
-    writeLines(2, extIOCaches.toSeq)
+    writeLines(2, "// ext io caches")
+    writeLines(2, extIOCaches)
     sg.stmtsOrdered foreach {
       case cp: CondPart => {
         // is it a GCSM?

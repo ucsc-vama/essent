@@ -1,5 +1,6 @@
 package essent.ir
 
+import essent.Extract
 import essent.MakeCondPart.{ConnectionMap, SignalTypeMap}
 import essent.Util.StatementUtils
 import firrtl._
@@ -132,7 +133,9 @@ case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expr
   /**
    * The short name of this signal, suitable for use in the GCSM struct
    */
-  val shortName: String = ref.name.stripPrefix(gcsmInstanceName)
+  val shortName: String = ref.name match {
+    case Extract.signalNamePat(_, signalName) => signalName
+  }
 
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = Unit
@@ -152,6 +155,7 @@ case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expr
   }
 }
 
+@Deprecated
 case class FakeConnection(source: String, dest: String, tpe: Type) extends Statement {
  //require(this.getInfoByType[GCSMInfo]().isDefined, "must have a GCSM info here")
 
@@ -176,7 +180,7 @@ case class FakeConnection(source: String, dest: String, tpe: Type) extends State
  * @param name the name of the signal
  * @param flow from the perspective of the main design: sink = instance input; source = instance output
  */
-case class GCSMBlackboxConnection(name: String, tpe: Type, flow: Flow) extends Statement {
+case class GCSMBlackboxConnection(info: Info, name: String, tpe: Type, flow: Flow) extends Statement with HasInfo {
   // the flow must be either source or sink
   require(flow == SourceFlow || flow == SinkFlow, "this only understands source or sink flows")
 
@@ -184,11 +188,11 @@ case class GCSMBlackboxConnection(name: String, tpe: Type, flow: Flow) extends S
   override def mapExpr(f: Expression => Expression): Statement = this
   override def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
   override def mapString(f: String => String): Statement = this.copy(name = f(name))
-  override def mapInfo(f: Info => Info): Statement = this
+  override def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
   override def foreachStmt(f: Statement => Unit): Unit = Unit
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = f(tpe)
   override def foreachString(f: String => Unit): Unit = f(name)
-  override def foreachInfo(f: Info => Unit): Unit = Unit
+  override def foreachInfo(f: Info => Unit): Unit = f(info)
   override def serialize: String = s"GCSMBlackboxConnection: $flow for $name"
 }

@@ -3,6 +3,7 @@ package essent
 import firrtl.ir._
 import essent.Emitter._
 import essent.Extract._
+import essent.Util.TraversableOnceUtils
 import essent.ir._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
@@ -128,7 +129,6 @@ class StatementGraph extends Graph {
 
   def extractSourceIDs(e: Expression): Seq[NodeID] = findDependencesExpr(e) map nameToID
 
-
   // Mutation
   //----------------------------------------------------------------------------
   def addOrderingDepsForStateUpdates() {
@@ -192,6 +192,28 @@ class TopLevelStatementGraph(val gcsmInstances: Seq[String]) extends StatementGr
    * There must be at least 2 copies to be useful
    */
   val hasGCSM: Boolean = gcsmInstances.size > 1
+
+  /**
+   * Combine all the [[GCSMBlackboxConnection]]s into empty CondPart, then topo-sort that
+   */
+//  override def stmtsOrdered(): Seq[Statement] = {
+//    // if there's no GCSM, then simply use the default behavior
+//    if (!hasGCSM) return super.stmtsOrdered()
+//
+//    // find BB connection nodes per instance
+//    val nodesPerInstance = idToStmt.zipWithIndex.collect({
+//      case (GCSMBlackboxConnection(_, name, _, _), id) => name match {
+//        case signalNamePat(prefix, _) => (prefix, id)
+//      }
+//    }).toMapOfLists
+//
+//    // create CondPart for each
+//    nodesPerInstance map {
+//
+//    }
+//
+//    val g = new Graph
+//  }
 }
 
 object TopLevelStatementGraph {
