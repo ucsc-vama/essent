@@ -2,7 +2,7 @@ package essent
 
 import essent.Graph.NodeID
 import essent.Emitter._
-import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
+import essent.Util.{ExpressionUtils, StatementUtils, IterableUtils}
 import essent.ir._
 import firrtl._
 import firrtl.analyses.InstanceGraph
@@ -116,7 +116,8 @@ object Extract extends LazyLogging {
     case d: DefNode => Some(d.name)
     case c: Connect => Some(emitExpr(c.loc))
     //case f: FakeConnection => Some(f.dest)
-    case c: GCSMBlackboxConnection => Some(c.name)
+    case c: GCSMBlackboxConnection if c.flow == SourceFlow => Some(c.name)
+    case c: GCSMBlackboxConnection => None
     case cm: CondMux => Some(cm.name)
     case ru: RegUpdate => Some(emitExpr(ru.regRef))
     case mw: MemWrite => Some(mw.memName)
@@ -251,6 +252,8 @@ object Extract extends LazyLogging {
   def rewriteSignalName(origName: String, newPrefix: String): String = origName match {
     case signalNamePat(_, signalName) => newPrefix + signalName
   }
+
+  def rewriteSignalName1(newPrefix: String)(origName: String) = rewriteSignalName(origName, newPrefix)
 
   /**
    * Flatten design and identify GCSM, removing all hierarchy except GCSM

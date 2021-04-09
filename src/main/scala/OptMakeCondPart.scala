@@ -2,7 +2,7 @@ package essent
 
 import essent.Graph.NodeID
 import essent.Extract._
-import essent.Util.{ExpressionUtils, StatementUtils, TraversableOnceUtils}
+import essent.Util.{ExpressionUtils, StatementUtils, IterableUtils}
 import essent.ir._
 import firrtl.ir._
 import _root_.logger._
@@ -56,8 +56,8 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
       val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, isRepeated = false, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
-      namesToDeclare foreach { name => {
-        rn.mutateDecTypeIfLocal(name, PartOut) }
+      namesToDeclare foreach { name =>
+        rn.mutateDecTypeIfLocal(name, PartOut)
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
       }
       assert(sg.validNodes(id))
@@ -115,21 +115,24 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
     allPartOutputTypes
   }
 
-  def getExternalPartInputNames(): Seq[String] = {
-    val allPartInputs = (sg.idToStmt flatMap { _ match {
+  def getExternalPartInputNames(): Set[String] = {
+    val allPartInputs = (sg.idToStmt flatMap {
       case cp: CondPart => cp.inputs
       case _ => Seq()
-    }}).toSet
-    val allPartOutputs = (sg.idToStmt flatMap { _ match {
+    }).toSet
+    val allPartOutputs = (sg.idToStmt flatMap {
       case cp: CondPart => cp.outputsToDeclare.keys
-      case _ => Seq()
-    }}).toSet ++ alreadyDeclared
-    (allPartInputs -- allPartOutputs).toSeq
+      case _ => Set()
+    }).toSet
+    val ret = allPartInputs -- (allPartOutputs ++ alreadyDeclared)
+    ret
   }
 
-  def getExternalPartInputTypes(extIOtypes: Map[String, Type]): Seq[(String,Type)] = {
+  def getExternalPartInputTypes(extIOtypes: Map[String, Type]): Iterable[(String,Type)] = {
     getExternalPartInputNames() map {
-      name => (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
+      name => {
+        (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
+      }
     }
   }
 
@@ -157,6 +160,9 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
   def doDedup(circuit: Circuit): DedupResult = {
     // if no deduplication possible, just return nothing
     if (!sg.hasGCSM) return DedupResult(Map.empty, Seq.empty)
+
+    // first we have to tweak the partitioning to match the parent's
+    fixupPartitioning()
 
     // find all CondParts for this GCSM
     val foundGCSMs = sg.idToStmt.collect({
@@ -207,9 +213,8 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
     })
 
     // Look at the other instances of the GCSM
-    val tmp = sg.gcsmInstances.tail.map(foundGCSMs)
     val signalConnections = Seq(getInstanceMemberName(mainGcsm) -> mainGcsmSignalConnections) ++
-      sg.gcsmInstances.tail.zip(foundGCSMs).map { case (otherGcsm, otherGcsmParts) =>
+      sg.gcsmInstances.tail.map { otherGcsm =>
         val newConnections = mainGcsmSignalConnections flatMap { case (gcsmSigRef, origWRef) =>
           // rewrite the origWRef to replace the prefix with my prefix, check if that name exists in SG
           // if so, output this rewrite
@@ -221,10 +226,76 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
           }
         }
 
+        // set CondParts to be repeated
+        foundGCSMs(otherGcsm).foreach { cp =>
+          sg.idToStmt(sg.idToStmt.indexOf(cp)) = cp.copy(isRepeated = true, alwaysActive = true)
+        }
+
         getInstanceMemberName(otherGcsm) -> newConnections
       }
 
     DedupResult(signalTypeMap, signalConnections)
+  }
+
+  private def fixupPartitioning(): Unit = {
+    val cpPerGcsm = sg.idToStmt.zipWithIndex.collect({
+      case (cp: CondPart, id) if cp.gcsm.isDefined => cp.gcsm.get.instanceName -> (cp, id)
+    }).toMapOfLists
+
+    val okCPs = (cpPerGcsm(sg.gcsmInstances.head).flatMap { case (mainCp, _) =>
+      sg.gcsmInstances.tail.map { otherInstance =>
+        val inputs = mainCp.inputs.map(rewriteSignalName1(otherInstance)).filter(sg.nameToID.contains)
+        val outputs = mainCp.outputsToDeclare.map({
+          case (name, tpe) => (rewriteSignalName(name, otherInstance), tpe)
+        }).filterKeys(sg.nameToID.contains)
+        val newCP = CondPart(info = GCSMInfo("", otherInstance),
+          id = mainCp.id,
+          alwaysActive = true,
+          isRepeated = true,
+          inputs = inputs,
+          outputsToDeclare = outputs,
+          memberStmts = Seq(),
+          gcsmConnectionMap = Map.empty)
+
+        // insert that into the SG
+        val newID = sg.getID(outputs.head._1)
+        outputs.tail.foreach { case (name, _) => sg.nameToID(name) = newID }
+        sg.idToStmt(newID) = newCP
+        sg.validNodes += newID
+        sg.markGCSMInfo(newID)(newCP.info)
+
+        // add edges
+        inputs.foreach(name => sg.addEdge(sg.getID(name), newID))
+        outputs.foreach { case (name, _) =>
+          val thatID = sg.getID(name)
+          // find other nodes using this output of newCP. then add a new edge noting
+          sg.inNeigh.zipWithIndex.foreach {
+            case (list, id) if list.contains(thatID) => sg.addEdge(newID, id)
+            case _ => // ignore
+          }
+        }
+
+        // update renamer
+        (outputs.keySet -- alreadyDeclared) foreach { name =>
+          rn.mutateDecTypeIfLocal(name, PartOut)
+          rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
+        }
+
+        newID
+      }
+    }).toSet
+
+    // remove the old CondParts for the other GCSMs
+    cpPerGcsm.foreach {
+      case (instanceName, condParts) if sg.gcsmInstances.tail.contains(instanceName) => condParts foreach { case (cp, idX) =>
+        //val id = sg.idToStmt.indexOf(cp)
+        if (!okCPs.contains(idX)) {
+          sg.idToStmt(idX) = EmptyStmt
+          sg.validNodes -= idX
+        }
+      }
+      case _ => // ignore
+    }
   }
 }
 

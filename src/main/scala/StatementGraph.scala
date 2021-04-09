@@ -3,7 +3,7 @@ package essent
 import firrtl.ir._
 import essent.Emitter._
 import essent.Extract._
-import essent.Util.TraversableOnceUtils
+import essent.Util.IterableUtils
 import essent.ir._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
@@ -60,10 +60,10 @@ class StatementGraph extends Graph {
                        stmt: Statement = EmptyStmt) = {
     val potentiallyNewDestID = getID(resultName)
     depNames foreach {depName : String => addEdge(depName, resultName)}
-    if (potentiallyNewDestID >= idToStmt.size) {
-      val numElemsToGrow = potentiallyNewDestID - idToStmt.size + 1
-      idToStmt.appendAll(ArrayBuffer.fill(numElemsToGrow)(EmptyStmt))
-    }
+//    if (potentiallyNewDestID >= idToStmt.size) {
+//      val numElemsToGrow = potentiallyNewDestID - idToStmt.size + 1
+//      idToStmt.appendAll(ArrayBuffer.fill(numElemsToGrow)(EmptyStmt))
+//    }
     idToStmt(potentiallyNewDestID) = stmt
     // Don't want to emit state element declarations
     if (!stmt.isInstanceOf[DefRegister] && !stmt.isInstanceOf[DefMemory])
@@ -81,7 +81,7 @@ class StatementGraph extends Graph {
    * Apply the GCSM tag labels to the graph.
    * If there are multiple such [[Info]]s, then the last [[GCSMInfo]] is chosen.
    */
-  private def markGCSMInfo(potentiallyNewDestID: Int)(info: Info): Unit = info match {
+  def markGCSMInfo(potentiallyNewDestID: Int)(info: Info): Unit = info match {
     case GCSMInfo(_, prefix) => idToTag(potentiallyNewDestID) = prefix // want to partition by instance later
     case MultiInfo(infos) => infos.foreach(markGCSMInfo(potentiallyNewDestID))
     case _ => // not useful here, ignore
@@ -150,9 +150,13 @@ class StatementGraph extends Graph {
   }
 
   def mergeStmtsMutably(mergeDest: NodeID, mergeSources: Seq[NodeID], mergeStmt: Statement) {
-    val mergedID = mergeDest
     val idsToRemove = mergeSources
-    idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
+    idsToRemove foreach { id =>
+      idToStmt(id) = EmptyStmt
+
+      // update names -- TODO is this allowed?
+      nameToID(idToName(id)) = mergeDest
+    }
     // NOTE: keeps mappings of name (idToName & nameToID) for debugging dead nodes
     mergeNodesMutably(mergeDest, mergeSources)
     idToStmt(mergeDest) = mergeStmt
@@ -201,16 +205,22 @@ class TopLevelStatementGraph(val gcsmInstances: Seq[String]) extends StatementGr
 //    if (!hasGCSM) return super.stmtsOrdered()
 //
 //    // find BB connection nodes per instance
+//    // look inside cp to find
+//    def
 //    val nodesPerInstance = idToStmt.zipWithIndex.collect({
 //      case (GCSMBlackboxConnection(_, name, _, _), id) => name match {
 //        case signalNamePat(prefix, _) => (prefix, id)
 //      }
 //    }).toMapOfLists
 //
-//    // create CondPart for each
-//    nodesPerInstance map {
+//    // coalesce all the nodes for one name into one supernode
+//    nodesPerInstance map { case (name, nodes) =>
 //
 //    }
+//
+//    // toposort
+//
+//    // for each node from above, create a condpart with the GCSMInfo set correctly
 //
 //    val g = new Graph
 //  }

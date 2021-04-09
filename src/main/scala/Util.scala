@@ -18,7 +18,7 @@ object Util {
     l.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
   }
 
-  def selectFromMap[K,V](selectors: Seq[K], targetMap: Map[K,V]): Map[K,V] = {
+  def selectFromMap[K,V](selectors: Iterable[K], targetMap: Map[K,V]): Map[K,V] = {
     (selectors flatMap {
       k => if (targetMap.contains(k)) Seq(k -> targetMap(k)) else Seq()
     }).toMap
@@ -39,7 +39,7 @@ object Util {
    * @tparam A
    * @tparam Repr
    */
-  implicit class TraversableOnceUtils[+A](iter: TraversableOnce[A]) {
+  implicit class IterableUtils[+A](iter: Iterable[A]) {
     /**
      * Find the first occurence of the given item as an [[Option]]
      * @param item
@@ -53,7 +53,7 @@ object Util {
      * @param item
      * @return
      */
-    def findEqual(item: Any): TraversableOnce[A] = iter.filter(_.equals(item))
+    def findEqual(item: Any): Iterable[A] = iter.filter(_.equals(item))
 
     /**
      * Convert a list of 2-tuples to a map of lists, with the left element being the key and the right the value

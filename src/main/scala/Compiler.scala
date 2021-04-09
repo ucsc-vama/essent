@@ -33,7 +33,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(indentLevel, Seq(lines))
   }
 
-  def writeLines(indentLevel: Int, lines: Seq[String]) {
+  def writeLines(indentLevel: Int, lines: Iterable[String]) {
     lines foreach { s => writer write tabs*indentLevel + s + "\n" }
   }
 
@@ -141,7 +141,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     consumerIDs.sorted map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
   }
 
-  def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
+  def genAllTriggers(signalNames: Iterable[String], outputConsumers: Map[String, Seq[Int]],
       suffix: String): Seq[String] = {
     selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
       genDepPartTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
@@ -195,7 +195,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         }
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
-        //val keepAvail = cp.outputsToDeclare.keySet
+        val keepAvail = cp.outputsToDeclare.keySet
         /*val keepAvail = cp.outputsToDeclare.keySet.flatMap { name =>
           // if we have a GCSM here, then we need to construct the C++ expr since that's used further down
           val possibleNames = Set(name) ++ (gcsmInfo match {
@@ -206,15 +206,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           // now determine which name is possible, based on the SG
           possibleNames.find(sg.nameToID.contains)
         }*/
-        val keepAvail = cp.outputsToDeclare.keySet.map { name =>
-          cp.gcsmConnectionMap.find({
-            case (gcsr, origWRef) => origWRef.name == name
-          }) match { // find if it's a renamed GCSM placeholder signal
-            case Some((gcsr, origWRef)) => gcsr.shortName
-            case None => name
-          }
-        }
-        assert(cp.outputsToDeclare.size == keepAvail.size, "missing some names?")
+//        val keepAvail = cp.outputsToDeclare.keySet.map { name =>
+//          cp.gcsmConnectionMap.find({
+//            case (gcsr, origWRef) => origWRef.name == name
+//          }) match { // find if it's a renamed GCSM placeholder signal
+//            case Some((gcsr, origWRef)) => gcsr.shortName
+//            case None => name
+//          }
+//        }
+//        assert(cp.outputsToDeclare.size == keepAvail.size, "missing some names?")
 
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
