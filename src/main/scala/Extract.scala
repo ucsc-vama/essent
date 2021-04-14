@@ -330,9 +330,10 @@ object Extract extends LazyLogging {
 
         // get the ports - but only for the GCSM module itself
         val ports =
-          if (otherGcsmPrefixes.contains(prefix)) gcsmMod.ports.map {
-            case Port(_, name, Input, tpe) => GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SinkFlow)
-            case Port(_, name, Output, tpe) => GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SourceFlow)
+          if (otherGcsmPrefixes.contains(prefix)) gcsmMod.ports.flatMap {
+            case Port(_, _, _, ClockType) => None // clocks are to be ignored
+            case Port(_, name, Input, tpe) => Some(GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SinkFlow))
+            case Port(_, name, Output, tpe) => Some(GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SourceFlow))
           }
           else Seq()
 

@@ -30,7 +30,6 @@ object TopologicalSort {
     finalOrdering
   }
 
-
   def findCyclesByTopoSort(bg: Graph): Option[Seq[NodeID]] = {
     var cycleFound: Option[Seq[NodeID]] = None
     val inStack = BitSet()

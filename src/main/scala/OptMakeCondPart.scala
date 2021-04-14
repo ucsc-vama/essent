@@ -129,7 +129,9 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
   }
 
   def getExternalPartInputTypes(extIOtypes: Map[String, Type]): Iterable[(String,Type)] = {
-    getExternalPartInputNames() map {
+    val extPartInputNames = getExternalPartInputNames()
+    val tmp = extPartInputNames.diff(extIOtypes.keySet)
+    extPartInputNames map {
       name => {
         (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))
       }
@@ -242,12 +244,15 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
       case (cp: CondPart, id) if cp.gcsm.isDefined => cp.gcsm.get.instanceName -> (cp, id)
     }).toMapOfLists
 
-    val okCPs = (cpPerGcsm(sg.gcsmInstances.head).flatMap { case (mainCp, _) =>
+    val okCPs = (cpPerGcsm(sg.gcsmInstances.head).flatMap { case (mainCp, tmpId) =>
       sg.gcsmInstances.tail.map { otherInstance =>
         val inputs = mainCp.inputs.map(rewriteSignalName1(otherInstance)).filter(sg.nameToID.contains)
-        val outputs = mainCp.outputsToDeclare.map({
+        val outputs1 = mainCp.outputsToDeclare.map({
           case (name, tpe) => (rewriteSignalName(name, otherInstance), tpe)
-        }).filterKeys(sg.nameToID.contains)
+        })
+        val outputs = outputs1.filterKeys(sg.nameToID.contains)
+        val tmp123 = s"mainCp: $tmpId"
+        val tmp456 = sg.idToName(tmpId)
         val newCP = CondPart(info = GCSMInfo("", otherInstance),
           id = mainCp.id,
           alwaysActive = true,
@@ -258,19 +263,45 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
           gcsmConnectionMap = Map.empty)
 
         // insert that into the SG
-        val newID = sg.getID(outputs.head._1)
-        outputs.tail.foreach { case (name, _) => sg.nameToID(name) = newID }
+        //val newID = sg.getID(outputs.headOption.get)
+        val newOutputName =
+          if (outputs.isEmpty) s"CondPartNoOutputs_${mainCp.id}_${otherInstance}"
+          else outputs.head._1
+        val newID = sg.getID(newOutputName)
+        outputs.drop(1).foreach { case (name, _) => sg.nameToID(name) = newID }
         sg.idToStmt(newID) = newCP
+        sg.idToName(newID) = newOutputName
+        sg.nameToID(newOutputName) = newID
         sg.validNodes += newID
         sg.markGCSMInfo(newID)(newCP.info)
 
         // add edges
-        inputs.foreach(name => sg.addEdge(sg.getID(name), newID))
+        val xyz2683 = sg.idToStmt(2683)
+        val xyz528 = sg.idToStmt(528)
+        val xyz2653 = sg.idToStmt(2653)
+        inputs.foreach(name => {
+          val thatID = sg.getID(name)
+          //if (thatID == newID) return // don't make cycle to myself
+          sg.addEdge(thatID, newID)
+          val p1exists = sg.extPathExists(528, 2683)
+          val p1exists1 = sg.extPathExists(2683, 528)
+          val p2exists = sg.extPathExists(2683, 2653)
+          val p2exists2 = sg.extPathExists(2653, 2683)
+          val p3exists = sg.extPathExists(2653, 528)
+          val p3exists1 = sg.extPathExists(528, 2653)
+          val tmpAfter = TopologicalSort(sg)
+        })
+
         outputs.foreach { case (name, _) =>
           val thatID = sg.getID(name)
-          // find other nodes using this output of newCP. then add a new edge noting
+          //if (thatID == newID) return // don't make a cycle to myself
+
+          // find other nodes using this output of newCP. then add a new edge from that node to this one
           sg.inNeigh.zipWithIndex.foreach {
-            case (list, id) if list.contains(thatID) => sg.addEdge(newID, id)
+            case (list, id) if list.contains(thatID) => {
+              sg.addEdge(newID, id)
+              val tmpAfter = TopologicalSort(sg)
+            }
             case _ => // ignore
           }
         }
