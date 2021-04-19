@@ -91,6 +91,17 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+
+    // analyze connectivity for the subgraphs corresponding to GCSM instances
+    val ioForGcsm = sg.iterNodes.flatMap({
+      case (id, inNeighs, outNeighs, prefix) if prefix.nonEmpty =>
+        // find any nodes which have inputs and/or outputs outside the GCSM. these are the IO
+        val a = if (outNeighs.exists(nid => sg.idToTag(nid) != prefix)) Some(prefix -> (Output, id)) else None
+        val b = if (inNeighs.exists(nid => sg.idToTag(nid) != prefix)) Some(prefix -> (Input, id)) else None
+        Seq(a, b).flatten
+      case _ => Nil
+    }).toMapOfLists
+
     val ap = AcyclicPart(sg, excludedIDs.toSet)
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)

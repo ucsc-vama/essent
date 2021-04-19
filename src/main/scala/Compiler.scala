@@ -491,6 +491,7 @@ class EssentCompiler(opt: OptFlags) {
   val readyForEssent: Seq[TransformDependency] =
     firrtl.stage.Forms.LowFormOptimized ++
     Seq(
+      Dependency(essent.passes.HackyChiselDedup),
       Dependency(essent.passes.ReplaceAsyncRegs),
       Dependency(essent.passes.NoClockConnects),
       Dependency(essent.passes.RegFromMem1),

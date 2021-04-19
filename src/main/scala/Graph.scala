@@ -1,5 +1,7 @@
 package essent
 
+import essent.Graph.NodeList
+
 import collection.mutable.ArrayBuffer
 
 // Directed graph class to be used as base for others
@@ -45,7 +47,20 @@ class Graph {
 
   // Accessors
   //----------------------------------------------------------------------------
-  def nodeRange() = 0 until outNeigh.size
+  def nodeRange() = outNeigh.indices
+
+  /**
+   * Get an iterator to iterate over each node, and information about it.
+   * @return iterable of (NodeID, inNeighs, outNeighs, tag)
+   */
+  def iterNodes = new Iterator[(NodeID, NodeList, NodeList, String)]() {
+    private val ids = nodeRange().toIterator
+    private val inNeighs = inNeigh.toIterator
+    private val outNeighs = outNeigh.toIterator
+    private val tags = idToTag.toIterator
+    override def hasNext: Boolean = ids.hasNext && inNeighs.hasNext && outNeighs.hasNext && tags.hasNext
+    override def next(): (NodeID, NodeList, NodeList, String) = (ids.next(), inNeighs.next(), outNeighs.next(), tags.next())
+  }.toIterable
 
 
   // Traversals / Queries
@@ -149,5 +164,6 @@ class Graph {
 
 object Graph {
   type NodeID = Int
-  type AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]
+  type NodeList = ArrayBuffer[NodeID]
+  type AdjacencyList = ArrayBuffer[NodeList]
 }

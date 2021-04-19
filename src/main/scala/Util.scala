@@ -34,10 +34,9 @@ object Util {
   }
 
   /**
-   * Utilities to add to the [[TraversableOnce]]-derived classes, which is most of the list classes
+   * Utilities to add to the [[Iterable]]-derived classes, which is most of the list classes
    * @param iter
    * @tparam A
-   * @tparam Repr
    */
   implicit class IterableUtils[+A](iter: Iterable[A]) {
     /**
@@ -60,12 +59,12 @@ object Util {
      * @tparam T key type
      * @tparam U value type
      */
-    def toMapOfLists[T, U](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U)): mutable.Map[T, ListBuffer[U]] = {
-      val b = mutable.Map[T, mutable.ListBuffer[U]]() // TODO - instead of hardcoding list type, use Builder to keep original type
+    def toMapOfLists[T, U](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U)): collection.Map[T, Iterable[U]] = {
+      val b = mutable.Map[T, mutable.Builder[U, Iterable[U]]]() // TODO - instead of hardcoding list type, use Builder to keep original type
       for ((k:T, v:U) <- iter) {
-        b.getOrElseUpdate(k, new mutable.ListBuffer[U]()).append(v)
+        b.getOrElseUpdate(k, Iterable.newBuilder[U]) += v
       }
-      b
+      b.mapValues(_.result)
     }
   }
 

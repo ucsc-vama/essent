@@ -61,9 +61,9 @@ object MFFC {
   }
 
   // paste into the graph from ModuleInstanceTree
-  def utilGetDot(givenMffc: ArrayBuffer[NodeID]): String = {
+  def utilGetDot(givenMffc: ArrayBuffer[NodeID], g: Graph): String = {
     val retStrings = Util.groupIndicesByValue(givenMffc).map {
-      case (parentID, otherIDs) => s"subgraph cluster_${parentID} {\n\t${otherIDs.mkString("; ")};\n\tgraph[style=dotted];\n}"
+      case (parentID, otherIDs) => s"subgraph cluster_${parentID} {\n\t${otherIDs.mkString("; ")};\n\tgraph[style=dotted];\n\tlabel = '${g.idToTag(parentID)}'\n}"
     }
     retStrings.mkString("\n")
   }

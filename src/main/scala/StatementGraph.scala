@@ -190,7 +190,7 @@ object StatementGraph {
  * Extension of StatementGraph but also containing GCSM info.
  * Only useful at the top level
  */
-class TopLevelStatementGraph(val gcsmInstances: Seq[String]) extends StatementGraph {
+class TopLevelStatementGraph(val gcsmInstances: Set[String]) extends StatementGraph {
   /**
    * Convenience method to see if there is any GCSM.
    * There must be at least 2 copies to be useful

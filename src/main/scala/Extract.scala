@@ -261,7 +261,7 @@ object Extract extends LazyLogging {
    * @param squishOutConnects
    * @return (bodies list, list of all GCSM prefixes where the first one is the "main" one, list of the ports to the GCSM module)
    */
-  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): (Seq[Statement], Seq[String]) = {
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): (Seq[Statement], Set[String]) = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
 
     // Determine GCSM
@@ -276,13 +276,14 @@ object Extract extends LazyLogging {
     })._1
 
     // designate the first instance the one whose logic will get reused
-    val firstGcsmPrefix +: otherGcsmPrefixes = modulesToInstances(gcsmModName) // FIXME - un-reverse
+    //val firstGcsmPrefix +: otherGcsmPrefixes = modulesToInstances(gcsmModName)
     val gcsmMod = findModule(gcsmModName, circuit).asInstanceOf[Module]
+    val gcsmInstances = modulesToInstances(gcsmModName).toSet
 
     // flatten the non-repeated modules
     val allBodiesFlattened = allInstances flatMap {
       // the main GCSM to flatten
-      case (modName, prefix) if prefix.startsWith(firstGcsmPrefix) => {
+      case (modName, prefix) if gcsmInstances.contains(prefix) => {
         def isConnectToSameInstance(that: Connect): Boolean = {
           val thatLoc = that.loc match {
             case WRef(name, _, _, _) => name
@@ -295,56 +296,11 @@ object Extract extends LazyLogging {
         }
 
         // flatten and apply the annotation
-        val gcsmInfo = GCSMInfo(modName, firstGcsmPrefix)
-        flattenModule(gcsmMod, prefix, circuit) map { // TODO - is there a cleaner way to write this?
-          case s:Attach => s.copy(info = gcsmInfo)
-          case s:IsInvalid => s.copy(info = gcsmInfo)
-          case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
-          case s:DefWire => s.copy(info = gcsmInfo)
-          case s:Stop => s.copy(info = gcsmInfo)
-          case s:DefNode => s.copy(info = gcsmInfo)
-          case s:RegUpdate => s.copy(info = gcsmInfo)
-          case s:DefInstance => s.copy(info = gcsmInfo)
-          case s:PartialConnect => s.copy(info = gcsmInfo)
-          case s:Print => s.copy(info = gcsmInfo)
-          case s:CondMux => s.copy(info = gcsmInfo)
-          case s:Conditionally => s.copy(info = gcsmInfo)
-          case s:CDefMPort => s.copy(info = gcsmInfo)
-          case s:DefRegister => s.copy(info = gcsmInfo)
-          case s:CDefMemory => s.copy(info = gcsmInfo)
-          case s:WDefInstanceConnector => s.copy(info = gcsmInfo)
-          case s:MemWrite => s.copy(info = gcsmInfo)
-          case s:CondPart => s.copy(info = gcsmInfo)
-          case s:DefMemory => s.copy(info = gcsmInfo)
-          case s:DefAnnotatedMemory => s.copy(info = gcsmInfo)
-          case s => s // ignore
-        }
-      }
-
-      // already seen the first instance of the GCSM, no need to re-flatten
-      // instead, take the ports since those names can be referenced
-      // create some fake nodes to keep the names around
-      // and keep state elements
-      case (modName, prefix) if otherGcsmPrefixes.exists(prefix.startsWith)  /*if otherGcsmPrefixes.contains(prefix)*/ => {
         val gcsmInfo = GCSMInfo(modName, prefix)
-
-        // get the ports - but only for the GCSM module itself
-        val ports =
-          if (otherGcsmPrefixes.contains(prefix)) gcsmMod.ports.flatMap {
-            case Port(_, _, _, ClockType) => None // clocks are to be ignored
-            case Port(_, name, Input, tpe) => Some(GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SinkFlow))
-            case Port(_, name, Output, tpe) => Some(GCSMBlackboxConnection(gcsmInfo, prefix + name, tpe, SourceFlow))
-          }
-          else Seq()
-
-        // only handle state elements here, port stuff comes after
-        val stateElems = flattenModule(gcsmMod, prefix, circuit) flatMap {
-          case m: DefMemory => Some(m.copy(info = gcsmInfo))
-          case m: DefRegister => Some(m.copy(info = gcsmInfo))
-          case _ => None
+        flattenModule(gcsmMod, prefix, circuit) map {
+          case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
+          case s => s.mapInfo(_ => gcsmInfo)
         }
-
-        stateElems ++ ports
       }
 
       // not in the GCSM, just flatten
@@ -359,7 +315,7 @@ object Extract extends LazyLogging {
     } else allBodiesFlattened
      */
 
-    (allBodiesFlattened, modulesToInstances(gcsmModName))
+    (allBodiesFlattened, gcsmInstances)
   }
 
   // FUTURE: are there lame DefNodes I should also be grabbing?
