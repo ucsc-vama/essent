@@ -86,6 +86,31 @@ class Graph {
     traverseUntilIntersect(startingExtFrontier, sourceSet ++ startingExtFrontier)
   }
 
+  /**
+   * Similar to [[extPathExists]] except this returns all the reachable verticies from
+   * the one source
+   * @return subset (or empty) of the destSet, which are reachable from the source
+   */
+  def findExtPaths(source: NodeID, destSet: Set[NodeID]): Set[NodeID] = {
+    val sourcesOnFringe = Set(source) filter {
+      id => outNeigh(id) exists { neigh => source != neigh }
+    }
+    val startingExtFrontier = sourcesOnFringe flatMap outNeigh diff destSet
+    def traverseUntilIntersect(frontier: Set[NodeID], reached: Set[NodeID]): Set[NodeID] = {
+      print("frontier: " + frontier)
+      if (frontier.isEmpty) Set.empty
+      else {
+        val nextFrontier = frontier flatMap outNeigh diff reached
+        // find all reachable verts
+        val foundPaths = (nextFrontier & destSet)
+        println("   matching: " + foundPaths)
+        foundPaths ++ traverseUntilIntersect(nextFrontier, reached ++ nextFrontier)
+      }
+    }
+    println(s"start find paths")
+    traverseUntilIntersect(startingExtFrontier, Set(source) ++ startingExtFrontier)
+  }
+
   def mergeIsAcyclic(u: NodeID, v: NodeID): Boolean = !extPathExists(u,v) && !extPathExists(v,u)
 
   // TODO: speed up by doing a single traversal

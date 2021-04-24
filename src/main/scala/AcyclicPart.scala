@@ -185,7 +185,6 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     val allTagsSame = mg.iterGroups forall {
       case (macroID, memberIDs) => mg.mergeIsTagSame(memberIDs.toSet + macroID)
     }
-    //mg.mergeIDToMembers.map(x => (x._1, x._2.map(mg.idToTag).toSeq.distinct) ).filter(x => x._2.size != 1)
 
     disjoint && complete && allTagsSame
   }

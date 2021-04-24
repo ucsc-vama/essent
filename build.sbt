@@ -16,6 +16,7 @@ libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.7"
 
 libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.1"
 
+libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "2.0.0-RC1"
 
 // Assembly
 

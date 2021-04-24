@@ -6,6 +6,7 @@ import essent.Extract._
 import essent.Util.IterableUtils
 import essent.ir._
 
+import java.io.File
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.collection.{AbstractSeq, mutable}
 import scala.reflect.ClassTag
@@ -198,32 +199,47 @@ class TopLevelStatementGraph(val gcsmInstances: Set[String]) extends StatementGr
   val hasGCSM: Boolean = gcsmInstances.size > 1
 
   /**
-   * Combine all the [[GCSMBlackboxConnection]]s into empty CondPart, then topo-sort that
+   * Save the graph in GEXF format (for loading in e.g. Gephi)
+   *
+   * Caution: very slow and memory-hungry
+   * @param destFile output filename
    */
-//  override def stmtsOrdered(): Seq[Statement] = {
-//    // if there's no GCSM, then simply use the default behavior
-//    if (!hasGCSM) return super.stmtsOrdered()
-//
-//    // find BB connection nodes per instance
-//    // look inside cp to find
-//    def
-//    val nodesPerInstance = idToStmt.zipWithIndex.collect({
-//      case (GCSMBlackboxConnection(_, name, _, _), id) => name match {
-//        case signalNamePat(prefix, _) => (prefix, id)
-//      }
-//    }).toMapOfLists
-//
-//    // coalesce all the nodes for one name into one supernode
-//    nodesPerInstance map { case (name, nodes) =>
-//
-//    }
-//
-//    // toposort
-//
-//    // for each node from above, create a condpart with the GCSMInfo set correctly
-//
-//    val g = new Graph
-//  }
+  def saveAsGEXF(destFile: String): Unit = {
+    val nodes = idToStmt.toStream.zipWithIndex.map({
+      case (stmt, id) =>
+        Seq(
+          <node id={id.toString} label={idToName(id)}>
+            <attvalues>
+              <attvalue for="0" value={stmt.serialize} />
+              <attvalue for="1" value={idToTag(id).toString} />
+            </attvalues>
+          </node>,
+          outNeigh(id).toStream.map(destID =>
+            <edge id={s"$id-$destID"} source={id.toString} target={destID.toString} />
+          )
+        )
+    }).transpose
+
+    val gexf = <gexf xmlns="http://www.gexf.net/1.2draft" version="1.2">
+      <meta>
+        <creator>ESSENT</creator>
+      </meta>
+      <graph mode="static" defaultedgetype="directed">
+        <attributes class="node">
+          <attribute id="0" title="serialized" type="string" />
+          <attribute id="1" title="tag" type="string" />
+        </attributes>
+        <nodes>
+          {nodes.head}
+        </nodes>
+        <edges>
+          {nodes.tail}
+        </edges>
+      </graph>
+    </gexf>
+
+    scala.xml.XML.save(destFile, gexf)
+  }
 }
 
 object TopLevelStatementGraph {

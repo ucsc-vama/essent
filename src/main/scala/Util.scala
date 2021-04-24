@@ -3,7 +3,7 @@ package essent
 import firrtl.ir.{Expression, Info, MultiInfo, NoInfo, Statement}
 
 import collection.mutable.{ArrayBuffer, HashMap, ListBuffer}
-import scala.collection.{GenTraversableOnce, IterableLike, immutable, mutable}
+import scala.collection.{GenTraversableOnce, IterableLike, MapLike, SetLike, immutable, mutable}
 import scala.collection.generic.CanBuildFrom
 import scala.reflect.ClassTag
 
@@ -60,12 +60,24 @@ object Util {
      * @tparam U value type
      */
     def toMapOfLists[T, U](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U)): collection.Map[T, Iterable[U]] = {
-      val b = mutable.Map[T, mutable.Builder[U, Iterable[U]]]() // TODO - instead of hardcoding list type, use Builder to keep original type
+      val b = mutable.Map[T, mutable.Builder[U, Iterable[U]]]()
       for ((k:T, v:U) <- iter) {
         b.getOrElseUpdate(k, Iterable.newBuilder[U]) += v
       }
       b.mapValues(_.result)
     }
+  }
+
+  implicit class MapUtils[K, +V](map: collection.Map[K, V]) {
+    def intersect[B >: V](that: collection.Map[K, B]): Iterable[(K, V, B)] =
+      for {
+        key <- map.keys ++ that.keys
+        if map.contains(key) && that.contains(key)
+      } yield (key, map(key), that(key))
+
+    def zipAllByKey[B >: V](that: collection.Map[K, B], thisElem: B, thatElem: B): Iterable[(K, B, B)] =
+      for (key <- map.keys ++ that.keys)
+        yield (key, map.getOrElse(key, thisElem), map.getOrElse(key, thatElem))
   }
 
   implicit class StatementUtils(stmt: Statement) {

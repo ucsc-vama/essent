@@ -1,6 +1,5 @@
 package essent.passes
 
-import essent.Extract
 import essent.Util.IterableUtils
 import firrtl.{DependencyAPIMigration, WDefInstance}
 import firrtl.ir._
@@ -16,16 +15,16 @@ import java.security.MessageDigest
  */
 object HackyChiselDedup extends Pass with DependencyAPIMigration {
   private def hashStatement(s: Statement) = BigInt(1,
-    MessageDigest.getInstance("MD5")
+    MessageDigest.getInstance("SHA-256")
       .digest(s.serialize.getBytes))
 
   override def run(c: Circuit): Circuit = {
     // first find modules we want
-    val modulesToReplace = c.modules.par.flatMap({
+    val modulesToReplace = c.modules.par.toStream.flatMap({
       case ExtModule(info, name, ports, defname, params) => None
       case Module(info, name, _, body) =>
         Some(hashStatement(body) -> name)
-    }).toStream.toMapOfLists.filter({ // only want modules where more than 1 have same content
+    }).toMapOfLists.filter({ // only want modules where more than 1 have same content
       case (_, names) => names.size > 1
     }).flatMap({
       case (hash, names) => names.tail.map(n => n -> names.head)
@@ -33,21 +32,30 @@ object HackyChiselDedup extends Pass with DependencyAPIMigration {
 
     // next traverse all modules replacing the redundant names
     def replaceStatement(s: Statement): Statement = s match {
-      case b: Block => b.mapStmt(replaceStatement)
       case d: DefInstance if modulesToReplace.contains(d.module) =>
-        d.copy(name = modulesToReplace(d.name))
+        d.copy(module = modulesToReplace(d.module))
       case d: WDefInstance if modulesToReplace.contains(d.module) =>
-        d.copy(name = modulesToReplace(d.name))
-      case _ => s
+        d.copy(module = modulesToReplace(d.module))
+      case _ => s.mapStmt(replaceStatement)
     }
-    val newModules = c.modules.par
-      .filter({
-        case _: ExtModule => true // always include these
-        case Module(_, name, _, _) => !modulesToReplace.contains(name)
-      })
-      .map(_.mapStmt(replaceStatement))
-      .toVector
 
-    c.copy(modules = newModules)
+    logger.info(s"Found ${modulesToReplace.size} modules to replace")
+
+    if (modulesToReplace.nonEmpty) {
+      val newModules = c.modules.par.toStream
+        .filter({
+          case _: ExtModule => true // always include these
+          case Module(_, name, _, _) => !modulesToReplace.contains(name) // keep only the not redundant modules
+        })
+        .map(_.mapStmt(replaceStatement))
+        .toVector
+
+      // possible that we now have more things to dedup if higher-level modules instantiated
+      // stuff that was just removed
+      run(c.copy(modules = newModules))
+    } else {
+      // once there are no more modules to replace we are done
+      c
+    }
   }
 }

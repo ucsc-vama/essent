@@ -1,6 +1,7 @@
 package essent
 
 import Graph.NodeID
+import essent.Util.IterableUtils
 
 import collection.mutable.{ArrayBuffer, HashMap, HashSet}
 
@@ -56,6 +57,10 @@ class MergeGraph extends Graph {
   def nodeSize(n: NodeID) = mergeIDToMembers.getOrElse(n,Seq()).size
 
   def iterGroups() = mergeIDToMembers
+
+  def groupsByTag() = iterGroups().toStream.collect({
+    case (clusterID, nodes) => idToTag(clusterID) -> (clusterID -> nodes)
+  }).toMapOfLists
 }
 
 

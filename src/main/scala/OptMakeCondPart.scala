@@ -1,17 +1,16 @@
 package essent
 
-import essent.Graph.NodeID
+import _root_.logger._
 import essent.Extract._
-import essent.Util.{ExpressionUtils, StatementUtils, IterableUtils}
+import essent.Graph.NodeID
+import essent.MakeCondPart.{InstanceAndConnectionMap, SignalTypeMap, getInstanceMemberName}
+import essent.Util.{IterableUtils, StatementUtils}
 import essent.ir._
 import firrtl.ir._
-import _root_.logger._
-import essent.Emitter.emitExpr
-import essent.MakeCondPart.{ConnectionMap, InstanceAndConnectionMap, SignalTypeMap, getInstanceMemberName}
-import firrtl.{MemKind, NodeKind, PortKind, RegKind, SourceFlow, UnknownKind, WRef, WireKind}
+import firrtl.{MemKind, NodeKind, PortKind, RegKind, WRef, WireKind}
 
-import collection.mutable.ArrayBuffer
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
@@ -102,8 +101,43 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
       case _ => Nil
     }).toMapOfLists
 
+    def normalizeNodeName(prefix: String)(id: NodeID) = sg.idToName(id).stripPrefix(prefix)
+    val constraints = ioForGcsm.map({
+      case (prefix, ios) => {
+        val (inputs, outputs) = ios.partition({ case (dir, _) => dir == Input })
+        val inputIDs = inputs.map(_._2).toSet
+        val constrsForInstance = outputs.flatMap({
+          //normalizeNodeName(prefix)(outID) -> sg.findExtPaths(outID, inputIDs).map(normalizeNodeName(prefix))
+          // TODO: the names are not necessary; can just keep the IDs
+          case (Output, outID) => sg.findExtPaths(outID, inputIDs).map(id =>
+            normalizeNodeName(prefix)(outID) -> normalizeNodeName(prefix)(id)
+          )
+        }).toSet // output name -> Set of reachable inputs in this GCSM
+        prefix -> constrsForInstance
+      }
+    })
+
+    def isCompatible[K](sets: collection.Set[K]*): Boolean = sets
+      .reduceLeft((a, b) => a.diff(b))
+      .isEmpty
+    val compatiblePartitionings = constraints.toStream.combinations(2).flatMap({
+      case (inst1, inst1Constrs) +: (inst2, inst2Constrs) +: Stream.Empty =>
+        // compute which set is the superset (if any)
+        // if the constraints of X is a subset of Y, then since X has fewer constraints, Y can be used to partition X
+        // (and vice-versa)
+        val a = if (inst1Constrs.subsetOf(inst2Constrs)) Some(inst2 -> inst1) else None
+        val b = if (inst2Constrs.subsetOf(inst1Constrs)) Some(inst1 -> inst2) else None
+        Seq(a, b).flatten
+    }).toIterable.toMapOfLists // instanceName -> is compatible with these other instance partitionings
+    val chosenPartitioning = compatiblePartitionings.maxBy({ case (_, compatInsts) => compatInsts.size })
+
+    // perform partitioning
     val ap = AcyclicPart(sg, excludedIDs.toSet)
     ap.partition(smallPartCutoff)
+
+    // look at connectivity to determine compatibility
+    //val gcsmInstanceToGroups = ap.mg.groupsByTag().filterKeys(_.nonEmpty)
+
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
   }
