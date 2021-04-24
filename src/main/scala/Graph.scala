@@ -97,17 +97,14 @@ class Graph {
     }
     val startingExtFrontier = sourcesOnFringe flatMap outNeigh diff destSet
     def traverseUntilIntersect(frontier: Set[NodeID], reached: Set[NodeID]): Set[NodeID] = {
-      print("frontier: " + frontier)
       if (frontier.isEmpty) Set.empty
       else {
         val nextFrontier = frontier flatMap outNeigh diff reached
         // find all reachable verts
         val foundPaths = (nextFrontier & destSet)
-        println("   matching: " + foundPaths)
         foundPaths ++ traverseUntilIntersect(nextFrontier, reached ++ nextFrontier)
       }
     }
-    println(s"start find paths")
     traverseUntilIntersect(startingExtFrontier, Set(source) ++ startingExtFrontier)
   }
 

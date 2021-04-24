@@ -107,8 +107,6 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
         val (inputs, outputs) = ios.partition({ case (dir, _) => dir == Input })
         val inputIDs = inputs.map(_._2).toSet
         val constrsForInstance = outputs.flatMap({
-          //normalizeNodeName(prefix)(outID) -> sg.findExtPaths(outID, inputIDs).map(normalizeNodeName(prefix))
-          // TODO: the names are not necessary; can just keep the IDs
           case (Output, outID) => sg.findExtPaths(outID, inputIDs).map(id =>
             normalizeNodeName(prefix)(outID) -> normalizeNodeName(prefix)(id)
           )
