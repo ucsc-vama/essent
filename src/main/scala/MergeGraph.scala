@@ -11,7 +11,7 @@ import collection.mutable.{ArrayBuffer, HashMap, HashSet}
 //  * The mergeID is a member of the merged group and ID used
 //  * MergeGraph will not add new nodes after built
 
-class MergeGraph extends Graph {
+class MergeGraph extends Graph with Serializable {
   // node ID -> merge ID
   val idToMergeID = ArrayBuffer[NodeID]()
 

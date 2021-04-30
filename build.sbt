@@ -14,7 +14,7 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.1.2" % "test"
 
 libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.7"
 
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.4.3"
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.3"
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "2.0.0-RC1"
 

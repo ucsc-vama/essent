@@ -4,7 +4,7 @@ import _root_.logger._
 import essent.Extract._
 import essent.Graph.NodeID
 import essent.MakeCondPart.{InstanceAndConnectionMap, SignalTypeMap, getInstanceMemberName}
-import essent.Util.{IterableUtils, StatementUtils}
+import essent.Util.{IterableUtils, MapUtils, StatementUtils}
 import essent.ir._
 import firrtl.ir._
 import firrtl.{MemKind, NodeKind, PortKind, RegKind, WRef, WireKind}
@@ -49,6 +49,10 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
       }
       val alwaysActive = excludedIDs.contains(id)
 
+      // check that partitioning worked correctly
+      val memberIDs = idToMemberIDs(id).toSet
+      assert(memberIDs.intersect(excludedIDs).isEmpty || memberIDs.subsetOf(excludedIDs), "incorrect partitioning!")
+
       // annotate the CondPart with the partition info if we have it
       val cpInfo = idToMemberStmts(id).head.getInfoByType[GCSMInfo]().getOrElse(NoInfo)
 
@@ -86,38 +90,48 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
     }
   }
 
-  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20) {
-    val excludedIDs = ArrayBuffer[Int]()
+  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20): DedupResult = {
+    val excludedIDs = mutable.Set[NodeID]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
 
     // analyze connectivity for the subgraphs corresponding to GCSM instances
+    trait GCSMNodeType
+    case object GCSMInputNode extends GCSMNodeType
+    case object GCSMOutputNode extends GCSMNodeType
+    case object GCSMInternalNode extends GCSMNodeType
+    def isNodeExternalToPrefix(prefix: String)(nid: NodeID) = sg.idToTag(nid) != prefix
     val ioForGcsm = sg.iterNodes.flatMap({
       case (id, inNeighs, outNeighs, prefix) if prefix.nonEmpty =>
         // find any nodes which have inputs and/or outputs outside the GCSM. these are the IO
-        val a = if (outNeighs.exists(nid => sg.idToTag(nid) != prefix)) Some(prefix -> (Output, id)) else None
-        val b = if (inNeighs.exists(nid => sg.idToTag(nid) != prefix)) Some(prefix -> (Input, id)) else None
-        Seq(a, b).flatten
+        def accept(tpe: GCSMNodeType) = prefix -> (tpe, id)
+        val maybeIn       = if (inNeighs.exists(isNodeExternalToPrefix(prefix))) Some(accept(GCSMInputNode)) else None
+        val maybeOut      = if (outNeighs.exists(isNodeExternalToPrefix(prefix))) Some(accept(GCSMOutputNode)) else None
+        val maybeInternal = if (maybeIn.isEmpty && maybeOut.isEmpty) Some(accept(GCSMInternalNode)) else None
+        Seq(maybeIn, maybeOut, maybeInternal).flatten
       case _ => Nil
-    }).toMapOfLists
+    }).toMapOfLists.mapValues(_.toSet)
 
+    // determine constraints: the pairs of (output name -> input name) that are combinationally
+    // reachable through the rest of the design, for each instance
     def normalizeNodeName(prefix: String)(id: NodeID) = sg.idToName(id).stripPrefix(prefix)
     val constraints = ioForGcsm.map({
       case (prefix, ios) => {
-        val (inputs, outputs) = ios.partition({ case (dir, _) => dir == Input })
-        val inputIDs = inputs.map(_._2).toSet
-        val constrsForInstance = outputs.flatMap({
-          case (Output, outID) => sg.findExtPaths(outID, inputIDs).map(id =>
-            normalizeNodeName(prefix)(outID) -> normalizeNodeName(prefix)(id)
-          )
-        }).toSet // output name -> Set of reachable inputs in this GCSM
+        val iosMap = ios.toMapOfLists.mapValues(_.toSet)
+        val excludeNodes = iosMap(GCSMInternalNode) ++ (iosMap(GCSMOutputNode) -- iosMap(GCSMInputNode)) // don't take nodes that are internal, or other outputs which aren't inputs
+        val constrsForInstance = iosMap(GCSMOutputNode).flatMap({ outID =>
+          sg.findExtPaths(outID, iosMap(GCSMInputNode), excludeNodes).map(id => {
+            val srcName = normalizeNodeName(prefix)(outID)
+            val destName = normalizeNodeName(prefix)(id)
+            val tmpStmt = sg.idToStmt(id)
+            srcName -> destName
+          })
+        }) // output name -> Set of reachable inputs in this GCSM
         prefix -> constrsForInstance
       }
     })
 
-    def isCompatible[K](sets: collection.Set[K]*): Boolean = sets
-      .reduceLeft((a, b) => a.diff(b))
-      .isEmpty
+    // find compatible partitionings
     val compatiblePartitionings = constraints.toStream.combinations(2).flatMap({
       case (inst1, inst1Constrs) +: (inst2, inst2Constrs) +: Stream.Empty =>
         // compute which set is the superset (if any)
@@ -126,18 +140,70 @@ class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[Stri
         val a = if (inst1Constrs.subsetOf(inst2Constrs)) Some(inst2 -> inst1) else None
         val b = if (inst2Constrs.subsetOf(inst1Constrs)) Some(inst1 -> inst2) else None
         Seq(a, b).flatten
-    }).toIterable.toMapOfLists // instanceName -> is compatible with these other instance partitionings
+    }).toIterable.toMapOfLists.mapValues(_.toSet) // instanceName -> is compatible with these other instance partitionings
+
+    // pick the partitioning with the largest number of compatible instances
+    // FUTURE: if there are several groups of incompatible partitionings, handle multiple
     val chosenPartitioning = compatiblePartitionings.maxBy({ case (_, compatInsts) => compatInsts.size })
 
+    // exclude the redundant nodes for now
+    val redundantNodes = for {
+      redundantInstance <- chosenPartitioning._2
+      (tpe, id) <- ioForGcsm(redundantInstance)
+    } yield id
+    //excludedIDs ++= redundantNodes
+
     // perform partitioning
-    val ap = AcyclicPart(sg, excludedIDs.toSet)
+    var ap = AcyclicPart(sg, excludedIDs.toSet ++ redundantNodes)
     ap.partition(smallPartCutoff)
+    ap.mg.saveAsGEXF("post-partition.gexf") // TODO - remove
 
-    // look at connectivity to determine compatibility
-    //val gcsmInstanceToGroups = ap.mg.groupsByTag().filterKeys(_.nonEmpty)
+    // re-allow the redundant nodes to be merged, this requires reconstructing the partitioner
+    excludedIDs --= redundantNodes
+    ap = new AcyclicPart(ap.mg, excludedIDs.toSet)
 
+    // find the partitioning of the main instance and apply to redundant ones
+    val reduntantIDToMain = for {
+      (macroID, memberIDs) <- ap.iterParts() // for each group in the main instance
+      if ap.mg.idToTag(macroID) == chosenPartitioning._1 // filter to only be main GCSM things
+      redundantInstance <- chosenPartitioning._2 // for each redundant instance
+    } yield {
+      val redundantNodesForInstance = ioForGcsm(redundantInstance).map({
+        case (_, id) => normalizeNodeName(redundantInstance)(id) -> id
+      }).toMap // FIXME - this can be hoisted outside the loop
+      val namesForMainPartition = memberIDs.map({ id =>
+        normalizeNodeName(chosenPartitioning._1)(id)
+      }).toSet
+
+      // find the equivalent macroID for the redundant instance
+      val macroNameForRedundant = normalizeNodeName(chosenPartitioning._1)(macroID)
+      val macroIDForRedundant = redundantNodesForInstance(macroNameForRedundant)
+
+      // line up the equivalent nodes
+      val nodesToMerge = Seq(macroIDForRedundant) ++ namesForMainPartition.collect({
+        case name if name != macroNameForRedundant => redundantNodesForInstance(name)
+      })
+
+//      val nodesToMerge = Seq(macroIDForRedundant) ++ redundantNodesForInstance2.collect({
+//        case (nodeName, id) if nodesForPartitionOfMain.contains(nodeName) => id
+//      })
+      if (nodesToMerge.size > 1) {
+        ap.mg.saveAsGEXF("pre-merge.gexf", sg.tmpIdToString)
+        //val mergeResult = ap.perfomMergesIfPossible(nodesToMerge.toSeq) // nodesToMerge.toSeq
+        val mergeResult = ap.perfomMergesIfPossible(Seq(nodesToMerge)) // nodesToMerge.toSeq
+        println(mergeResult)
+        assert(mergeResult.nonEmpty, "failed to merge!")
+      }
+
+      // return the mapping
+      macroIDForRedundant -> macroID
+    }
+
+    // convert to CondParts
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
+
+    DedupResult(Map.empty, Seq.empty)
   }
 
   def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }

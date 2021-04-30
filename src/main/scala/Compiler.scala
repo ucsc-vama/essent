@@ -391,7 +391,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     }
 
     val sg = TopLevelStatementGraph(circuit, opt.removeFlatConnects)
-    //sg.saveAsGEXF(s"${circuit.main}.gexf")
+    sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
@@ -401,26 +401,22 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
 
     if (opt.useCondParts) {
-      condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
-      if (!opt.removeFlatConnects) {
-        val gcsmSignalMap = condPartWorker.doDedup(circuit)
-
-        // write out the struct that gets passed to GCSM partitions
-        writeLines(0, "typedef struct {")
-        gcsmSignalMap.typeMap foreach {
-          case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.shortName};")
-        }
-        writeLines(0, s"} ${gcsmStructType};")
-
-        // prepare the code for the structs
-        gcsmStructInit.appendAll(gcsmSignalMap.placeholderMap flatMap {
-          case (gcsmInstanceName, placeholderMap) =>
-            Seq(s"$gcsmStructType $gcsmInstanceName = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
-            placeholderMap.map({
-              case (gcsr, origWRef) => s"  .${gcsr.shortName} = &(${rn.emit(origWRef)})," // init each member of the struct
-            }) ++ Seq("};")
-        })
+      val dedupResult = condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
+      // write out the struct that gets passed to GCSM partitions
+      writeLines(0, "typedef struct {")
+      dedupResult.typeMap foreach {
+        case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.shortName};")
       }
+      writeLines(0, s"} ${gcsmStructType};")
+
+      // prepare the code for the structs
+      gcsmStructInit.appendAll(dedupResult.placeholderMap flatMap {
+        case (gcsmInstanceName, placeholderMap) =>
+          Seq(s"$gcsmStructType $gcsmInstanceName = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
+          placeholderMap.map({
+            case (gcsr, origWRef) => s"  .${gcsr.shortName} = &(${rn.emit(origWRef)})," // init each member of the struct
+          }) ++ Seq("};")
+      })
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
@@ -436,6 +432,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     // if (opt.trackExts)
     //   sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)
+    writer.flush() // TODO - remove after debug
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)
@@ -492,7 +489,7 @@ class EssentCompiler(opt: OptFlags) {
   val readyForEssent: Seq[TransformDependency] =
     firrtl.stage.Forms.LowFormOptimized ++
     Seq(
-      Dependency(essent.passes.HackyChiselDedup),
+      Dependency(essent.passes.HackyModuleDedup),
       Dependency(essent.passes.ReplaceAsyncRegs),
       Dependency(essent.passes.NoClockConnects),
       Dependency(essent.passes.RegFromMem1),

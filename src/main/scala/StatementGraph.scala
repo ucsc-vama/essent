@@ -16,7 +16,7 @@ import scala.reflect.ClassTag
 //  - Name must be unique, since can find nodes by name too
 //  - Nodes can have an EmptyStatement if no need to emit
 
-class StatementGraph extends Graph {
+class StatementGraph extends Graph with Serializable {
   // Access companion object's type aliases without prefix
   // TODO: type alias for name type? Hard to imagine other than String?
   import Graph.{NodeID, AdjacencyList}
@@ -171,6 +171,20 @@ class StatementGraph extends Graph {
   def numValidNodes() = validNodes.size
 
   def numNodeRefs() = idToName.size
+
+  val tmpIdToString: PartialFunction[NodeID, String] = {
+    case id => idToStmt(id).serialize
+  }
+
+  /**
+   * Save the graph in GEXF format (for loading in e.g. Gephi)
+   *
+   * Caution: very slow and memory-hungry
+   * @param destFile output filename
+   */
+  override def saveAsGEXF(destFile: String): Unit = saveAsGEXF(destFile, {
+    case id => idToStmt(id).serialize
+  })
 }
 
 
@@ -191,55 +205,12 @@ object StatementGraph {
  * Extension of StatementGraph but also containing GCSM info.
  * Only useful at the top level
  */
-class TopLevelStatementGraph(val gcsmInstances: Set[String]) extends StatementGraph {
+class TopLevelStatementGraph(val gcsmInstances: Set[String]) extends StatementGraph with Serializable {
   /**
    * Convenience method to see if there is any GCSM.
    * There must be at least 2 copies to be useful
    */
   val hasGCSM: Boolean = gcsmInstances.size > 1
-
-  /**
-   * Save the graph in GEXF format (for loading in e.g. Gephi)
-   *
-   * Caution: very slow and memory-hungry
-   * @param destFile output filename
-   */
-  def saveAsGEXF(destFile: String): Unit = {
-    val nodes = idToStmt.toStream.zipWithIndex.map({
-      case (stmt, id) =>
-        Seq(
-          <node id={id.toString} label={idToName(id)}>
-            <attvalues>
-              <attvalue for="0" value={stmt.serialize} />
-              <attvalue for="1" value={idToTag(id).toString} />
-            </attvalues>
-          </node>,
-          outNeigh(id).toStream.map(destID =>
-            <edge id={s"$id-$destID"} source={id.toString} target={destID.toString} />
-          )
-        )
-    }).transpose
-
-    val gexf = <gexf xmlns="http://www.gexf.net/1.2draft" version="1.2">
-      <meta>
-        <creator>ESSENT</creator>
-      </meta>
-      <graph mode="static" defaultedgetype="directed">
-        <attributes class="node">
-          <attribute id="0" title="serialized" type="string" />
-          <attribute id="1" title="tag" type="string" />
-        </attributes>
-        <nodes>
-          {nodes.head}
-        </nodes>
-        <edges>
-          {nodes.tail}
-        </edges>
-      </graph>
-    </gexf>
-
-    scala.xml.XML.save(destFile, gexf)
-  }
 }
 
 object TopLevelStatementGraph {

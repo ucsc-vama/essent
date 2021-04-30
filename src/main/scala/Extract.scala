@@ -298,8 +298,8 @@ object Extract extends LazyLogging {
         // flatten and apply the annotation
         val gcsmInfo = GCSMInfo(modName, prefix)
         flattenModule(gcsmMod, prefix, circuit) map {
-          case s:Connect if isConnectToSameInstance(s) => s.copy(info = gcsmInfo) // if the source is not inside the same GCSM then connect it outside
-          case s => s.mapInfo(_ => gcsmInfo)
+          case s:Connect if isConnectToSameInstance(s) => s.mapInfo(i => gcsmInfo ++ i) // if the source is not inside the same GCSM then connect it outside
+          case s => s.mapInfo(i => gcsmInfo ++ i)
         }
       }
 

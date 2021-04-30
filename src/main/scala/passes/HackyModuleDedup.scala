@@ -12,8 +12,13 @@ import java.security.MessageDigest
  * though they're the same FIRRTL. To avoid having to debug that
  * can of worms, this pass just hashes the modules and finds
  * identical ones.
+ *
+ * This is similar to [[firrtl.transforms.DedupModules]] but that one
+ * for some reason doesn't actually dedup everything it could?
+ * If that's fixed then this can be removed.
  */
-object HackyChiselDedup extends Pass with DependencyAPIMigration {
+@Deprecated
+object HackyModuleDedup extends Pass with DependencyAPIMigration {
   private def hashStatement(s: Statement) = BigInt(1,
     MessageDigest.getInstance("SHA-256")
       .digest(s.serialize.getBytes))

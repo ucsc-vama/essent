@@ -25,7 +25,9 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     val mergesMade = mergesToConsider flatMap { mergeReq => {
       assert(mergeReq.size > 1)
       val partsStillExist = mergeReq.forall { mg.mergeIDToMembers.contains(_) }
-      if (partsStillExist && mg.mergeIsAcyclic(mergeReq.toSet) && mg.mergeIsTagSame(mergeReq.toSet)) {
+      val isAcyclic = mg.mergeIsAcyclic(mergeReq.toSet)
+      val isTagSame = mg.mergeIsTagSame(mergeReq.toSet)
+      if (partsStillExist && isAcyclic && isTagSame) {
         assert(mergeReq forall { id => !excludeSet.contains(id) })
         mg.mergeGroups(mergeReq.head, mergeReq.tail)
         Seq(mergeReq)
@@ -75,7 +77,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
   final def mergeSmallSiblings(smallPartCutoff: Int = 10) {
     val doMore = findSmallParts(smallPartCutoff).exists({ case (tagName, smallPartIDs) => {
       val inputsAndIDPairs = smallPartIDs map { id => {
-        val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
+        val inputsCanonicalized = mg.inNeigh(id).sorted
         (inputsCanonicalized, id)
       }
       }
@@ -141,8 +143,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
           val topChoice = orderedByEdgesRemoved.last
           Seq(Seq(id, topChoice))
         } else Seq()
-      }
-      }
+      }}
       logger.info(s"  of ${smallPartIDs.size} small parts ${mergesToConsider.size} worth merging down")
       val mergesMade = perfomMergesIfPossible(mergesToConsider)
       mergesMade.nonEmpty

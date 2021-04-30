@@ -75,9 +75,9 @@ object Util {
         if map.contains(key) && that.contains(key)
       } yield (key, map(key), that(key))
 
-    def zipAllByKey[B >: V](that: collection.Map[K, B], thisElem: B, thatElem: B): Iterable[(K, B, B)] =
+    def zipAllByKey[B >: V, C >: V](that: collection.Map[K, C], thisElem: B, thatElem: C): Iterable[(K, B, C)] =
       for (key <- map.keys ++ that.keys)
-        yield (key, map.getOrElse(key, thisElem), map.getOrElse(key, thatElem))
+        yield (key, map.getOrElse(key, thisElem), that.getOrElse(key, thatElem))
   }
 
   implicit class StatementUtils(stmt: Statement) {
