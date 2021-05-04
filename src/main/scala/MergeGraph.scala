@@ -29,7 +29,7 @@ class MergeGraph extends Graph with Serializable {
       g.outNeigh(id).copyToBuffer(outNeigh(id))
       g.inNeigh(id).copyToBuffer(inNeigh(id))
     }}
-    ArrayBuffer.range(0, numNodes()).copyToBuffer(idToMergeID)
+    nodeRange().copyToBuffer(idToMergeID)
     nodeRange() foreach { id  => mergeIDToMembers(id) = Seq(id) }
   }
 

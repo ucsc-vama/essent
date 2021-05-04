@@ -52,7 +52,7 @@ object MFFC {
   val Unclaimed = -1
   val Excluded  = -2
 
-  def apply(g: Graph, excludeSet: Set[NodeID] = Set()): ArrayBuffer[NodeID] = {
+  def apply(g: Graph, excludeSet: collection.Set[NodeID] = Set()): ArrayBuffer[NodeID] = {
     val worker = new MFFC(g)
     excludeSet foreach { id => worker.mffc(id) = Excluded }
     val mffc = worker.findMFFCs()

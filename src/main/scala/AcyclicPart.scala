@@ -7,7 +7,7 @@ import collection.mutable.{ArrayBuffer, HashSet}
 import scala.annotation.tailrec
 
 
-class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLogging {
+class AcyclicPart(val mg: MergeGraph, excludeSet: collection.Set[NodeID]) extends LazyLogging {
   def partsRemaining() = (mg.mergeIDToMembers.keys.toSet - excludeSet).size
 
   /*
@@ -154,7 +154,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
 
   def partition(smallPartCutoff: Int = 20) {
     val toApply = Seq(
-      ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
+      //("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
       ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
       ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings(smallPartCutoff)}),
       ("small", {ap: AcyclicPart => ap.mergeSmallParts(smallPartCutoff, 0.5)}),
@@ -193,7 +193,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
 
 
 object AcyclicPart {
-  def apply(g: Graph, excludeSet: Set[NodeID] = Set()) = {
+  def apply(g: Graph, excludeSet: collection.Set[NodeID] = Set()) = {
     val ap = new AcyclicPart(MergeGraph(g), excludeSet)
     ap
   }

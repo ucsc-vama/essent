@@ -174,6 +174,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(1, s"bool done_reset;")
     writeLines(1, s"bool verbose;")
     writeLines(0, "")
+    //sg.saveAsGEXF("out1.gexf")
     sg.stmtsOrdered foreach {
       case cp: CondPart if !cp.isRepeated => {
         // if this is a GCSM CP then it takes a param to the GCSM struct
@@ -276,7 +277,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       case cp: CondPart => {
         // is it a GCSM?
         val maybeGcsmInstanceVar = cp.gcsm match {
-          case Some(gcsm) => s"&${MakeCondPart.getInstanceMemberName(gcsm)}"
+          case Some(gcsm) => s"&${condPartWorker.getInstanceMemberName(gcsm)}"
           case None => ""
         }
 
@@ -407,7 +408,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       dedupResult.typeMap foreach {
         case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.shortName};")
       }
-      writeLines(0, s"} ${gcsmStructType};")
+      writeLines(0, s"} $gcsmStructType;")
 
       // prepare the code for the structs
       gcsmStructInit.appendAll(dedupResult.placeholderMap flatMap {
@@ -498,7 +499,8 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.SplitRegUpdates),
       Dependency(essent.passes.FixMulResultWidth),
       Dependency(essent.passes.DistinctTypeInstNames),
-      Dependency(essent.passes.RemoveAsAsyncReset)
+      Dependency(essent.passes.RemoveAsAsyncReset),
+      Dependency(essent.passes.IdentifyGCSM)
     )
 
   def compileAndEmit(circuit: Circuit) {

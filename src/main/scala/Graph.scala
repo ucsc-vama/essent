@@ -153,10 +153,10 @@ class Graph extends Serializable {
 //  }
   def mergeIsAcyclic(ids: Set[NodeID]): Boolean = {
     ids forall { source =>
-      val thePath = findExtPathsWithHistory(source, ids - source, Set.empty)
-      val tmp = !extPathExists(Set(source), ids - source)
-      assert(tmp == thePath.isEmpty, "disagreement over if there's a path")
-      thePath.isEmpty
+      //val thePath = findExtPathsWithHistory(source, ids - source, Set.empty)
+      !extPathExists(Set(source), ids - source)
+      //assert(tmp == thePath.isEmpty, "disagreement over if there's a path")
+      //thePath.isEmpty
     }
   }
 
@@ -194,6 +194,8 @@ class Graph extends Serializable {
   }
 
   def mergeNodesMutably(mergeDest: NodeID, mergeSources: Seq[NodeID]) {
+    if (mergeSources.isEmpty) return // nothing to merge
+
     val mergedID = mergeDest
     val idsToRemove = mergeSources
     val idsToMerge = mergeSources :+ mergeDest
@@ -220,7 +222,7 @@ class Graph extends Serializable {
   // Stats
   //----------------------------------------------------------------------------
   // assumes outNeigh and inNeigh grow together (they should)
-  def numNodes() = outNeigh.size
+  def numNodes = outNeigh.size
 
   def computeDegrees(neighs: AdjacencyList) = {
     neighs map { _.size }

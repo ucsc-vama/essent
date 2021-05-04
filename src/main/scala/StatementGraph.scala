@@ -155,7 +155,7 @@ class StatementGraph extends Graph with Serializable {
     idsToRemove foreach { id =>
       idToStmt(id) = EmptyStmt
 
-      // update names -- TODO is this allowed?
+      // update names
       nameToID(idToName(id)) = mergeDest
     }
     // NOTE: keeps mappings of name (idToName & nameToID) for debugging dead nodes

@@ -55,7 +55,8 @@ object Util {
     def findEqual(item: Any): Iterable[A] = iter.filter(_.equals(item))
 
     /**
-     * Convert a list of 2-tuples to a map of lists, with the left element being the key and the right the value
+     * Convert a list of 2-tuples to a map of lists, with the left element being the key and the right the value.
+     * Similar to groupBy
      * @tparam T key type
      * @tparam U value type
      */

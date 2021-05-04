@@ -83,7 +83,7 @@ case class CondPart(
     id: Int,
     alwaysActive: Boolean,
     isRepeated: Boolean,
-    inputs: Seq[String],
+    inputs: Set[String],
     memberStmts: Seq[Statement],
     outputsToDeclare: Map[String,firrtl.ir.Type],
     gcsmConnectionMap: ConnectionMap = Map.empty) extends Statement with HasInfo {
