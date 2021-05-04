@@ -59,7 +59,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       val cpStmt = CondPart(cpInfo, topoOrder, alwaysActive, isRepeated = false, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
-      TopologicalSort(sg) // TODO debug
+      //TopologicalSort(sg) // TODO debug
       namesToDeclare foreach { name =>
         rn.mutateDecTypeIfLocal(name, PartOut)
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
@@ -91,7 +91,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
   }
 
-  def doOpt(circuit: Circuit, smallPartCutoff: Int = 20): DedupResult = {
+  def doOpt(smallPartCutoff: Int = 20): DedupResult = {
     val excludedIDs = mutable.Set[NodeID]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
@@ -217,7 +217,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       sg.idToStmt(macroID) = sg.idToStmt(macroID) match {
         case macroCP: CondPart => {
           // rewrite statements
-          val newCP = macroCP.copy(alwaysActive = true, gcsmConnectionMap = mainGcsmSignalConnections).mapStmt(stmt => {
+          val newCP = macroCP.copy(alwaysActive = true).mapStmt(stmt => {
             // check that the statement is valid
             stmt.mapExprRecursive {
               case w: WRef if !Seq(NodeKind, PortKind, MemKind, RegKind, WireKind).contains(w.kind) => w // not something we can handle here
@@ -243,7 +243,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
           redundants foreach { otherID =>
             // replace CondPart
             sg.idToStmt(otherID) = sg.idToStmt(otherID).asInstanceOf[CondPart]
-              .copy(id = macroCP.id, alwaysActive = true, isRepeated = true, gcsmConnectionMap = mainGcsmSignalConnections)
+              .copy(id = macroCP.id, alwaysActive = true, isRepeated = true)
             val otherName = sg.idToTag(otherID)
 
             // register the other connections

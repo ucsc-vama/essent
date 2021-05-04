@@ -11,6 +11,7 @@ import firrtl.passes.Pass
 import firrtl.stage.Forms.LowFormMinimumOptimized
 import firrtl.stage.TransformManager.TransformDependency
 
+
 /**
  * Identify the Greatest Common Shared Module, and annotate it
  */
@@ -38,9 +39,9 @@ object IdentifyGCSM extends Transform with DependencyAPIMigration {
         case (_, (numInstances, stmtsPerInstance)) => numInstances * stmtsPerInstance
       })(Ordering[Int].reverse)
 
-    val newAnnos = state.annotations ++ (moduleUsage.headOption map {
+    val newAnno = moduleUsage.headOption map {
       case(gcsmMod, _) => ModuleIsGCSM(ModuleTarget(state.circuit.main, gcsmMod.name))
-    })
+    }
 
     logger.info("--- GCSM Module Result: modName, numInstances, stmtsPerInstance ---")
     if (moduleUsage.isEmpty) logger.info("No repeated modules")
@@ -48,7 +49,7 @@ object IdentifyGCSM extends Transform with DependencyAPIMigration {
       case (module, (numInstances, stmtsPerInstance)) => s"${module.name}\t$numInstances\t$stmtsPerInstance"
     }).mkString("\n"))
 
-    state.copy(annotations = newAnnos)
+    state.copy(annotations = state.annotations ++ newAnno)
   }
 
   case class ModuleIsGCSM(override val target: ModuleTarget) extends SingleTargetAnnotation[ModuleTarget] {

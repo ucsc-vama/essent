@@ -197,25 +197,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = cp.outputsToDeclare.keySet
-        /*val keepAvail = cp.outputsToDeclare.keySet.flatMap { name =>
-          // if we have a GCSM here, then we need to construct the C++ expr since that's used further down
-          val possibleNames = Set(name) ++ (gcsmInfo match {
-            case Some(gcsmInfo) => Set(emitExpr(GCSMSignalReference(WRef(name), gcsmInfo.instanceName)))
-            case None => Set.empty
-          })
-
-          // now determine which name is possible, based on the SG
-          possibleNames.find(sg.nameToID.contains)
-        }*/
-//        val keepAvail = cp.outputsToDeclare.keySet.map { name =>
-//          cp.gcsmConnectionMap.find({
-//            case (gcsr, origWRef) => origWRef.name == name
-//          }) match { // find if it's a renamed GCSM placeholder signal
-//            case Some((gcsr, origWRef)) => gcsr.shortName
-//            case None => name
-//          }
-//        }
-//        assert(cp.outputsToDeclare.size == keepAvail.size, "missing some names?")
 
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
@@ -402,7 +383,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
 
     if (opt.useCondParts) {
-      val dedupResult = condPartWorker.doOpt(circuit, opt.partCutoff) // TODO - make dedup work with flat connect
+      val dedupResult = condPartWorker.doOpt(opt.partCutoff) // TODO - make dedup work with flat connect
       // write out the struct that gets passed to GCSM partitions
       writeLines(0, "typedef struct {")
       dedupResult.typeMap foreach {
