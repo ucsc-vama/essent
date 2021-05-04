@@ -14,7 +14,7 @@ import scala.language.postfixOps
 import scala.reflect.ClassTag
 
 
-class MakeCondPart(sg: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) extends LazyLogging {
+class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) extends LazyLogging {
   val cacheSuffix = "$old"
 
   val alreadyDeclared = sg.stateElemNames().toSet
@@ -343,7 +343,7 @@ object MakeCondPart {
   type ConnectionMap = collection.Map[GCSMSignalReference, WRef]
   type InstanceToConnectionMap = collection.Map[String, ConnectionMap] // FIXME - this is getting too complex
 
-  def apply(ng: TopLevelStatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
+  def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
     new MakeCondPart(ng, rn, extIOtypes)
   }
 }

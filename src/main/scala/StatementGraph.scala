@@ -187,8 +187,6 @@ class StatementGraph extends Graph with Serializable {
   })
 }
 
-
-
 object StatementGraph {
   def apply(bodies: Seq[Statement]): StatementGraph = {
     val sg = new StatementGraph
@@ -197,28 +195,6 @@ object StatementGraph {
     sg
   }
 
-  //def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
-  //  apply(flattenWholeDesign(circuit, removeFlatConnects))
-}
-
-/**
- * Extension of StatementGraph but also containing GCSM info.
- * Only useful at the top level
- */
-class TopLevelStatementGraph(val gcsmInstances: Set[String]) extends StatementGraph with Serializable {
-  /**
-   * Convenience method to see if there is any GCSM.
-   * There must be at least 2 copies to be useful
-   */
-  val hasGCSM: Boolean = gcsmInstances.size > 1
-}
-
-object TopLevelStatementGraph {
-  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): TopLevelStatementGraph = {
-    val (bodies, gcsmInstances) = flattenWholeDesign(circuit, removeFlatConnects)
-    val sg = new TopLevelStatementGraph(gcsmInstances)
-    sg.buildFromBodies(bodies)
-    sg.addOrderingDepsForStateUpdates()
-    sg
-  }
+  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
+    apply(flattenWholeDesign(circuit, removeFlatConnects))
 }

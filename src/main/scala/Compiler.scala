@@ -391,7 +391,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
 
-    val sg = TopLevelStatementGraph(circuit, opt.removeFlatConnects)
+    val sg = StatementGraph(circuit, opt.removeFlatConnects)
     sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)

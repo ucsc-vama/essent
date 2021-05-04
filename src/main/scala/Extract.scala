@@ -261,7 +261,7 @@ object Extract extends LazyLogging {
    * @param squishOutConnects
    * @return (bodies list, list of all GCSM prefixes where the first one is the "main" one, list of the ports to the GCSM module)
    */
-  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): (Seq[Statement], Set[String]) = {
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
 
     // Determine GCSM
@@ -315,7 +315,7 @@ object Extract extends LazyLogging {
     } else allBodiesFlattened
      */
 
-    (allBodiesFlattened, gcsmInstances)
+    allBodiesFlattened
   }
 
   // FUTURE: are there lame DefNodes I should also be grabbing?
