@@ -115,9 +115,6 @@ object Extract extends LazyLogging {
   def findResultName(stmt: Statement): Option[String] = stmt match {
     case d: DefNode => Some(d.name)
     case c: Connect => Some(emitExpr(c.loc))
-    //case f: FakeConnection => Some(f.dest)
-    case c: GCSMBlackboxConnection if c.flow == SourceFlow => Some(c.name)
-    case c: GCSMBlackboxConnection => None
     case cm: CondMux => Some(cm.name)
     case ru: RegUpdate => Some(emitExpr(ru.regRef))
     case mw: MemWrite => Some(mw.memName)
@@ -140,7 +137,6 @@ object Extract extends LazyLogging {
     case cp: CondPart => UnknownType
     case p: Print => UnknownType
     case s: Stop => UnknownType
-    case c: GCSMBlackboxConnection => c.tpe
     case EmptyStmt => UnknownType
     case _ => throw new Exception(s"can't find result type of: ${stmt.serialize}")
   }
@@ -158,7 +154,7 @@ object Extract extends LazyLogging {
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
-      case w: GCSMSignalReference => Seq(w.ref.name) // maybe?
+      case w: GCSMSignalReference => Seq(w.name) // maybe?
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField =>
         val innerResult = findDependencesExpr(w.expr)
@@ -177,8 +173,6 @@ object Extract extends LazyLogging {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
     case c: Connect => Seq(HyperedgeDep(emitExpr(c.loc), findDependencesExpr(c.expr), s))
-    case GCSMBlackboxConnection(_, name, _, SourceFlow) => Seq(HyperedgeDep(name, Seq(), s))
-    case GCSMBlackboxConnection(_, name, _, SinkFlow) => Seq(HyperedgeDep(s"_blackbox_$name", Seq(name), s))
     case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
     case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
@@ -284,23 +278,22 @@ object Extract extends LazyLogging {
     val allBodiesFlattened = allInstances flatMap {
       // the main GCSM to flatten
       case (modName, prefix) if gcsmInstances.contains(prefix) => {
-        def isConnectToSameInstance(that: Connect): Boolean = {
-          val thatLoc = that.loc match {
-            case WRef(name, _, _, _) => name
-            case WSubField(expr: WRef, _, _, _) => expr.name
-            case WSubIndex(expr: WRef, _, _, _) => expr.name
-          }
-          thatLoc match {
-            case signalNamePat(thatPrefix, _) => thatPrefix == prefix
-          }
-        }
+//        def isConnectToSameInstance(that: Connect): Boolean = {
+//          that.loc.serialize match {
+//            case signalNamePat(thatPrefix, _) => {
+//              thatPrefix.startsWith(prefix) && thatPrefix.length > prefix.length
+//            } // should be connecting to something deeper than itself
+//          }
+//        }
 
         // flatten and apply the annotation
         val gcsmInfo = GCSMInfo(modName, prefix)
-        flattenModule(gcsmMod, prefix, circuit) map {
-          case s:Connect if isConnectToSameInstance(s) => s.mapInfo(i => gcsmInfo ++ i) // if the source is not inside the same GCSM then connect it outside
-          case s => s.mapInfo(i => gcsmInfo ++ i)
-        }
+        flattenModule(gcsmMod, prefix, circuit) map { _.mapInfo(i => gcsmInfo ++ i) }
+//          tmp match {
+//          case s: Connect if isConnectToSameInstance(s) => s.mapInfo(i => gcsmInfo ++ i) // if the source is not inside the same GCSM then connect it outside
+//          case s: Connect => s // the source is outside the GCSM
+//          case s => s.mapInfo(i => gcsmInfo ++ i)
+//        }}
       }
 
       // not in the GCSM, just flatten

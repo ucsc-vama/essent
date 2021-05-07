@@ -4,7 +4,6 @@ import java.io.{File, FileWriter, Writer}
 import essent.Emitter._
 import essent.EssentEmitter.gcsmStructType
 import essent.Extract._
-import essent.MakeCondPart.SignalTypeMap
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -141,11 +140,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     consumerIDs.sorted map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
   }
 
-  def genAllTriggers(signalNames: Iterable[String], outputConsumers: Map[String, Seq[Int]],
-      suffix: String): Seq[String] = {
-    selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
+  def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[Int]],
+      suffix: String): Iterable[String] = {
+    selectFromMap(signalNames, outputConsumers) flatMap { case (name, consumerIDs) =>
       genDepPartTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
-    }}
+    }
   }
 
   def writeZoningPredecs(
@@ -203,7 +202,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
         if (cp.gcsm.isEmpty) {
           writeLines(2, "// Triggers 1")
-          writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+          writeLines(2, genAllTriggers(cp.outputsToDeclare.keys, outputConsumers, condPartWorker.cacheSuffix))
 
           writeLines(2, "// Triggers 2")
           val regUpdateNamesInPart = regUpdates flatMap findResultName
@@ -371,9 +370,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
+    writeLines(0, "")
 
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
-    sg.saveAsGEXF(s"${circuit.main}.gexf")
+    //sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
@@ -386,18 +386,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       val dedupResult = condPartWorker.doOpt(opt.partCutoff) // TODO - make dedup work with flat connect
       // write out the struct that gets passed to GCSM partitions
       writeLines(0, "typedef struct {")
-      dedupResult.typeMap foreach {
-        case (gcsmSigRef, firrtlType) => writeLines(1, s"${genCppType(firrtlType)} *${gcsmSigRef.shortName};")
+      dedupResult.placeholderMap foreach {
+        case (origName, gcsr) => writeLines(1, s"${genCppType(gcsr.tpe)} *${gcsr.name}; // $origName")
       }
       writeLines(0, s"} $gcsmStructType;")
 
       // prepare the code for the structs
-      gcsmStructInit.appendAll(dedupResult.placeholderMap flatMap {
-        case (gcsmInstanceName, placeholderMap) =>
-          Seq(s"$gcsmStructType $gcsmInstanceName = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
-          placeholderMap.map({
-            case (gcsr, origWRef) => s"  .${gcsr.shortName} = &(${rn.emit(origWRef)})," // init each member of the struct
-          }) ++ Seq("};")
+      gcsmStructInit.appendAll(dedupResult.instances.toSeq flatMap { gcsmInstanceName =>
+        Seq(s"$gcsmStructType ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
+        dedupResult.placeholderMap.map({
+          case (origSignalName, gcsr) => s"  .${gcsr.name} = &(${rn.emit(gcsmInstanceName + origSignalName)})," // init each member of the struct
+        }) ++ Seq("};")
       })
     } else {
       if (opt.regUpdates)

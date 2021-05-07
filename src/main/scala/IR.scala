@@ -1,7 +1,7 @@
 package essent.ir
 
 import essent.Extract
-import essent.MakeCondPart.{ConnectionMap, SignalTypeMap}
+import essent.MakeCondPart.ConnectionMap
 import essent.Util.StatementUtils
 import firrtl._
 import firrtl.ir._
@@ -123,75 +123,14 @@ object GCSMInfo {
 }
 
 /**
- * Wrapper for a [[WRef]] to denote that it's part of the GCSM
- * @param ref The original reference
- * @param gcsmInstanceName The name of the GCSM instance
+ * Alterntive for a [[WRef]] to denote that it's part of the GCSM
  */
-// TODO - make this a wrapper for WRef, can delete the externalReference since it's probably not needed?
-case class GCSMSignalReference(ref: WRef, gcsmInstanceName: String) extends Expression {
-  /**
-   * The short name of this signal, suitable for use in the GCSM struct
-   */
-  val shortName: String = ref.name match {
-    case Extract.signalNamePat(_, signalName) => signalName
-  }
-
+case class GCSMSignalReference(name: String, tpe: firrtl.ir.Type, flow: Flow) extends Expression {
   override def foreachExpr(f: Expression => Unit): Unit = Unit
-  override def foreachType(f: Type => Unit): Unit = Unit
+  override def foreachType(f: Type => Unit): Unit = f(tpe)
   override def foreachWidth(f: Width => Unit): Unit = Unit
   override def mapExpr(f: Expression => Expression): Expression = this
-  override def mapType(f: Type => Type): Expression = this
+  override def mapType(f: Type => Type): Expression = this.copy(tpe = f(tpe))
   override def mapWidth(f: Width => Width): Expression = this
-  override def serialize: String = s"signal reference: $shortName in ${gcsmInstanceName}"
-  override def tpe: Type = UnknownType
-
-  // When comparing signal references, only the shortName is important
-  override def hashCode(): Int = shortName.hashCode()
-  override def equals(that: Any): Boolean = that match {
-    case x: GCSMSignalReference => x.shortName == this.shortName
-    case x: String => x == this.shortName || x == this.ref.name
-    case _ => false
-  }
-}
-
-@Deprecated
-case class FakeConnection(source: String, dest: String, tpe: Type) extends Statement {
- //require(this.getInfoByType[GCSMInfo]().isDefined, "must have a GCSM info here")
-
-  override def mapStmt(f: Statement => Statement): Statement = this
-  override def mapExpr(f: Expression => Expression): Statement = this
-  override def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
-  override def mapString(f: String => String): Statement = this.copy(source = f(source), dest = f(dest))
-  override def mapInfo(f: Info => Info): Statement = this
-  override def foreachStmt(f: Statement => Unit): Unit = Unit
-  override def foreachExpr(f: Expression => Unit): Unit = Unit
-  override def foreachType(f: Type => Unit): Unit = f(tpe)
-  override def foreachString(f: String => Unit): Unit = {
-    f(source)
-    f(dest)
-  }
-  override def foreachInfo(f: Info => Unit): Unit = Unit
-  override def serialize: String = s"FakeConnect: $source -> $dest ($tpe)"
-}
-
-/**
- * Blackbox connection node for the secondary GCSM instance connections
- * @param name the name of the signal
- * @param flow from the perspective of the main design: sink = instance input; source = instance output
- */
-case class GCSMBlackboxConnection(info: Info, name: String, tpe: Type, flow: Flow) extends Statement with HasInfo {
-  // the flow must be either source or sink
-  require(flow == SourceFlow || flow == SinkFlow, "this only understands source or sink flows")
-
-  override def mapStmt(f: Statement => Statement): Statement = this
-  override def mapExpr(f: Expression => Expression): Statement = this
-  override def mapType(f: Type => Type): Statement = this.copy(tpe = f(tpe))
-  override def mapString(f: String => String): Statement = this.copy(name = f(name))
-  override def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
-  override def foreachStmt(f: Statement => Unit): Unit = Unit
-  override def foreachExpr(f: Expression => Unit): Unit = Unit
-  override def foreachType(f: Type => Unit): Unit = f(tpe)
-  override def foreachString(f: String => Unit): Unit = f(name)
-  override def foreachInfo(f: Info => Unit): Unit = f(info)
-  override def serialize: String = s"GCSMBlackboxConnection: $flow for $name"
+  override def serialize: String = s"signal reference: $name: $tpe ($flow)"
 }

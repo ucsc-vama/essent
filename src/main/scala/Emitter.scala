@@ -134,7 +134,7 @@ object Emitter {
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
     case w: GCSMSignalReference => {
-      if (rn != null) s"*(${EssentEmitter.gcsmVarName}->${w.shortName})" else w.shortName
+      if (rn != null) s"*(${EssentEmitter.gcsmVarName}->${w.name})" else w.name
     } // TODO - clean this up
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
@@ -222,7 +222,7 @@ object Emitter {
       //val lhs_orig = emitExpr(c.loc)(null)
       //val lhs = rn.emit(lhs_orig)
       val (lhsOrig, lhs) = c.loc match {
-        case gcsr: GCSMSignalReference => (emitExpr(gcsr.ref)(null), emitExpr(gcsr))
+        case gcsr: GCSMSignalReference => (emitExpr(gcsr)(null), emitExpr(gcsr))
         case e: Expression => {
           val o = emitExpr(e)(null)
           (o, rn.emit(o))
@@ -232,7 +232,6 @@ object Emitter {
       if (rn.decLocal(lhsOrig)) Seq(s"${genCppType(c.loc.tpe)} $lhs = $rhs;")
       else Seq(s"$lhs = $rhs; // Connect")
     }
-    case c: GCSMBlackboxConnection => Seq() // nothing to emit for this
     case p: Print => {
       val formatters = "(%h)|(%x)|(%d)|(%ld)".r.findAllIn(p.string.serialize).toList
       val argWidths = p.args map {e: Expression => bitWidth(e.tpe)}

@@ -8,17 +8,14 @@ import scala.collection.generic.CanBuildFrom
 import scala.reflect.ClassTag
 
 object Util {
-  // Given an array, returns a map of value to all indices that had that value (CAM-like)
+  /**
+   * Given an array, returns a map of value to all indices that had that value (CAM-like)
+   */
   def groupIndicesByValue[T](a: ArrayBuffer[T]): Map[T, Seq[Int]] = {
-    a.zipWithIndex.groupBy{ _._1 }.mapValues{ v => v.toSeq map { _._2 }}
+    a.zipWithIndex.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
   }
 
-  // Given a list of pairs, returns a map of value of first element to all second values (CAM-like)
-  def groupByFirst[T,Y](l: Seq[(T,Y)]): Map[T, Seq[Y]] = {
-    l.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
-  }
-
-  def selectFromMap[K,V](selectors: Iterable[K], targetMap: Map[K,V]): Map[K,V] = {
+  def selectFromMap[K,V](selectors: Iterable[K], targetMap: collection.Map[K,V]): Map[K,V] = {
     (selectors flatMap {
       k => if (targetMap.contains(k)) Seq(k -> targetMap(k)) else Seq()
     }).toMap
@@ -55,17 +52,17 @@ object Util {
     def findEqual(item: Any): Iterable[A] = iter.filter(_.equals(item))
 
     /**
-     * Convert a list of 2-tuples to a map of lists, with the left element being the key and the right the value.
-     * Similar to groupBy
+     * Given a list of pairs, returns a map of value of first element to all second values (CAM-like)
      * @tparam T key type
      * @tparam U value type
+     * @tparam Ret The list type to return. Inferred from your calling context, and is probably [[IndexedSeq]] by default.
      */
-    def toMapOfLists[T, U](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U)): collection.Map[T, Iterable[U]] = {
-      val b = mutable.Map[T, mutable.Builder[U, Iterable[U]]]()
-      for ((k:T, v:U) <- iter) {
-        b.getOrElseUpdate(k, Iterable.newBuilder[U]) += v
+    def toMapOfLists[T, U, Ret](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U), cbf: CanBuildFrom[Nothing, U, Ret]): collection.Map[T, Ret] = {
+      val b = mutable.Map[T, mutable.Builder[U, Ret]]()
+      for ((k: T, v: U) <- iter) {
+        b.getOrElseUpdate(k, cbf()) += v
       }
-      b.mapValues(_.result)
+      b.mapValues(_.result).toMap // .toMap is important so that
     }
   }
 

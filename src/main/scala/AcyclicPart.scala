@@ -1,6 +1,7 @@
 package essent
 
 import essent.Graph.NodeID
+import essent.Util.IterableUtils
 import logger._
 
 import collection.mutable.{ArrayBuffer, HashSet}
@@ -81,7 +82,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: collection.Set[NodeID]) extend
         (inputsCanonicalized, id)
       }
       }
-      val inputsToSiblings = Util.groupByFirst(inputsAndIDPairs.toSeq)
+      val inputsToSiblings = inputsAndIDPairs.toMapOfLists // : collection.Map[ArrayBuffer[NodeID], Seq[NodeID]]
       // NOTE: since inputs *exactly* the same, don't need to do merge safety check
       val mergesToConsider = inputsToSiblings collect {
         case (inputIDs, siblingIDs) if (siblingIDs.size > 1) => siblingIDs
