@@ -15,10 +15,9 @@ object Util {
     a.zipWithIndex.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
   }
 
-  def selectFromMap[K,V](selectors: Iterable[K], targetMap: collection.Map[K,V]): Map[K,V] = {
-    (selectors flatMap {
-      k => if (targetMap.contains(k)) Seq(k -> targetMap(k)) else Seq()
-    }).toMap
+  def selectFromMap[K,V](selectors: Iterable[K], targetMap: collection.Map[K,V]): collection.Map[K,V] = {
+    val selectorSet = selectors.toSet
+    targetMap.filterKeys(selectorSet.contains)
   }
 
   def tidyString(str: String): String = {

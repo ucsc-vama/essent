@@ -1,6 +1,7 @@
 package essent
 
 import essent.Extract._
+import essent.ir.GCSMSignalReference
 import firrtl.WRef
 import firrtl.ir._
 
@@ -13,6 +14,7 @@ case object Local extends SigDecType
 case object MuxOut extends SigDecType
 case object PartOut extends SigDecType
 case object PartCache extends SigDecType
+case object GCSMSignal extends SigDecType
 
 case class SigMeta(decType: SigDecType, sigType: firrtl.ir.Type)
 
@@ -69,6 +71,13 @@ class Renamer {
       case (name, SigMeta(decType, sigType)) if (decType != Local) => name
     }
     notLocalSigs.toSet
+  }
+
+  def addGcsmSignals(gcsrs: Iterable[GCSMSignalReference]) = {
+    gcsrs foreach { gcsr =>
+      nameToEmitName(gcsr.name) = Emitter.emitExpr(gcsr)(this)
+      nameToMeta(gcsr.name) = SigMeta(GCSMSignal, gcsr.tpe)
+    }
   }
 
   def removeDots(s: String) = s.replace('.','$')

@@ -186,7 +186,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         //val mergeResult = ap.perfomMergesIfPossible(nodesToMerge.toSeq) // nodesToMerge.toSeq
         val mergeResult = ap.perfomMergesIfPossible(Seq(nodesToMerge)) // nodesToMerge.toSeq
         //TopologicalSort(ap.mg) // TODO debug
-        println(mergeResult)
+        //println(mergeResult)
         assert(mergeResult.nonEmpty, "failed to merge!")
       }
 
@@ -214,19 +214,19 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       case NodeKind | PortKind | MemKind | RegKind | WireKind => true
       case _ => false
     }
-    def getGcsmPlaceholder(name: String, tpe: firrtl.ir.Type, flow: Flow): Option[GCSMSignalReference] = {
+    def getGcsmPlaceholder(name: String, tpe: firrtl.ir.Type): Option[GCSMSignalReference] = {
       val newName = name.stripPrefix(chosenPartitioning._1)
-      if (sg.nameToID.contains(name) && !rn.decLocal(name)) {
+      if (rn.nameToMeta.contains(name) && !rn.decLocal(name)) {
         Some(nameToPlaceholderMap.getOrElseUpdate(newName, {
-          val n = GCSMSignalReference(s"GCSMPLACEHOLDER_${placeholderNum}_", tpe, flow)
+          val n = GCSMSignalReference(s"GCSMPLACEHOLDER_${placeholderNum}_", tpe)
           placeholderNum += 1
           n
         }))
       } else None
     }
     def rewriteNames(expr: Expression): Expression = (expr match {
-      case w: WRef if isUsefulRefKind(w.kind) => getGcsmPlaceholder(w.name, w.tpe, w.flow)
-      case w: WSubField => getGcsmPlaceholder(emitExpr(w)(null), w.tpe, w.flow)
+      case w: WRef if isUsefulRefKind(w.kind) => getGcsmPlaceholder(w.name, w.tpe)
+      case w: WSubField => getGcsmPlaceholder(emitExpr(w)(null), w.tpe)
       case _ => None
     }).getOrElse(expr.mapExpr(rewriteNames)) // FIXME - ensure that no GCSM signals can slip thru the cracks
 
@@ -235,7 +235,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         case macroCP: CondPart => {
           // rewrite statements
           val newCP = macroCP.copy(alwaysActive = true).mapStmt(stmt => {
-            stmt.mapExpr(rewriteNames)
+            val resultType = findResultType(stmt)
+            stmt.mapExpr(rewriteNames).mapString({ origName => // also rename the name, if there is one
+              if (resultType != UnknownType)
+                getGcsmPlaceholder(origName, resultType)
+                  .map(_.name) // this works since the placeholder goes into the outer map too
+                  .getOrElse(origName)
+              else origName // if there's no type then we can't have it
+            })
           })
 
           // update the redundant CPs
@@ -250,6 +257,9 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         case s => s
       }
     }
+
+    // inform the renamer of the GCSM placeholders
+    rn.addGcsmSignals(nameToPlaceholderMap.values)
 
     DedupResult(Set(chosenPartitioning._1) ++ chosenPartitioning._2, nameToPlaceholderMap)
   }
@@ -286,7 +296,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
   def getExternalPartInputTypes(extIOtypes: Map[String, Type]): Iterable[(String,Type)] = {
     val extPartInputNames = getExternalPartInputNames()
-    val tmp = extPartInputNames.diff(extIOtypes.keySet)
     extPartInputNames map {
       name => {
         (name, if (name.endsWith("reset")) UIntType(IntWidth(1)) else extIOtypes(name))

@@ -125,12 +125,12 @@ object GCSMInfo {
 /**
  * Alterntive for a [[WRef]] to denote that it's part of the GCSM
  */
-case class GCSMSignalReference(name: String, tpe: firrtl.ir.Type, flow: Flow) extends Expression {
+case class GCSMSignalReference(name: String, tpe: firrtl.ir.Type) extends Expression {
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = f(tpe)
   override def foreachWidth(f: Width => Unit): Unit = Unit
   override def mapExpr(f: Expression => Expression): Expression = this
   override def mapType(f: Type => Type): Expression = this.copy(tpe = f(tpe))
   override def mapWidth(f: Width => Width): Expression = this
-  override def serialize: String = s"signal reference: $name: $tpe ($flow)"
+  override def serialize: String = s"signal reference: $name: $tpe"
 }
