@@ -1,7 +1,7 @@
 package essent
 
 import essent.Extract._
-import essent.ir.GCSMSignalReference
+import essent.ir.GCSMSignalPlaceholder
 import firrtl.WRef
 import firrtl.ir._
 
@@ -73,9 +73,9 @@ class Renamer {
     notLocalSigs.toSet
   }
 
-  def addGcsmSignals(gcsrs: Iterable[GCSMSignalReference]) = {
+  def addGcsmSignals(gcsrs: Iterable[GCSMSignalPlaceholder]) = {
     gcsrs foreach { gcsr =>
-      nameToEmitName(gcsr.name) = Emitter.emitExpr(gcsr)(this)
+      nameToEmitName(gcsr.name) = removeDots(Emitter.emitExpr(gcsr)(this))
       nameToMeta(gcsr.name) = SigMeta(GCSMSignal, gcsr.tpe)
     }
   }

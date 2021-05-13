@@ -1,6 +1,6 @@
 package essent.ir
 
-import essent.Extract
+import essent.{Emitter, Extract}
 import essent.MakeCondPart.ConnectionMap
 import essent.Util.StatementUtils
 import firrtl._
@@ -75,17 +75,17 @@ case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWa
 
 /**
  * Conditional Partition
- * @param isRepeated if true, then the id refers to another existing partition* @param inputs
+ * @param repeatedMainCp if this is a repeated partition, this points to the actual CondPart
  * @param memberStmts if repeated, may be empty
  */
 case class CondPart(
     info: Info,
     id: Int,
     alwaysActive: Boolean,
-    isRepeated: Boolean,
     inputs: Set[String],
     memberStmts: Seq[Statement],
-    outputsToDeclare: Map[String,firrtl.ir.Type]) extends Statement with HasInfo {
+    outputsToDeclare: Map[String,firrtl.ir.Type],
+    repeatedMainCp: Option[CondPart] = None) extends Statement with HasInfo {
   /**
    * Get the GCSM info, if applicable
    */
@@ -123,14 +123,18 @@ object GCSMInfo {
 }
 
 /**
- * Alterntive for a [[WRef]] to denote that it's part of the GCSM
+ * Alternative for a [[WRef]] to denote that it's part of the GCSM
+ * @param id The placeholder number
+ * @param name The name of the signal (with GCSM instance prefix removed)
+ * @param tpe The type of the signal
  */
-case class GCSMSignalReference(name: String, tpe: firrtl.ir.Type) extends Expression {
+case class GCSMSignalPlaceholder(id: Int, name: String, tpe: firrtl.ir.Type) extends Expression with Ordered[GCSMSignalPlaceholder] {
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = f(tpe)
   override def foreachWidth(f: Width => Unit): Unit = Unit
   override def mapExpr(f: Expression => Expression): Expression = this
   override def mapType(f: Type => Type): Expression = this.copy(tpe = f(tpe))
   override def mapWidth(f: Width => Width): Expression = this
-  override def serialize: String = s"signal reference: $name: $tpe"
+  override def serialize: String = s"GCSM Placeholder signal $id ($name): $tpe"
+  override def compare(that: GCSMSignalPlaceholder): Int = this.id compare that.id
 }

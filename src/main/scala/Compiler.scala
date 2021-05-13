@@ -2,8 +2,8 @@ package essent
 
 import java.io.{File, FileWriter, Writer}
 import essent.Emitter._
-import essent.EssentEmitter.gcsmStructType
 import essent.Extract._
+import essent.MakeCondPart.{CondPartIDMap, ConnectionMap}
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -136,14 +136,21 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   //----------------------------------------------------------------------------
   def genEvalFuncName(partID: Int): String = "EVAL_" + partID
 
-  def genDepPartTriggers(consumerIDs: Seq[Int], condition: String): Seq[String] = {
-    consumerIDs.sorted map { consumerID => s"$flagVarName[$consumerID] |= $condition;" }
+  def genDepPartTriggers(consumerParts: Seq[CondPart], condition: String): Seq[String] = {
+    consumerParts.sortBy(_.id).map { cp => s"$flagVarName[${cp.id}] |= $condition;" }
   }
 
-  def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[Int]],
+  def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[CondPart]],
       suffix: String): Iterable[String] = {
-    selectFromMap(signalNames, outputConsumers) flatMap { case (name, consumerIDs) =>
-      genDepPartTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
+    selectFromMap(signalNames, outputConsumers) flatMap { case (name, consumerParts) =>
+      genDepPartTriggers(consumerParts, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
+    }
+  }
+
+  def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder], getSuffix: GCSMSignalPlaceholder => String): Iterable[String] = {
+    placeholders map { gcsr =>
+      val condition = s"${rn.emit(gcsr.name)} != ${getSuffix(gcsr)}"
+      s"if ($condition) ${MakeCondPart.gcsmVarName}->activate_deps(${gcsr.id});"
     }
   }
 
@@ -175,56 +182,101 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(0, "")
     //sg.saveAsGEXF("out1.gexf")
     sg.stmtsOrdered foreach {
-      case cp: CondPart if !cp.isRepeated => {
-        // if this is a GCSM CP then it takes a param to the GCSM struct
-        cp.gcsm match {
-          case Some(gcsmInfo) => writeLines(1, Seq(
-            s"// GCSM partition: instance ${gcsmInfo.instanceName} of ${gcsmInfo.modName}",
-            s"void ${genEvalFuncName(cp.id)}(${EssentEmitter.gcsmStructType} *${EssentEmitter.gcsmVarName}) {"))
-          case None => writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
-        }
+      case cp: CondPart if cp.gcsm.isEmpty => { // not a GCSM part
+        writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
+        if (!cp.alwaysActive) writeLines(2, s"$flagVarName[${cp.id}] = false;")
 
-        //if (!cp.alwaysActive) // TODO - put this back later
-        //  writeLines(2, s"$flagVarName[${cp.id}] = false;")
-        if (opt.trackParts)
-          writeLines(2, s"$actVarName[${cp.id}]++;")
+        if (opt.trackParts) writeLines(2, s"$actVarName[${cp.id}]++;")
+
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
-          case (name, tpe) => {
-            s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
-          }
+          case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }
         writeLines(2, cacheOldOutputs)
+
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = cp.outputsToDeclare.keySet
 
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
 
-        if (cp.gcsm.isEmpty) {
-          writeLines(2, "// Triggers 1")
-          writeLines(2, genAllTriggers(cp.outputsToDeclare.keys, outputConsumers, condPartWorker.cacheSuffix))
+        writeLines(2, "// Triggers 1")
+        writeLines(2, genAllTriggers(cp.outputsToDeclare.keys, outputConsumers, condPartWorker.cacheSuffix))
 
-          writeLines(2, "// Triggers 2")
-          val regUpdateNamesInPart = regUpdates flatMap findResultName
-          writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
-        }
+        writeLines(2, "// Triggers 2")
+        val regUpdateNamesInPart = regUpdates flatMap findResultName
+        writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
 
         writeLines(2, "// Reg updates:")
         writeLines(2, regUpdates flatMap emitStmt)
 
         // triggers for MemWrites
-        if (cp.gcsm.isEmpty) {
-          writeLines(2, "// Triggers 3")
-          val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
-          val memWriteTriggers = memWritesInPart flatMap { mw =>
-            val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-            genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
-          }
-          writeLines(2, memWriteTriggers)
+        writeLines(2, "// Triggers Memory")
+        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+        val memWriteTriggers = memWritesInPart flatMap { mw =>
+          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }
+        writeLines(2, memWriteTriggers)
+
         writeLines(1, "}")
       }
-      case _: CondPart => // this is a repeated CondPart, nothing to generate here
+      case cp: CondPart if cp.gcsm.nonEmpty && cp.repeatedMainCp.isEmpty => { // CP for main instance of GCSM
+        writeLines(1, s"// GCSM partition: instance ${cp.gcsm.get.instanceName} of ${cp.gcsm.get.modName}")
+        writeLines(1, s"void ${genEvalFuncName(cp.id)}(${MakeCondPart.gcsmStructType} *${MakeCondPart.gcsmVarName}) {")
+
+        if (!cp.alwaysActive)
+          writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagPrefix}${cp.id}] = false;")
+
+        val dedupResult = condPartWorker.dedupResult.get
+
+        // rewrite the outputs to only have the normalized name
+        val gcsmOutputs = cp.outputsToDeclare.map({
+          case (name, tpe) => name.stripPrefix(dedupResult.mainInstance) -> tpe
+        })
+        val gcsmOutputsPlaceholders = gcsmOutputs map {
+          case (name, _) => dedupResult.placeholderMap(name)
+        }
+
+        // cache output values
+        def placeholderToCacheName(gcsr: GCSMSignalPlaceholder) = rn.removeDots(gcsr.name + condPartWorker.cacheSuffix)
+        writeLines(2, gcsmOutputsPlaceholders map { gcsr =>
+          s"${genCppType(gcsr.tpe)} ${placeholderToCacheName(gcsr)} = ${rn.emit(gcsr.name)}; // placeholder #${gcsr.id}"
+        })
+
+        val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
+        val keepAvail = gcsmOutputs.keySet
+
+        writeLines(2, "// No reg updates:")
+        writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
+
+        writeLines(2, "// Triggers 1")
+        writeLines(2, genAllTriggersGcsm(gcsmOutputsPlaceholders, placeholderToCacheName))
+
+        writeLines(2, "// Triggers 2")
+        val regUpdateNamesInPart = regUpdates.flatMap(findResultName(_).map(dedupResult.placeholderMap))
+        writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, { gcsr =>
+          rn.emit(gcsr.name + "$next")
+        }))
+
+        writeLines(2, "// Reg updates:")
+        writeLines(2, regUpdates flatMap emitStmt)
+
+        // triggers for MemWrites - FIXME not yet done
+//        writeLines(2, "// Triggers Memory")
+//        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+//        val memWriteTriggers = memWritesInPart flatMap { mw =>
+//          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+//          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+//        }
+//        writeLines(2, memWriteTriggers)
+
+        writeLines(1, "}")
+      }
+      case cp: CondPart if cp.gcsm.nonEmpty && cp.repeatedMainCp.nonEmpty => { // CP for redundant instance of GCSM
+        writeLines(1, s"// GCSM partition: instance ${cp.gcsm.get.instanceName} of ${cp.gcsm.get.modName}")
+        writeLines(1,s"// CondPart #${cp.id} is a copy of #${cp.repeatedMainCp.get.id}")
+        writeLines(1, "")
+      }
       case stmt => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
     }
     writeLines(0, "")
@@ -261,10 +313,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           case None => ""
         }
 
+        val evalFuncId = cp.repeatedMainCp.map(_.id).getOrElse(cp.id)
+
         if (!cp.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}($maybeGcsmInstanceVar);")
+          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
         else
-          writeLines(2, s"${genEvalFuncName(cp.id)}($maybeGcsmInstanceVar);")
+          writeLines(2, s"${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
       }
       case stmt => writeLines(2, emitStmt(stmt))
     }
@@ -380,24 +434,47 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     rn.populateFromSG(sg, extIOMap)
 
     // if there is deduping, this contains the code to initialize the structs, meant to go as class instance fields at the top level
-    val gcsmStructInit = new ArrayBuffer[String]() // call writeLines later to print
+    val gcsmStructCode = new StringBuilder
+    val gcsmStructInit = new StringBuilder
 
     if (opt.useCondParts) {
-      val dedupResult = condPartWorker.doOpt(opt.partCutoff) // TODO - make dedup work with flat connect
-      // write out the struct that gets passed to GCSM partitions
-      writeLines(0, "typedef struct {")
-      dedupResult.placeholderMap foreach {
-        case (origName, gcsr) => writeLines(1, s"${genCppType(gcsr.tpe)} *${gcsr.name}; // $origName")
-      }
-      writeLines(0, s"} $gcsmStructType;")
+      condPartWorker.doOpt(opt.partCutoff) // TODO - make dedup work with flat connect
+      condPartWorker.dedupResult match {
+        case Some(dedupResult) =>
+          // write out the struct that gets passed to GCSM partitions
+          gcsmStructCode.appendLine(s"struct ${MakeCondPart.gcsmStructType} {")
+          dedupResult.placeholderMap.toStream.sorted foreach {
+            case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${emitExpr(gcsr)(null)}; // $origName")
+          }
+          dedupResult.partAlias.head match {
+            case (_, partAlias) => partAlias.foreach { case (originalID, actualID) =>
+              gcsmStructCode.appendLine(s"  unsigned int ${MakeCondPart.gcsmPartFlagPrefix}$originalID;")
+            }
+          }
+          gcsmStructCode.appendLine(s"  std::array<std::vector<int>, ${dedupResult.placeholderMap.size}> placeholder_deps;")
+          gcsmStructCode.appendLine(s"  inline void activate_deps($topName *top, const int placeholder) {")
+          gcsmStructCode.appendLine("    for (int d : placeholder_deps[placeholder]) top->PARTflags[d] = true;")
+          gcsmStructCode.appendLine("  }")
+          gcsmStructCode.appendLine("};")
 
-      // prepare the code for the structs
-      gcsmStructInit.appendAll(dedupResult.instances.toSeq flatMap { gcsmInstanceName =>
-        Seq(s"$gcsmStructType ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") ++ // eg `GCSMData instance_ModuleInstance0 = {`
-        dedupResult.placeholderMap.map({
-          case (origSignalName, gcsr) => s"  .${gcsr.name} = &(${rn.emit(gcsmInstanceName + origSignalName)})," // init each member of the struct
-        }) ++ Seq("};")
-      })
+          // prepare the code for the structs
+          dedupResult.instances foreach { gcsmInstanceName =>
+            gcsmStructInit.appendLine(s"${MakeCondPart.gcsmStructType} ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") // eg `GCSMData instance_ModuleInstance0 = {`
+            dedupResult.placeholderMap foreach {
+              case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${emitExpr(gcsr)(null)} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
+            }
+            dedupResult.partAlias(gcsmInstanceName).foreach {
+              case (originalID, actualID) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPartFlagPrefix}$originalID = $actualID,")
+            }
+            gcsmStructInit.appendLine("  .placeholder_deps = {{")
+            dedupResult.placeholderActivations(gcsmInstanceName).toSeq.sortBy(_._1) foreach {
+              case (gcsr, dependentParts) => gcsmStructInit.appendLine("    {" + dependentParts.map(_.id).mkString(", ") + s"}, // $gcsmInstanceName${gcsr.name}")
+            }
+            gcsmStructInit.appendLine("  }}")
+            gcsmStructInit.appendLine("};")
+          }
+        case None => // nothing to do
+      }
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
@@ -413,7 +490,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     // if (opt.trackExts)
     //   sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)
-    writer.flush() // TODO - remove after debug
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)
@@ -431,8 +507,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    if (opt.useCondParts)
+    if (opt.useCondParts) {
+      writeLines(1, gcsmStructCode.toString())
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
+    }
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if (opt.trackParts || opt.trackSigs)
       writeLines(2, "cycle_count++;")
@@ -452,17 +530,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
     // output the GCSM instance fields, if any
     writeLines(0, "private:")
-    gcsmStructInit.foreach(writeLines(1, _))
+    writeLines(1, gcsmStructInit.toString())
 
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
   }
-}
-
-object EssentEmitter {
-  val gcsmStructType = "GCSMData"
-  val gcsmVarName = "gcsm"
 }
 
 

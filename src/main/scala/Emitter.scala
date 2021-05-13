@@ -133,8 +133,11 @@ object Emitter {
   // rn is not null in C++ code emission
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
-    case w: GCSMSignalReference => {
-      if (rn != null) s"*(${EssentEmitter.gcsmVarName}->${w.name})" else w.name
+    case w: GCSMSignalPlaceholder => {
+      if (rn != null)
+        s"*(${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPlaceholderPrefix}${w.id})"
+      else
+        w.name
     } // TODO - clean this up
     case u: UIntLiteral => {
       val maxIn64Bits = (BigInt(1) << 64) - 1
@@ -222,7 +225,7 @@ object Emitter {
       //val lhs_orig = emitExpr(c.loc)(null)
       //val lhs = rn.emit(lhs_orig)
       val (lhsOrig, lhs) = c.loc match {
-        case gcsr: GCSMSignalReference => (emitExpr(gcsr)(null), emitExpr(gcsr))
+        case gcsr: GCSMSignalPlaceholder => (emitExpr(gcsr)(null), emitExpr(gcsr))
         case e: Expression => {
           val o = emitExpr(e)(null)
           (o, rn.emit(o))

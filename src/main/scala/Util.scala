@@ -29,6 +29,15 @@ object Util {
     hm.keys foreach { k => hm(k) = hm(k).sorted }
   }
 
+  implicit class StringBuilderUtils(sb: StringBuilder) {
+    /**
+     * Append the given string and a newline
+     * @param x the string
+     * @return the StringBuilder, for chaining
+     */
+    def appendLine(x: String): StringBuilder = sb.append(x).append('\n')
+  }
+
   /**
    * Utilities to add to the [[Iterable]]-derived classes, which is most of the list classes
    * @param iter
@@ -56,12 +65,12 @@ object Util {
      * @tparam U value type
      * @tparam Ret The list type to return. Inferred from your calling context, and is probably [[IndexedSeq]] by default.
      */
-    def toMapOfLists[T, U, Ret](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U), cbf: CanBuildFrom[Nothing, U, Ret]): collection.Map[T, Ret] = {
+    def toMapOfLists[T, U, Ret](implicit tagT: ClassTag[T], tagU: ClassTag[U], ev: A <:< (T, U), cbf: CanBuildFrom[Nothing, U, Ret]): Map[T, Ret] = {
       val b = mutable.Map[T, mutable.Builder[U, Ret]]()
       for ((k: T, v: U) <- iter) {
         b.getOrElseUpdate(k, cbf()) += v
       }
-      b.mapValues(_.result).toMap // .toMap is important so that
+      b.mapValues(_.result).toMap // .toMap is important so that the `mapValues` gets expanded now and not later!
     }
   }
 

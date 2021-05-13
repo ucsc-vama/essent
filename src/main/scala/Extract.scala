@@ -154,7 +154,7 @@ object Extract extends LazyLogging {
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)
-      case w: GCSMSignalReference => Seq(w.name) // maybe?
+      case w: GCSMSignalPlaceholder => Seq(w.name) // maybe?
       case m: Mux => Seq(m.cond, m.tval, m.fval) flatMap findDependencesExpr
       case w: WSubField =>
         val innerResult = findDependencesExpr(w.expr)
