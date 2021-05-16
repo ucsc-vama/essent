@@ -259,19 +259,21 @@ object Extract extends LazyLogging {
    * @param squishOutConnects
    * @return (bodies list, list of all GCSM prefixes where the first one is the "main" one, list of the ports to the GCSM module)
    */
-  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean): Seq[Statement] = {
+  def flattenWholeDesign(circuit: Circuit, squishOutConnects: Boolean, overrideGcsmModule: Option[String]): Seq[Statement] = {
     val allInstances = findAllModuleInstances(circuit) // Seq[(String modName, String instName)]
 
     // Determine GCSM
     // FIXME: handle case where there is no GCSM (no re-used modules at all)
     val modulesToInstances = allInstances.toMapOfLists
-    val gcsmModName = if (modulesToInstances.isEmpty) ""
-               else modulesToInstances.maxBy({
-      case (modName, instanceNames) => findModule(modName, circuit) match {
-        case m:Module if instanceNames.size > 1 => instanceNames.size * countStatements(m.body, circuit)
-        case _ => 0 // ExtModules and single-use modules don't count
-      }
-    })._1
+    val gcsmModName = overrideGcsmModule.getOrElse {
+      if (modulesToInstances.isEmpty) ""
+      else modulesToInstances.maxBy({
+        case (modName, instanceNames) => findModule(modName, circuit) match {
+          case m: Module if instanceNames.size > 1 => instanceNames.size * countStatements(m.body, circuit)
+          case _ => 0 // ExtModules and single-use modules don't count
+        }
+      })._1
+    }
 
     // designate the first instance the one whose logic will get reused
     //val firstGcsmPrefix +: otherGcsmPrefixes = modulesToInstances(gcsmModName)

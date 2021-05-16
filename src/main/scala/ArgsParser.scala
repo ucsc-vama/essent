@@ -19,7 +19,8 @@ case class OptFlags(
     partStats: Boolean = false,
     partCutoff: Int = 20,
     essentLogLevel: String = "warn",
-    firrtlLogLevel: String = "warn") {
+    firrtlLogLevel: String = "warn",
+    gcsmModule: Option[String] = None) {
   def inputFileDir() = firInputFile.getParent
   def outputDir() = if (inputFileDir == null) "" else inputFileDir()
 }
@@ -105,6 +106,10 @@ class ArgsParser {
     opt[Int]("part-cutoff").action( (x, c) => c.copy(
         partCutoff = x)
     ).text("parameter used for partitioning")
+
+    opt[String]("gcsm-module").action((x, c) => c.copy(
+      gcsmModule = Some(x)
+    )).text("Override the module used as the GCSM to be the one specified")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())

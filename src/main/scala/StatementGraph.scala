@@ -195,6 +195,6 @@ object StatementGraph {
     sg
   }
 
-  def apply(circuit: Circuit, removeFlatConnects: Boolean = true): StatementGraph =
-    apply(flattenWholeDesign(circuit, removeFlatConnects))
+  def apply(circuit: Circuit, removeFlatConnects: Boolean = true, overrideGcsmModule: Option[String] = None): StatementGraph =
+    apply(flattenWholeDesign(circuit, removeFlatConnects, overrideGcsmModule))
 }

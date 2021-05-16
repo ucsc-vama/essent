@@ -426,7 +426,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     }
     writeLines(0, "")
 
-    val sg = StatementGraph(circuit, opt.removeFlatConnects)
+    val sg = StatementGraph(circuit, opt.removeFlatConnects, opt.gcsmModule)
     //sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
@@ -444,7 +444,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           // write out the struct that gets passed to GCSM partitions
           gcsmStructCode.appendLine(s"struct ${MakeCondPart.gcsmStructType} {")
           dedupResult.placeholderMap.toStream.sorted foreach {
-            case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${emitExpr(gcsr)(null)}; // $origName")
+            case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id}; // $origName")
           }
           dedupResult.partAlias.head match {
             case (_, partAlias) => partAlias.foreach { case (originalID, actualID) =>
@@ -461,7 +461,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           dedupResult.instances foreach { gcsmInstanceName =>
             gcsmStructInit.appendLine(s"${MakeCondPart.gcsmStructType} ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") // eg `GCSMData instance_ModuleInstance0 = {`
             dedupResult.placeholderMap foreach {
-              case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${emitExpr(gcsr)(null)} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
+              case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
             }
             dedupResult.partAlias(gcsmInstanceName).foreach {
               case (originalID, actualID) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPartFlagPrefix}$originalID = $actualID,")
