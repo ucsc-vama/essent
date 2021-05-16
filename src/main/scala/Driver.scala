@@ -18,7 +18,7 @@ object Driver {
     Logger.setClassLogLevels(Map("essent" -> logger.LogLevel(opt.essentLogLevel)))
     Logger.setClassLogLevels(Map("firrtl" -> logger.LogLevel(opt.firrtlLogLevel)))
     val sourceReader = Source.fromFile(opt.firInputFile)
-    val circuit = firrtl.Parser.parse(sourceReader.getLines, firrtl.Parser.IgnoreInfo)
+    val circuit = firrtl.Parser.parse(sourceReader.getLines, firrtl.Parser.AppendInfo(".")) // placeholder filename to work around a bug on windows
     sourceReader.close()
     val compiler = new EssentCompiler(opt)
     compiler.compileAndEmit(circuit)

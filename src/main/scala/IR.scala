@@ -114,14 +114,6 @@ case class GCSMInfo(modName: String, instanceName: String) extends Info {
   override def ++(that: Info): Info = if (that == NoInfo) this else MultiInfo(Seq(this, that))
 }
 
-object GCSMInfo {
-  /**
-   * Is the given statement a GCSM-related one?
-   * @return The GCSMInfo, if any
-   */
-  def is(stmt: Statement): Option[GCSMInfo] = stmt.getInfoByType[GCSMInfo]()
-}
-
 /**
  * Alternative for a [[WRef]] to denote that it's part of the GCSM
  * @param id The placeholder number

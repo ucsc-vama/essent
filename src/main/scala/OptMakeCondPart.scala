@@ -115,20 +115,21 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         val maybeInternal = if (maybeIn.isEmpty && maybeOut.isEmpty) Some(accept(GCSMInternalNode)) else None
         Seq(maybeIn, maybeOut, maybeInternal).flatten
       case _ => Nil
-    }).toMapOfLists.mapValues(_.toSet)
+    }).toMapOfLists.mapValues({ x => // for convenience, make it so if there are no nodes of a given type then simply return empty set
+      val tmp: Map[GCSMNodeType, Set[NodeID]] = x.toMapOfLists // not sure how to do this without intermediate
+      tmp.withDefaultValue(Set.empty)
+    })
 
     // determine constraints: the pairs of (output name -> input name) that are combinationally
     // reachable through the rest of the design, for each instance
     def normalizeNodeName(prefix: String)(id: NodeID) = sg.idToName(id).stripPrefix(prefix)
     val constraints = ioForGcsm.map({
-      case (prefix, ios) => {
-        val iosMap = ios.toMapOfLists.mapValues(_.toSet)
+      case (prefix, iosMap) => {
         val excludeNodes = iosMap(GCSMInternalNode) ++ (iosMap(GCSMOutputNode) -- iosMap(GCSMInputNode)) // don't take nodes that are internal, or other outputs which aren't inputs
         val constrsForInstance = iosMap(GCSMOutputNode).flatMap({ outID =>
           sg.findExtPaths(outID, iosMap(GCSMInputNode), excludeNodes).map(id => {
             val srcName = normalizeNodeName(prefix)(outID)
             val destName = normalizeNodeName(prefix)(id)
-            val tmpStmt = sg.idToStmt(id)
             srcName -> destName
           })
         }) // output name -> Set of reachable inputs in this GCSM
@@ -137,7 +138,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     })
 
     // find compatible partitionings
-    val compatiblePartitionings = constraints.toStream.combinations(2).flatMap({
+    val compatiblePartitionings: Map[String, Set[String]] = constraints.toStream.combinations(2).flatMap({
       case (inst1, inst1Constrs) +: (inst2, inst2Constrs) +: Stream.Empty =>
         // compute which set is the superset (if any)
         // if the constraints of X is a subset of Y, then since X has fewer constraints, Y can be used to partition X
@@ -145,7 +146,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         val a = if (inst1Constrs.subsetOf(inst2Constrs)) Some(inst2 -> inst1) else None
         val b = if (inst2Constrs.subsetOf(inst1Constrs)) Some(inst1 -> inst2) else None
         Seq(a, b).flatten
-    }).toIterable.toMapOfLists.mapValues(_.toSet) // instanceName -> is compatible with these other instance partitionings
+    }).toIterable.toMapOfLists // instanceName -> is compatible with these other instance partitionings
 
     // pick the partitioning with the largest number of compatible instances
     // FUTURE: if there are several groups of incompatible partitionings, handle multiple
@@ -153,7 +154,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val compatibleInstances = Seq(chosenPartitioning._1) ++ chosenPartitioning._2
 
     // Partitioning phase 1: Only the nodes of the chosen instance of the GCSM
-    val firstInstanceNodes = ioForGcsm(chosenPartitioning._1).map(_._2)
+    val firstInstanceNodes = ioForGcsm(chosenPartitioning._1).valuesIterator.flatten.toSet
     val gcsmExcludeNodes = sg.nodeRange().diff(firstInstanceNodes.toSeq) // all nodes except those of the chosen instance
     var ap = AcyclicPart(sg, excludedIDs ++ gcsmExcludeNodes)
     //TopologicalSort(ap.mg) // TODO debug
@@ -169,9 +170,9 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       if ap.mg.idToTag(macroID) == chosenPartitioning._1 // filter to only be main GCSM things
       redundantInstance <- chosenPartitioning._2 // for each redundant instance
     } yield {
-      val redundantNodesForInstance = ioForGcsm(redundantInstance).map({
-        case (_, id) => normalizeNodeName(redundantInstance)(id) -> id
-      }).toMap // FIXME - this can be hoisted outside the loop
+      val redundantNodesForInstance = ioForGcsm(redundantInstance).valuesIterator.flatten.map({ id =>
+        normalizeNodeName(redundantInstance)(id) -> id
+      }).toMap
       val namesForMainPartition = memberIDs.map({ id =>
         normalizeNodeName(chosenPartitioning._1)(id)
       }).toSet

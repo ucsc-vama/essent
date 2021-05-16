@@ -16,7 +16,7 @@ object ReplaceAsyncRegs extends Pass with DependencyAPIMigration {
   def isCorrectAsyncRegModule(em: ExtModule): Boolean = {
     val nameCorrect = em.defname == "AsyncResetReg"
     val portNames = em.ports map { _.name }
-    val portsCorrect = portNames == Seq("rst", "clk", "en", "q", "d")
+    val portsCorrect = portNames.toSet.equals(Set("rst", "clk", "en", "q", "d"))
     nameCorrect && portsCorrect
   }
 

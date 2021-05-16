@@ -179,13 +179,19 @@ object Extract extends LazyLogging {
       Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
     case p: Print =>
       val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
-      val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
-      // FUTURE: more efficient unique name (perhaps line number?)
+      val uniqueName = p.getInfoByType[GCSMInfo].map(i => i.instanceName).getOrElse("") + // prepend the instance name to make it like a signal
+        "PRINTF" +
+        p.getInfoByType[FileInfo]
+          .map(i => i.info.string)
+          .getOrElse(emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize))
       Seq(HyperedgeDep(uniqueName, deps.distinct, p))
     case st: Stop =>
       val deps = findDependencesExpr(st.en)
-      val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
-      // FUTURE: more unique name (perhaps line number?)
+      val uniqueName = st.getInfoByType[GCSMInfo].map(i => i.instanceName).getOrElse("") + // prepend the instance name to make it like a signal
+        "STOP" +
+        st.getInfoByType[FileInfo]
+          .map(i => i.info.string)
+          .getOrElse(emitExpr(st.clk) + deps.mkString("$") + st.ret)
       Seq(HyperedgeDep(uniqueName, deps, st))
     case r: DefRegister => Seq(HyperedgeDep(r.name, Seq(), r))
     case w: DefWire => Seq()
@@ -247,10 +253,8 @@ object Extract extends LazyLogging {
     case signalNamePat(_, signalName) => newPrefix + signalName
   }
 
-  def rewriteSignalName1(newPrefix: String)(origName: String) = rewriteSignalName(origName, newPrefix)
-
   /**
-   * Flatten design and identify GCSM, removing all hierarchy except GCSM
+   * Flatten design and identify GCSM, and tag the GCSM statements by attaching [[GCSMInfo]] to them
    * @param circuit
    * @param squishOutConnects
    * @return (bodies list, list of all GCSM prefixes where the first one is the "main" one, list of the ports to the GCSM module)
