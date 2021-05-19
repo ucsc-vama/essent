@@ -27,3 +27,5 @@ assemblyOutputPath in assembly := file("./utils/bin/essent.jar")
 
 // Ignore disabled .scala files
 unmanagedSources / excludeFilter := HiddenFileFilter || "*disabled*.scala"
+
+//scalacOptions += "-Xlog-implicits"

@@ -6,8 +6,9 @@ import firrtl.WRef
 import firrtl.ir._
 
 import collection.mutable.HashMap
+import scala.collection.mutable
 
-trait SigDecType
+sealed trait SigDecType
 case object ExtIO extends SigDecType
 case object RegSet extends SigDecType
 case object Local extends SigDecType
@@ -16,11 +17,11 @@ case object PartOut extends SigDecType
 case object PartCache extends SigDecType
 case object GCSMSignal extends SigDecType
 
-case class SigMeta(decType: SigDecType, sigType: firrtl.ir.Type)
+sealed case class SigMeta(decType: SigDecType, sigType: firrtl.ir.Type)
 
 class Renamer {
-  val nameToEmitName = HashMap[String,String]()
-  val nameToMeta = HashMap[String,SigMeta]()
+  val nameToEmitName: mutable.Map[String, String] = HashMap[String,String]()
+  val nameToMeta: mutable.Map[String, SigMeta] = HashMap[String,SigMeta]()
 
   def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
     val stateNames = sg.stateElemNames.toSet
@@ -84,28 +85,50 @@ class Renamer {
 
   // TODO - clean up these methods
   def decLocal(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == Local
-  def decLocal(w: WRef): Boolean = decLocal(w.name)
 
   def decExtIO(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == ExtIO
-  def decExtIO(w: WRef): Boolean = decExtIO(w.name)
 
   def decRegSet(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == RegSet
-  def decRegSet(w: WRef):  Boolean = decRegSet(w.name)
 
   def isDec(name: String, decType: SigDecType): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == decType
-  def isDec(w: WRef, decType: SigDecType): Boolean = isDec(w.name, decType)
 
   def emit(canonicalName: String): String = nameToEmitName(canonicalName)
-  def emit(wref: WRef): String = emit(wref.name)
 
   def getSigType(name: String): firrtl.ir.Type = nameToMeta(name).sigType
-  def getSigType(w: WRef): firrtl.ir.Type = getSigType(w.name)
 }
 
-// object Renamer {
-//   def apply(ng: NamedGraph, extIOMap: Map[String,Type]) = {
-//     val rn = new Renamer
-//     rn.populateFromNG(ng, extIOMap)
-//     rn
-//   }
-// }
+/**
+ * Same as Renamer, but with overrideable signals. This allows
+ * Used for the GCSM signals.
+ */
+class OverridableRenamer(orig: Renamer) extends Renamer {
+  override val nameToEmitName = new OverridableMap[String, String](orig.nameToEmitName)
+  override val nameToMeta = new OverridableMap[String, SigMeta](orig.nameToMeta)
+}
+
+/**
+ * Map class which holds a reference to another map, as well as allowing for modifications that
+ * don't affect the original. Only supports updates and additions
+ * @param orig the backing map. it isn't modified by this class, but could be modified by someone else
+ */
+sealed class OverridableMap[K, V](orig: collection.Map[K, V]) extends mutable.Map[K, V] {
+  /**
+   * Only stores the new values
+   */
+  private val overrides = new HashMap[K, V]()
+
+  override def +=(kv: (K, V)): OverridableMap.this.type = {
+    overrides += kv
+    this
+  }
+  override def -=(key: K): OverridableMap.this.type = throw new NotImplementedError
+  override def get(key: K): Option[V] = overrides.get(key).orElse(orig.get(key))
+  override def iterator: Iterator[(K, V)] = new Iterator[(K, V)] {
+    private val keysIter = (overrides.keySet ++ orig.keySet).toIterator
+    override def hasNext: Boolean = keysIter.hasNext
+    override def next(): (K, V) = {
+      val k = keysIter.next()
+      (k, OverridableMap.this.apply(k))
+    }
+  }
+}

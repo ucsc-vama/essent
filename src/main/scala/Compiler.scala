@@ -24,8 +24,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   val sigExtName = "SIGext"
   var sigNameToID = Map[String,Int]()
 
-  implicit val rn = new Renamer
-
   // Writing To File
   //----------------------------------------------------------------------------
   def writeLines(indentLevel: Int, lines: String) {
@@ -87,7 +85,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, opt: OptFlags,
-                     keepAvail: Set[String] = Set()) {
+                     keepAvail: Set[String] = Set())(implicit rn: Renamer) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
     if (opt.conditionalMuxes)
       MakeCondMux(sg, rn, keepAvail)
@@ -141,16 +139,16 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
   }
 
   def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[CondPart]],
-      suffix: String): Iterable[String] = {
+      suffix: String)(implicit rn: Renamer): Iterable[String] = {
     selectFromMap(signalNames, outputConsumers) flatMap { case (name, consumerParts) =>
       genDepPartTriggers(consumerParts, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
     }
   }
 
-  def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder], getSuffix: GCSMSignalPlaceholder => String): Iterable[String] = {
+  def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder], getSuffix: GCSMSignalPlaceholder => String)(implicit rn: Renamer): Iterable[String] = {
     placeholders map { gcsr =>
       val condition = s"${rn.emit(gcsr.name)} != ${getSuffix(gcsr)}"
-      s"if ($condition) ${MakeCondPart.gcsmVarName}->activate_deps(${gcsr.id});"
+      s"if ($condition) ${MakeCondPart.gcsmVarName}->activate_deps(this, ${gcsr.id});"
     }
   }
 
@@ -159,7 +157,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
                           condPartWorker: MakeCondPart,
                           topName: String,
                           extIOtypes: Map[String, Type],
-                          opt: OptFlags) {
+                          opt: OptFlags)(implicit rn: Renamer) {
     // predeclare part outputs
     val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
@@ -228,6 +226,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagPrefix}${cp.id}] = false;")
 
         val dedupResult = condPartWorker.dedupResult.get
+        implicit val rn = dedupResult.rn // overrides the renamer in this scope, which contains the GCSM overrides
 
         // rewrite the outputs to only have the normalized name
         val gcsmOutputs = cp.outputsToDeclare.map({
@@ -282,7 +281,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     writeLines(0, "")
   }
 
-  def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
+  def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags)(implicit rn: Renamer) {
     writeLines(2, "if (reset || !done_reset) {")
     writeLines(3, "sim_cached = false;")
     writeLines(3, "regs_set = false;")
@@ -430,6 +429,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     //sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
+    implicit val rn = new Renamer
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
 
@@ -447,7 +447,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
             case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id}; // $origName")
           }
           dedupResult.partAlias.head match {
-            case (_, partAlias) => partAlias.foreach { case (originalID, actualID) =>
+            case (_, partAlias) => partAlias.toStream.sorted.foreach { case (originalID, actualID) =>
               gcsmStructCode.appendLine(s"  unsigned int ${MakeCondPart.gcsmPartFlagPrefix}$originalID;")
             }
           }
@@ -460,10 +460,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           // prepare the code for the structs
           dedupResult.instances foreach { gcsmInstanceName =>
             gcsmStructInit.appendLine(s"${MakeCondPart.gcsmStructType} ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") // eg `GCSMData instance_ModuleInstance0 = {`
-            dedupResult.placeholderMap foreach {
+            dedupResult.placeholderMap.toStream.sorted foreach {
               case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
             }
-            dedupResult.partAlias(gcsmInstanceName).foreach {
+            dedupResult.partAlias(gcsmInstanceName).toStream.sorted.foreach {
               case (originalID, actualID) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPartFlagPrefix}$originalID = $actualID,")
             }
             gcsmStructInit.appendLine("  .placeholder_deps = {{")

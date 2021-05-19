@@ -274,7 +274,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }).toMapOfLists.mapValues(_.toMapOfLists)
 
     // inform the renamer of the GCSM placeholders
-    rn.addGcsmSignals(nameToPlaceholderMap.values)
+    val newRn = new OverridableRenamer(rn)
+    newRn.addGcsmSignals(nameToPlaceholderMap.values)
     //rn.addGcsmSignals(nameToPlaceholderMap.mapValues(gcsr => gcsr.copy(name = gcsr.name + cacheSuffix)).values)
 
     // find the aliased part ID for each redundant instance
@@ -295,7 +296,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       compatibleInstances,
       partAlias,
       nameToPlaceholderMap,
-      placeholderActivations
+      placeholderActivations,
+      newRn
     ))
   }
 
@@ -371,12 +373,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
    * @param partAlias instance name -> (original part ID -> actual part ID)
    * @param placeholderMap normalized name to placeholder object
    * @param placeholderActivations instance name -> (placeholder ID ->  list of parts to activate when this placeholder changes)
+   * @param rn renamer with the GCSM placeholders inserted, to prevent namespace pollution in the main renamer
    */
   case class DedupResult private(
     instances: Seq[String],
     partAlias: collection.Map[String, collection.Map[Int, Int]],
     placeholderMap: ConnectionMap,
-    placeholderActivations: collection.Map[String, CondPartIDMap]) {
+    placeholderActivations: collection.Map[String, CondPartIDMap],
+    rn: Renamer) {
     /**
      * The main instance name
      */
