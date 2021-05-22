@@ -23,7 +23,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
   private var _dedupResult: Option[DedupResult] = None
   def dedupResult = _dedupResult
 
-  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: collection.Set[NodeID]) {
+  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: collection.Set[NodeID]): Iterable[CondPart] = {
     val idToMemberIDs = ap.iterParts
     val idToMemberStmts = (idToMemberIDs map { case (id, members) => {
       val memberStmts = sg.idToStmt(id) match {
@@ -44,7 +44,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       else Seq()
     }}).toSet
     val partsTopoSorted = TopologicalSort(ap.mg) filter validParts
-    partsTopoSorted.zipWithIndex foreach { case (id, topoOrder) => {
+    val cpStmts = partsTopoSorted.zipWithIndex map { case (id, topoOrder) => {
       val consumedOutputs = idToProducedOutputs(id).intersect(allInputs)
       val namesToDeclare = consumedOutputs -- alreadyDeclared
       val nameToStmts = idToMemberStmts(id) map { stmt => (findResultName(stmt) -> stmt) }
@@ -69,11 +69,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
       }
       assert(sg.validNodes(id))
+      cpStmt
     }}
     val externalInputs = getExternalPartInputTypes(extIOtypes)
     externalInputs foreach {
       case (name, tpe) => rn.addPartCache(name + cacheSuffix, tpe)
     }
+
+    cpStmts
   }
 
   /**
@@ -203,13 +206,10 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     // Partitioning phase 2: all other nodes, except the GCSM ones
     ap = new AcyclicPart(ap.mg, excludedIDs ++ firstInstanceNodes ++ mainIDToRedundants.values.flatten)
     ap.partition(smallPartCutoff)
-    //TopologicalSort(ap.mg) // TODO debug
-    //ap.mg.saveAsGEXF("post-partition.gexf", sg.tmpIdToString) // TODO - remove
 
     // convert to CondParts
-    convertIntoCPStmts(ap, excludedIDs)
+    val cpStmts = convertIntoCPStmts(ap, excludedIDs)
     logger.info(partitioningQualityStats())
-    //sg.saveAsGEXF("after-convert-to-cp.gexf")
 
     // rewrite the main CondPart to make it general and accept the various connections
     val nameToPlaceholderMap = mutable.Map[String, GCSMSignalPlaceholder]()
@@ -263,34 +263,60 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       }
     }
 
+    // inform the renamer of the GCSM placeholders
+    val newRn = new OverridableRenamer(rn)
+    newRn.addGcsmSignals(nameToPlaceholderMap.values)
+
     // find which other CPs the placeholders connect to
     val outputConsumers = getPartInputMap()
-    val placeholderActivations: Map[String, Map[GCSMSignalPlaceholder, Set[CondPart]]] = (for {
+    val placeholderActivations: Map[GCSMSignalPlaceholder, Map[String, mutable.Set[CondPart]]] = (for {
       instanceName <- compatibleInstances
       (newName, gcsr) <- nameToPlaceholderMap.iterator
       consumerForName <- outputConsumers.getOrElse(instanceName + newName, Nil)
     } yield {
-      instanceName -> (gcsr -> consumerForName)
+      gcsr -> (instanceName -> consumerForName)
     }).toMapOfLists.mapValues(_.toMapOfLists)
 
-    // inform the renamer of the GCSM placeholders
-    val newRn = new OverridableRenamer(rn)
-    newRn.addGcsmSignals(nameToPlaceholderMap.values)
-    //rn.addGcsmSignals(nameToPlaceholderMap.mapValues(gcsr => gcsr.copy(name = gcsr.name + cacheSuffix)).values)
+    // create a fake partition for the case that one instance's partition triggers more external signals
+    // than other ones. it won't be valid which is fine
+    val fakeCP = CondPart(
+      NoInfo,
+      getNumParts(), // Number is simply the next available one
+      false, Set.empty, Nil, Map.empty
+    )
+    val fakeCPNodeID = sg.addStatementNode("..FAKEPART", Nil, fakeCP)
+    sg.validNodes -= fakeCPNodeID
+
+    for ((gcsr, activatedPartsPerInstance) <- placeholderActivations) {
+      // for this placeholder, find the instance having the most activated parts
+      val (instanceWithMost, mostPartsActivated) = activatedPartsPerInstance.maxBy({ case (_, activatedParts) => activatedParts.size })
+
+      // now for all the other instances, insert activations to the fake signals for the ones this one is missing
+      for {
+        (otherInstance, parts) <- activatedPartsPerInstance
+        if otherInstance != instanceWithMost // skip self
+        // find the parts from the maximal set which are NOT in this smaller one
+        cp <- mostPartsActivated.filterNot(p => parts.exists(_.getEmitId == p.getEmitId))
+      } {
+        parts += cp.copy(repeatedMainCp = Some(fakeCP)) // causes emitId to be set to this fake
+      }
+    }
 
     // find the aliased part ID for each redundant instance
-    val partAlias = mainIDToRedundants.toStream.flatMap({
-      case (mainID, redundants) => {
-        def apply(id: NodeID) = sg.idToStmt(mainID) match {
-          case mainCP: CondPart => {
-            val redundantCP = sg.idToStmt(id).asInstanceOf[CondPart]
-            Some(sg.idToTag(id) -> (mainCP.id, redundantCP.id))
-          }
-          case _ => None
+    val partAlias = mainIDToRedundants.toStream.flatMap({ case (mainID, redundants) =>
+      def apply(id: NodeID) = sg.idToStmt(mainID) match {
+        case mainCP: CondPart => {
+          val redundantCP = sg.idToStmt(id).asInstanceOf[CondPart]
+          Some(sg.idToTag(id) -> (mainCP.id, redundantCP.id))
         }
-        redundants.flatMap(apply) ++ apply(mainID).toList // the last part is to get the self mapping for the main instance too
+        case _ => None
       }
-    }).toMapOfLists.mapValues(_.toMap)
+      redundants.flatMap(apply) ++ apply(mainID).toList // the last part is to get the self mapping for the main instance too
+    }).toMapOfLists.mapValues(partial => {
+      // this map is only filled in for the redundant CPs, but we want the complete mapping
+      val partialMap = partial.toMap
+      (0 until cpStmts.size).map(idx => partialMap.getOrElse(idx, idx))
+    })
 
     _dedupResult = Some(DedupResult(
       compatibleInstances,
@@ -372,14 +398,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
    * @param instances list of all the instances; the `head` is always the main instance
    * @param partAlias instance name -> (original part ID -> actual part ID)
    * @param placeholderMap normalized name to placeholder object
-   * @param placeholderActivations instance name -> (placeholder ID ->  list of parts to activate when this placeholder changes)
+   * @param placeholderActivations placeholder -> (instance name ->  list of parts to activate when this placeholder changes)
    * @param rn renamer with the GCSM placeholders inserted, to prevent namespace pollution in the main renamer
    */
   case class DedupResult private(
     instances: Seq[String],
-    partAlias: collection.Map[String, collection.Map[Int, Int]],
+    partAlias: collection.Map[String, collection.Seq[Int]],
     placeholderMap: ConnectionMap,
-    placeholderActivations: collection.Map[String, CondPartIDMap],
+    placeholderActivations: collection.Map[GCSMSignalPlaceholder, collection.Map[String, collection.Set[CondPart]]],
     rn: Renamer) {
     /**
      * The main instance name
@@ -395,7 +421,7 @@ object MakeCondPart {
   val gcsmStructType = "GCSMData"
   val gcsmVarName = "gcsm"
   val gcsmPlaceholderPrefix = "placeholder"
-  val gcsmPartFlagPrefix = "part"
+  val gcsmPartFlagAliasPrefix = "PARTAlias"
 
   def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {
     new MakeCondPart(ng, rn, extIOtypes)

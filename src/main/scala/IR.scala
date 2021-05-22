@@ -91,6 +91,12 @@ case class CondPart(
    */
   lazy val gcsm: Option[GCSMInfo] = this.getInfoByType[GCSMInfo]()
 
+  /**
+   * The ID of the main partition, if defined by `repeatedMainCp` or else this ID.
+   * @note Will not terminate if there's a loop formed by `repeatedMainCp`
+   */
+  def getEmitId: Int = repeatedMainCp.map(_.getEmitId).getOrElse(id)
+
   def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
   def mapExpr(f: Expression => Expression): Statement = this

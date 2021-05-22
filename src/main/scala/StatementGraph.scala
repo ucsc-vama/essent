@@ -58,7 +58,7 @@ class StatementGraph extends Graph with Serializable {
   }
 
   def addStatementNode(resultName: String, depNames: Seq[String],
-                       stmt: Statement = EmptyStmt) = {
+                       stmt: Statement = EmptyStmt): NodeID = {
     val potentiallyNewDestID = getID(resultName)
     depNames foreach {depName : String => addEdge(depName, resultName)}
 //    if (potentiallyNewDestID >= idToStmt.size) {
@@ -76,6 +76,8 @@ class StatementGraph extends Graph with Serializable {
         markGCSMInfo(potentiallyNewDestID)(declaration.info)
       case _ =>
     }
+
+    potentiallyNewDestID
   }
 
   /**
@@ -172,17 +174,13 @@ class StatementGraph extends Graph with Serializable {
 
   def numNodeRefs() = idToName.size
 
-  val tmpIdToString: PartialFunction[NodeID, String] = {
-    case id => idToStmt(id).serialize
-  }
-
   /**
    * Save the graph in GEXF format (for loading in e.g. Gephi)
    *
    * Caution: very slow and memory-hungry
    * @param destFile output filename
    */
-  override def saveAsGEXF(destFile: String): Unit = saveAsGEXF(destFile, {
+  override def saveAsGEXF(destFile: String): Unit = super.saveAsGEXF(destFile, {
     case id => idToStmt(id).serialize
   })
 }

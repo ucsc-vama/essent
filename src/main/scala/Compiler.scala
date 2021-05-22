@@ -145,10 +145,23 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     }
   }
 
-  def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder], getSuffix: GCSMSignalPlaceholder => String)(implicit rn: Renamer): Iterable[String] = {
-    placeholders map { gcsr =>
-      val condition = s"${rn.emit(gcsr.name)} != ${getSuffix(gcsr)}"
-      s"if ($condition) ${MakeCondPart.gcsmVarName}->activate_deps(this, ${gcsr.id});"
+  /**
+   * Return a list of lines to create the activity tracking flags for the given placeholders.
+   * @param placeholders a list of placeholders to create flags for
+   * @param placeholderActivations placeholder -> (instance name ->  list of parts to activate when this placeholder changes)
+   * @param getSuffixed function returning the cached version of a placeholder
+   */
+  def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder],
+                         placeholderActivations: collection.Map[GCSMSignalPlaceholder, collection.Map[String, collection.Set[CondPart]]],
+                         getSuffixed: GCSMSignalPlaceholder => String)
+                        (implicit rn: Renamer): Iterable[String] = {
+    for {
+      (gcsr, consumerPartsPerInstance) <- selectFromMap(placeholders, placeholderActivations)
+      cp <- consumerPartsPerInstance.maxBy({ case (_, cps) => cps.size })._2.toSeq.sortBy(_.getEmitId)
+      //cp <- consumerParts.toSeq.sortBy(_.id)
+    } yield {
+      val condition = s"${rn.emit(gcsr.name)} != ${getSuffixed(gcsr)}"
+      s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.getEmitId}]] |= $condition;"
     }
   }
 
@@ -223,7 +236,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         writeLines(1, s"void ${genEvalFuncName(cp.id)}(${MakeCondPart.gcsmStructType} *${MakeCondPart.gcsmVarName}) {")
 
         if (!cp.alwaysActive)
-          writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagPrefix}${cp.id}] = false;")
+          writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.id}]] = false;")
 
         val dedupResult = condPartWorker.dedupResult.get
         implicit val rn = dedupResult.rn // overrides the renamer in this scope, which contains the GCSM overrides
@@ -249,11 +262,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
 
         writeLines(2, "// Triggers 1")
-        writeLines(2, genAllTriggersGcsm(gcsmOutputsPlaceholders, placeholderToCacheName))
+        writeLines(2, genAllTriggersGcsm(gcsmOutputsPlaceholders, dedupResult.placeholderActivations, placeholderToCacheName))
 
         writeLines(2, "// Triggers 2")
         val regUpdateNamesInPart = regUpdates.flatMap(findResultName(_).map(dedupResult.placeholderMap))
-        writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, { gcsr =>
+        writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, dedupResult.placeholderActivations, { gcsr =>
           rn.emit(gcsr.name + "$next")
         }))
 
@@ -446,31 +459,24 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           dedupResult.placeholderMap.toStream.sorted foreach {
             case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id}; // $origName")
           }
-          dedupResult.partAlias.head match {
-            case (_, partAlias) => partAlias.toStream.sorted.foreach { case (originalID, actualID) =>
-              gcsmStructCode.appendLine(s"  unsigned int ${MakeCondPart.gcsmPartFlagPrefix}$originalID;")
-            }
-          }
-          gcsmStructCode.appendLine(s"  std::array<std::vector<int>, ${dedupResult.placeholderMap.size}> placeholder_deps;")
-          gcsmStructCode.appendLine(s"  inline void activate_deps($topName *top, const int placeholder) {")
-          gcsmStructCode.appendLine("    for (int d : placeholder_deps[placeholder]) top->PARTflags[d] = true;")
-          gcsmStructCode.appendLine("  }")
+
+          gcsmStructCode.appendLine(s"  std::array<unsigned int, ${condPartWorker.getNumParts()}> ${MakeCondPart.gcsmPartFlagAliasPrefix};")
           gcsmStructCode.appendLine("};")
 
           // prepare the code for the structs
           dedupResult.instances foreach { gcsmInstanceName =>
             gcsmStructInit.appendLine(s"${MakeCondPart.gcsmStructType} ${condPartWorker.getInstanceMemberName(gcsmInstanceName)} = {") // eg `GCSMData instance_ModuleInstance0 = {`
+
+            // add placeholder instantiation
             dedupResult.placeholderMap.toStream.sorted foreach {
               case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
             }
-            dedupResult.partAlias(gcsmInstanceName).toStream.sorted.foreach {
-              case (originalID, actualID) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPartFlagPrefix}$originalID = $actualID,")
-            }
-            gcsmStructInit.appendLine("  .placeholder_deps = {{")
-            dedupResult.placeholderActivations(gcsmInstanceName).toSeq.sortBy(_._1) foreach {
-              case (gcsr, dependentParts) => gcsmStructInit.appendLine("    {" + dependentParts.map(_.id).mkString(", ") + s"}, // $gcsmInstanceName${gcsr.name}")
-            }
-            gcsmStructInit.appendLine("  }}")
+
+            // add part aliases
+            gcsmStructInit.append(s"  .${MakeCondPart.gcsmPartFlagAliasPrefix} = {")
+            gcsmStructInit.append(dedupResult.partAlias(gcsmInstanceName).mkString(", "))
+            gcsmStructInit.appendLine("}")
+
             gcsmStructInit.appendLine("};")
           }
         case None => // nothing to do
