@@ -11,11 +11,12 @@ import firrtl.ir._
 import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
+import _root_.logger.LazyLogging
 
 import scala.collection.mutable.ArrayBuffer
 
 
-class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
+class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   val tabs = "  "
   val flagVarName = "PARTflags"
   val actVarName = "ACTcounts"
@@ -275,7 +276,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
         // triggers for MemWrites - FIXME not yet done
 //        writeLines(2, "// Triggers Memory")
-//        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+        val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+        if (memWritesInPart.nonEmpty) logger.warn(s"found ${memWritesInPart.size} MemWrites which aren't yet handled")
 //        val memWriteTriggers = memWritesInPart flatMap { mw =>
 //          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
 //          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
@@ -327,7 +329,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
         val evalFuncId = cp.repeatedMainCp.map(_.id).getOrElse(cp.id)
 
-        if (!cp.alwaysActive)
+        if (!cp.alwaysActive && !opt.allCondPartsOn)
           writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
         else
           writeLines(2, s"${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
@@ -469,7 +471,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
 
             // add placeholder instantiation
             dedupResult.placeholderMap.toStream.sorted foreach {
-              case (origSignalName, gcsr) => gcsmStructInit.appendLine(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = &(${rn.emit(gcsmInstanceName + origSignalName)}),") // init each member of the struct
+              case (origSignalName, gcsr) =>
+                gcsmStructInit.append(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = ")
+                val signalName = gcsmInstanceName + origSignalName
+                sg.nameToID.get(signalName) match {
+                  case Some(id) if sg.outNeigh(id).nonEmpty => gcsmStructInit.appendLine(s"&(${rn.emit(signalName)}),")
+                  case _ => gcsmStructInit.appendLine(s"new ${genCppType(gcsr.tpe)}(), // dummy signal") // FIXME - this is not freed properly
+                }
             }
 
             // add part aliases

@@ -11,6 +11,7 @@ case class OptFlags(
     regUpdates: Boolean = true,
     conditionalMuxes: Boolean = true,
     useCondParts: Boolean = true,
+    allCondPartsOn: Boolean = false,
     writeHarness: Boolean = false,
     dumpLoFirrtl: Boolean = false,
     trackSigs: Boolean = false,
@@ -110,6 +111,12 @@ class ArgsParser {
     opt[String]("gcsm-module").action((x, c) => c.copy(
       gcsmModule = Some(x)
     )).text("Override the module used as the GCSM to be the one specified")
+
+    opt[Unit]("all-parts-on").action((_, c) => c.copy(
+      allCondPartsOn = true,
+      useCondParts = true,
+      partStats = true
+    )).text("Force all cond parts on (debugging)")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())
