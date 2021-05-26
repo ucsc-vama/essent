@@ -160,9 +160,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val firstInstanceNodes = ioForGcsm(chosenPartitioning._1).valuesIterator.flatten.toSet
     val gcsmExcludeNodes = sg.nodeRange().diff(firstInstanceNodes.toSeq) // all nodes except those of the chosen instance
     var ap = AcyclicPart(sg, excludedIDs ++ gcsmExcludeNodes)
-    //TopologicalSort(ap.mg) // TODO debug
     ap.partition(smallPartCutoff)
-    //TopologicalSort(ap.mg) // TODO debug
 
     // Partitioning phase 1.5: re-allow all the nodes so we can apply the partitioning
     ap = new AcyclicPart(ap.mg, excludedIDs)
@@ -190,11 +188,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       })
 
       if (nodesToMerge.size > 1) {
-        //ap.mg.saveAsGEXF("pre-merge.gexf", sg.tmpIdToString)
-        //val mergeResult = ap.perfomMergesIfPossible(nodesToMerge.toSeq) // nodesToMerge.toSeq
-        val mergeResult = ap.perfomMergesIfPossible(Seq(nodesToMerge)) // nodesToMerge.toSeq
-        //TopologicalSort(ap.mg) // TODO debug
-        //println(mergeResult)
+        val mergeResult = ap.perfomMergesIfPossible(Seq(nodesToMerge))
         assert(mergeResult.nonEmpty, "failed to merge!")
       }
 

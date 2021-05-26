@@ -33,7 +33,12 @@ class MergeGraph extends Graph with Serializable {
     nodeRange() foreach { id  => mergeIDToMembers(id) = Seq(id) }
   }
 
-  def applyInitialAssignments(initialAssignments: ArrayBuffer[NodeID]) {
+  /**
+   * Apply a given sequence of initial merges.
+   * @note This clears any existing merges!
+   * @param initialAssignments list of merges. the value at any given index determines what other index (or itself) to merge into
+   */
+  def applyInitialAssignments(initialAssignments: Iterable[NodeID]) {
     // FUTURE: support negative (unassigned) initial assignments
     idToMergeID.clear()
     mergeIDToMembers.clear()

@@ -47,7 +47,15 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: collection.Set[NodeID]) extend
 
   def coarsenWithMFFCs() {
     val mffcResults = MFFC(mg, excludeSet)
-    mg.applyInitialAssignments(mffcResults)
+
+    // adapted from MergeGraph.applyInitialAssignments
+    val asMap = Util.groupIndicesByValue(mffcResults).withDefaultValue(Nil)
+    asMap foreach { case (mergeID, members) =>
+      assert(members.contains(mergeID))
+      mg.mergeIDToMembers.getOrElseUpdate(mergeID, new ArrayBuffer[NodeID]()) // maybe create the entry if it doesn't already exist
+      mg.mergeGroups(mergeID, members diff Seq(mergeID))
+    }
+
     logger.info(s"  #mffcs found: ${mg.mergeIDToMembers.size - excludeSet.size}")
     logger.info(s"  largest mffc: ${(mg.mergeIDToMembers.values.map{_.size}).max}")
   }
@@ -155,7 +163,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: collection.Set[NodeID]) extend
 
   def partition(smallPartCutoff: Int = 20) {
     val toApply = Seq(
-      //("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
+      ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
       ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
       ("siblings", {ap: AcyclicPart => ap.mergeSmallSiblings(smallPartCutoff)}),
       ("small", {ap: AcyclicPart => ap.mergeSmallParts(smallPartCutoff, 0.5)}),

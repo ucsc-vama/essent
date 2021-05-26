@@ -11,9 +11,7 @@ object Util {
   /**
    * Given an array, returns a map of value to all indices that had that value (CAM-like)
    */
-  def groupIndicesByValue[T](a: ArrayBuffer[T]): Map[T, Seq[Int]] = {
-    a.zipWithIndex.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
-  }
+  def groupIndicesByValue[T](a: Iterable[T])(implicit tagT: ClassTag[T]): Map[T, Seq[Int]] = a.zipWithIndex.toMapOfLists[T, Int, Seq[Int]]
 
   def selectFromMap[K,V](selectors: Iterable[K], targetMap: collection.Map[K,V]): collection.Map[K,V] = {
     val selectorSet = selectors.toSet

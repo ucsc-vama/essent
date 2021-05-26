@@ -18,11 +18,15 @@ libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.3"
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "2.0.0-RC1"
 
+mainClass in (Compile, run) := Some("essent.Driver")
+
 // Assembly
 
 assemblyJarName in assembly := "essent.jar"
 
 assemblyOutputPath in assembly := file("./utils/bin/essent.jar")
+
+mainClass in (Compile, packageBin) := Some("essent.Driver")
 
 
 // Ignore disabled .scala files
