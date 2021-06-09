@@ -276,34 +276,20 @@ object Extract extends LazyLogging {
     }
 
     // designate the first instance the one whose logic will get reused
-    //val firstGcsmPrefix +: otherGcsmPrefixes = modulesToInstances(gcsmModName)
-    val gcsmMod = findModule(gcsmModName, circuit).asInstanceOf[Module]
     val gcsmInstances = modulesToInstances(gcsmModName).toSet
 
     // flatten the non-repeated modules
-    val allBodiesFlattened = allInstances flatMap {
+    val allBodiesFlattened = allInstances map {
+      case (modName, prefix) => (modName, prefix, gcsmInstances.find(prefix.startsWith)) // is this prefix matching one of the GCSM prefixes?
+    } flatMap {
       // the main GCSM to flatten
-      case (modName, prefix) if gcsmInstances.contains(prefix) => {
-//        def isConnectToSameInstance(that: Connect): Boolean = {
-//          that.loc.serialize match {
-//            case signalNamePat(thatPrefix, _) => {
-//              thatPrefix.startsWith(prefix) && thatPrefix.length > prefix.length
-//            } // should be connecting to something deeper than itself
-//          }
-//        }
-
+      case (modName, prefix, Some(gcsmPrefix)) =>
         // flatten and apply the annotation
-        val gcsmInfo = GCSMInfo(modName, prefix)
-        flattenModule(gcsmMod, prefix, circuit) map { _.mapInfo(i => gcsmInfo ++ i) }
-//          tmp match {
-//          case s: Connect if isConnectToSameInstance(s) => s.mapInfo(i => gcsmInfo ++ i) // if the source is not inside the same GCSM then connect it outside
-//          case s: Connect => s // the source is outside the GCSM
-//          case s => s.mapInfo(i => gcsmInfo ++ i)
-//        }}
-      }
+        val gcsmInfo = GCSMInfo(modName, gcsmPrefix)
+        findAndFlatten(modName, prefix, circuit) map { _.mapInfo(i => gcsmInfo ++ i) }
 
       // not in the GCSM, just flatten
-      case (modName, prefix) => findAndFlatten(modName, prefix, circuit)
+      case (modName, prefix, None) => findAndFlatten(modName, prefix, circuit)
     }
 
     /*

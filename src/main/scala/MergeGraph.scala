@@ -59,7 +59,7 @@ class MergeGraph extends Graph with Serializable {
     mergeNodesMutably(mergeDest, mergeSources)
   }
 
-  def nodeSize(n: NodeID) = mergeIDToMembers.getOrElse(n,Seq()).size
+  def nodeSize(n: NodeID) = mergeIDToMembers.getOrElse(n, Nil).size
 
   def iterGroups() = mergeIDToMembers
 

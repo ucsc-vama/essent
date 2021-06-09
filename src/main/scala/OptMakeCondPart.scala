@@ -98,41 +98,46 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
   }
 
-  def doOpt(smallPartCutoff: Int = 20) {
-    val excludedIDs = mutable.Set[NodeID]()
-    clumpByStmtType[Print]() foreach { excludedIDs += _ }
-    excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+  private def normalizeNodeName(prefix: String)(id: NodeID) = sg.idToName(id).stripPrefix(prefix)
 
+  private[essent] def findPartitionings() = {
     // analyze connectivity for the subgraphs corresponding to GCSM instances
     trait GCSMNodeType
     case object GCSMInputNode extends GCSMNodeType
     case object GCSMOutputNode extends GCSMNodeType
     case object GCSMInternalNode extends GCSMNodeType
     def isNodeExternalToPrefix(prefix: String)(nid: NodeID) = sg.idToTag(nid) != prefix
-    val ioForGcsm = sg.iterNodes.flatMap({
+    val instanceToNodes = sg.iterNodes.flatMap({
       case (id, inNeighs, outNeighs, prefix) if prefix.nonEmpty =>
         // find any nodes which have inputs and/or outputs outside the GCSM. these are the IO
-        def accept(tpe: GCSMNodeType) = prefix -> (tpe, id)
+        @inline def accept(tpe: GCSMNodeType) = prefix -> (tpe, id)
         val maybeIn       = if (inNeighs.exists(isNodeExternalToPrefix(prefix))) Some(accept(GCSMInputNode)) else None
         val maybeOut      = if (outNeighs.exists(isNodeExternalToPrefix(prefix))) Some(accept(GCSMOutputNode)) else None
         val maybeInternal = if (maybeIn.isEmpty && maybeOut.isEmpty) Some(accept(GCSMInternalNode)) else None
         Seq(maybeIn, maybeOut, maybeInternal).flatten
       case _ => Nil
-    }).toMapOfLists.mapValues({ x => // for convenience, make it so if there are no nodes of a given type then simply return empty set
+    })
+
+    val ioForGcsm = instanceToNodes.toMapOfLists.mapValues({ x => // for convenience, make it so if there are no nodes of a given type then simply return empty set
       val tmp: Map[GCSMNodeType, Set[NodeID]] = x.toMapOfLists // not sure how to do this without intermediate
       tmp.withDefaultValue(Set.empty)
     })
 
+    // map from node type to all IDs in GCSM of that type
+    val iosMapAllTmp: Map[GCSMNodeType, Set[NodeID]] = instanceToNodes.map(_._2).toMapOfLists
+    val iosMapAll = iosMapAllTmp.withDefaultValue(Set.empty)
+    val excludeNodes = iosMapAll(GCSMInternalNode) //++ (iosMapAll(GCSMOutputNode) -- iosMapAll(GCSMInputNode)) // don't take nodes that are internal, or other outputs which aren't inputs
+
     // determine constraints: the pairs of (output name -> input name) that are combinationally
     // reachable through the rest of the design, for each instance
-    def normalizeNodeName(prefix: String)(id: NodeID) = sg.idToName(id).stripPrefix(prefix)
     val constraints = ioForGcsm.map({
       case (prefix, iosMap) => {
-        val excludeNodes = iosMap(GCSMInternalNode) ++ (iosMap(GCSMOutputNode) -- iosMap(GCSMInputNode)) // don't take nodes that are internal, or other outputs which aren't inputs
+        //val excludeNodes = iosMap(GCSMInternalNode) ++ (iosMap(GCSMOutputNode) -- iosMap(GCSMInputNode)) // don't take nodes that are internal, or other outputs which aren't inputs
         val constrsForInstance = iosMap(GCSMOutputNode).flatMap({ outID =>
-          sg.findExtPaths(outID, iosMap(GCSMInputNode), excludeNodes).map(id => {
-            val srcName = normalizeNodeName(prefix)(outID)
-            val destName = normalizeNodeName(prefix)(id)
+          val srcName = normalizeNodeName(prefix)(outID)
+          sg.findExtPaths(outID, iosMapAll(GCSMInputNode), excludeNodes).map(id => {
+            // if the dest is a GCSM instance, strip its prefix (could be another instance)
+            val destName = normalizeNodeName(sg.idToTag(id))(id)
             srcName -> destName
           })
         }) // output name -> Set of reachable inputs in this GCSM
@@ -150,6 +155,16 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         val b = if (inst2Constrs.subsetOf(inst1Constrs)) Some(inst1 -> inst2) else None
         Seq(a, b).flatten
     }).toIterable.toMapOfLists // instanceName -> is compatible with these other instance partitionings
+
+    (ioForGcsm, compatiblePartitionings)
+  }
+
+  def doOpt(smallPartCutoff: Int = 20) {
+    val excludedIDs = mutable.Set[NodeID]()
+    clumpByStmtType[Print]() foreach { excludedIDs += _ }
+    excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+
+    val (ioForGcsm, compatiblePartitionings) = findPartitionings()
 
     // pick the partitioning with the largest number of compatible instances
     // FUTURE: if there are several groups of incompatible partitionings, handle multiple

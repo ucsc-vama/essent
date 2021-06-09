@@ -90,14 +90,10 @@ class Graph extends Serializable {
   /**
    * Similar to [[extPathExists]] except this returns all the reachable verticies from
    * the one source
-   * @param f1 Function to apply to the initial frontier (use case: ensure it goes outside the GCSM)
    * @return subset (or empty) of the destSet, which are reachable from the source
    */
   def findExtPaths(source: NodeID, destSet: Set[NodeID], excludeSet: Set[NodeID]): Set[NodeID] = {
-    val sourcesOnFringe = Set(source) filter {
-      id => outNeigh(id) exists { neigh => source != neigh }
-    }
-    val startingExtFrontier = sourcesOnFringe flatMap outNeigh diff destSet
+    val startingExtFrontier = outNeigh(source).toSet //diff destSet
     def traverseUntilIntersect(frontier: Set[NodeID], reached: Set[NodeID]): Set[NodeID] = {
       if (frontier.isEmpty) Set.empty
       else {
@@ -107,7 +103,7 @@ class Graph extends Serializable {
         foundPaths ++ traverseUntilIntersect(nextFrontier, reached ++ nextFrontier)
       }
     }
-    traverseUntilIntersect(startingExtFrontier, Set(source) ++ startingExtFrontier ++ excludeSet)
+    traverseUntilIntersect(startingExtFrontier, Set(source) ++ excludeSet)
   }
 
   def findExtPathsWithHistory(source: NodeID, destSet: Set[NodeID], excludeSet: Set[NodeID]): collection.Set[Seq[NodeID]] = {

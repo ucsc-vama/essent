@@ -181,7 +181,7 @@ class StatementGraph extends Graph with Serializable {
    * @param destFile output filename
    */
   override def saveAsGEXF(destFile: String): Unit = super.saveAsGEXF(destFile, {
-    case id => idToStmt(id).serialize
+    case id => idToStmt(id).mapInfo(_ => NoInfo).serialize // workaround
   })
 }
 

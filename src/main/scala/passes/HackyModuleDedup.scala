@@ -19,9 +19,11 @@ import java.security.MessageDigest
  */
 @Deprecated
 object HackyModuleDedup extends Pass with DependencyAPIMigration {
+  // only want the statement contents, sometimes the info is different between different copies of the same module
+  private def getStatementBytes(s: Statement) = s.mapInfo(_ => NoInfo).serialize.getBytes
   private def hashStatement(s: Statement) = BigInt(1,
     MessageDigest.getInstance("SHA-256")
-      .digest(s.serialize.getBytes))
+      .digest(getStatementBytes(s)))
 
   override def run(c: Circuit): Circuit = {
     // first find modules we want
