@@ -81,7 +81,7 @@ class Renamer {
     }
   }
 
-  def removeDots(s: String) = s.replace('.','$')
+  def removeDots(s: String): String = s.replace('.','$')
 
   // TODO - clean up these methods
   def decLocal(name: String): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == Local
@@ -131,4 +131,5 @@ sealed class OverridableMap[K, V](orig: collection.Map[K, V]) extends mutable.Ma
       (k, OverridableMap.this.apply(k))
     }
   }
+  override def size: Int = orig.size + overrides.size
 }

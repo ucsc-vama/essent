@@ -38,7 +38,7 @@ case class MemWrite(info: Info,
   def mapStmt(f: Statement => Statement): Statement = this
   def mapExpr(f: Expression => Expression): Statement = this.copy(wrEn = f(wrEn), wrMask = f(wrMask), wrAddr = f(wrAddr), wrData = f(wrData))
   def mapType(f: Type => Type): Statement = this
-  def mapString(f: String => String): Statement = this.copy(memName = f(memName), portName = f(portName))
+  def mapString(f: String => String): Statement = this.copy(portName = f(portName))
   def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
   def nodeName(): String = s"$memName.$portName"
   def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = {
@@ -50,13 +50,12 @@ case class MemWrite(info: Info,
   def foreachInfo(f: firrtl.ir.Info => Unit): Unit = f(info)
   def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = Unit
   def foreachString(f: String => Unit): Unit = {
-    f(memName)
     f(portName)
   }
   def foreachType(f: firrtl.ir.Type => Unit): Unit = Unit
 }
 
-case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[Statement]) extends Statement with HasInfo {
+case class CondMux(info: Info, name: String, mux: Mux, tWay: Seq[Statement], fWay: Seq[Statement]) extends Statement with HasInfo with HasName {
   def serialize: String =  "conditional mux"
   def mapStmt(f: Statement => Statement): Statement = this.copy(tWay = tWay map f, fWay = fWay map f)
   def mapExpr(f: Expression => Expression): Statement = this
@@ -95,7 +94,7 @@ case class CondPart(
    * The ID of the main partition, if defined by `repeatedMainCp` or else this ID.
    * @note Will not terminate if there's a loop formed by `repeatedMainCp`
    */
-  def getEmitId: Int = repeatedMainCp.map(_.getEmitId).getOrElse(id)
+  lazy val emitId: Int = repeatedMainCp.map(_.emitId).getOrElse(id)
 
   def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)
@@ -122,17 +121,16 @@ case class GCSMInfo(modName: String, instanceName: String) extends Info {
 
 /**
  * Alternative for a [[WRef]] to denote that it's part of the GCSM
- * @param id The placeholder number
  * @param name The name of the signal (with GCSM instance prefix removed)
  * @param tpe The type of the signal
  */
-case class GCSMSignalPlaceholder(id: Int, name: String, tpe: firrtl.ir.Type) extends Expression with Ordered[GCSMSignalPlaceholder] {
+case class GCSMSignalPlaceholder(name: String, tpe: firrtl.ir.Type) extends Expression with HasName with Ordered[GCSMSignalPlaceholder] {
   override def foreachExpr(f: Expression => Unit): Unit = Unit
   override def foreachType(f: Type => Unit): Unit = f(tpe)
   override def foreachWidth(f: Width => Unit): Unit = Unit
   override def mapExpr(f: Expression => Expression): Expression = this
   override def mapType(f: Type => Type): Expression = this.copy(tpe = f(tpe))
   override def mapWidth(f: Width => Width): Expression = this
-  override def serialize: String = s"GCSM Placeholder signal $id ($name): $tpe"
-  override def compare(that: GCSMSignalPlaceholder): Int = this.id compare that.id
+  override def serialize: String = s"GCSM Placeholder signal ($name): $tpe"
+  override def compare(that: GCSMSignalPlaceholder): Int = this.name compare that.name
 }

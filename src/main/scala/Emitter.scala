@@ -23,11 +23,25 @@ object Emitter {
 
   // Type Declaration & Initialization
   //----------------------------------------------------------------------------
-  def genCppType(tpe: Type) = tpe match {
+  @Deprecated // FIXME - prefer genCppDeclaration
+  def genCppType(tpe: Type): String = tpe match {
     case UIntType(IntWidth(w)) => s"UInt<$w>"
     case SIntType(IntWidth(w)) => s"SInt<$w>"
+    case VectorType(tpe1, depth) => s"${genCppType(tpe1)}/*[$depth]*/" // FIXME - this is gross and requires that whoever calls this also puts the depth after the name
     case AsyncResetType => "UInt<1>"
-    case UnknownType => "UnknownType" // TODO - delete this after fixing GCSMSignalReference
+    case _ => throw new Exception(s"No CPP type implemented for $tpe")
+  }
+
+  /**
+   * Output the C++ code needed to declare `name`. It includes the type from firrtl-sig.
+   * @param name a signal name. Empty string possible <b>except</b> when there's a memory type (vector)
+   * @param tpe the type for this signal
+   */
+  def genCppDeclaration(name: String, tpe: Type): String = tpe match {
+    case UIntType(IntWidth(w)) => s"UInt<$w> $name"
+    case SIntType(IntWidth(w)) => s"SInt<$w> $name"
+    case VectorType(tpe1, depth) => s"${genCppDeclaration("", tpe1)} $name[$depth]"
+    case AsyncResetType => s"UInt<1> $name"
     case _ => throw new Exception(s"No CPP type implemented for $tpe")
   }
 
@@ -78,7 +92,7 @@ object Emitter {
     val nodeReplaced = s match {
       case n: DefNode if (renames.contains(n.name)) => n.copy(name = renames(n.name))
       case cm: CondMux if (renames.contains(cm.name)) => cm.copy(name = renames(cm.name))
-      case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName))
+      //case mw: MemWrite if (renames.contains(mw.memName)) => mw.copy(memName = renames(mw.memName))
       case _ => s
     }
     nodeReplaced map replaceNamesStmt(renames) map replaceNamesExpr(renames)
@@ -134,8 +148,10 @@ object Emitter {
   def emitExpr(e: Expression)(implicit rn: Renamer = null): String = e match {
     case w: WRef => if (rn != null) rn.emit(w.name) else w.name
     case w: GCSMSignalPlaceholder => {
-      if (rn != null)
-        s"*(${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPlaceholderPrefix}${w.id})"
+      if (rn != null) w.tpe match {
+        case VectorType(innerType, _) => s"${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPlaceholderPrefix}${rn.removeDots(w.name)}" // memory doesn't need the dereference
+        case _ => s"(*(${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPlaceholderPrefix}${rn.removeDots(w.name)}))"
+      }
       else
         w.name
     } // TODO - clean this up
@@ -259,7 +275,7 @@ object Emitter {
       Seq(s"if (UNLIKELY(${emitExpr(st.en)})) {assert_triggered = true; assert_exit_code = ${st.ret};}")
     }
     case mw: MemWrite => {
-      Seq(s"if (update_registers && ${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}) ${mw.memName}[${emitExprWrap(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
+      Seq(s"if (update_registers && ${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}) ${rn.emit(mw.memName)}[${emitExprWrap(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
     case ru: RegUpdate => Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${emitExpr(ru.expr)};")
     case r: DefRegister => Seq()

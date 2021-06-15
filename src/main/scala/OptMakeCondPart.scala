@@ -222,7 +222,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
     // rewrite the main CondPart to make it general and accept the various connections
     val nameToPlaceholderMap = mutable.Map[String, GCSMSignalPlaceholder]()
-    var placeholderNum = 0
 
     def isUsefulRefKind(k: Kind) = k match {
       case NodeKind | PortKind | MemKind | RegKind | WireKind => true
@@ -230,11 +229,13 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }
     def getGcsmPlaceholder(name: String, tpe: firrtl.ir.Type): Option[GCSMSignalPlaceholder] = {
       val newName = name.stripPrefix(chosenPartitioning._1)
+      val newType = sg.nameToStmt.get(name) match { // need to handle memories specially
+        case Some(d: DefMemory) => VectorType(d.dataType, d.depth.toInt) // XXX - if the memory has more than Int.MAX_VALUE entries then we're in trouble here...
+        case _ => tpe // just use whatever type was already in the IR
+      }
       if (rn.nameToMeta.contains(name) && !rn.decLocal(name)) {
         Some(nameToPlaceholderMap.getOrElseUpdate(newName, {
-          val n = GCSMSignalPlaceholder(placeholderNum, newName, tpe)
-          placeholderNum += 1
-          n
+          GCSMSignalPlaceholder(newName, newType)
         }))
       } else None
     }
@@ -242,22 +243,25 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       case w: WRef if isUsefulRefKind(w.kind) => getGcsmPlaceholder(w.name, w.tpe)
       case w: WSubField => getGcsmPlaceholder(emitExpr(w)(null), w.tpe)
       case _ => None
-    }).getOrElse(expr.mapExpr(rewriteNames)) // TODO - ensure that no GCSM signals can slip thru
+    }).getOrElse(expr.mapExpr(rewriteNames))
+    // some IR nodes have a String but we want a placeholder there. this function creates a "name" to put there which is
+    //  actually just what would get emitted later on
+    def getEmitPlaceholderForName(origName: String, resultType: firrtl.ir.Type) =
+      getGcsmPlaceholder(origName, resultType)
+        .map(emitExpr(_)(null)) // this works since the placeholder goes into the outer map too
+        .getOrElse(origName)
 
     mainIDToRedundants foreach { case (macroID, redundants) =>
       sg.idToStmt(macroID) = sg.idToStmt(macroID) match {
-        case macroCP: CondPart => {
+        case macroCP: CondPart =>
           // rewrite statements
           val newCP = macroCP.mapStmt(stmt => {
             val resultType = findResultType(stmt)
             stmt.mapExpr(rewriteNames).mapString({ origName => // also rename the name, if there is one
-              if (resultType != UnknownType)
-                getGcsmPlaceholder(origName, resultType)
-                  .map(emitExpr(_)(null)) // this works since the placeholder goes into the outer map too
-                  .getOrElse(origName)
+              if (resultType != UnknownType) getEmitPlaceholderForName(origName, resultType)
               else origName // if there's no type then we can't have it
             })
-          }).asInstanceOf[CondPart]
+           }).asInstanceOf[CondPart]
 
           // update the redundant CPs
           redundants foreach { otherID =>
@@ -267,7 +271,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
           }
 
           newCP
-        }
         case s => s
       }
     }
@@ -305,7 +308,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         (otherInstance, parts) <- activatedPartsPerInstance
         if otherInstance != instanceWithMost // skip self
         // find the parts from the maximal set which are NOT in this smaller one
-        cp <- mostPartsActivated.filterNot(p => parts.exists(_.getEmitId == p.getEmitId))
+        cp <- mostPartsActivated.filterNot(p => parts.exists(_.emitId == p.emitId))
       } {
         parts += cp.copy(repeatedMainCp = Some(fakeCP)) // causes emitId to be set to this fake
       }
@@ -429,7 +432,7 @@ object MakeCondPart {
 
   val gcsmStructType = "GCSMData"
   val gcsmVarName = "gcsm"
-  val gcsmPlaceholderPrefix = "placeholder"
+  val gcsmPlaceholderPrefix = "placeholder_"
   val gcsmPartFlagAliasPrefix = "PARTAlias"
 
   def apply(ng: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type]) = {

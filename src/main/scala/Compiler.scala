@@ -135,9 +135,23 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   //----------------------------------------------------------------------------
   def genEvalFuncName(partID: Int): String = "EVAL_" + partID
 
-  def genDepPartTriggers(consumerParts: Seq[CondPart], condition: String): Seq[String] = {
-    consumerParts.sortBy(_.id).map { cp => s"$flagVarName[${cp.id}] |= $condition;" }
+  /**
+   * Construct the strings to trigger the consumer parts
+   * @param consumerParts which CondParts to maybe trigger
+   * @param condition a C++ string that would result in a boolean. By default just the CP's `emitId`
+   * @param partIndexFunc given a CondPart, the index into the `PARTflags` to activate. It's a C++ string resulting in an integer
+   */
+  def genDepPartTriggers(consumerParts: Seq[CondPart], condition: String, partIndexFunc: CondPart => String = (cp => cp.emitId.toString)): Seq[String] = {
+    consumerParts.sortBy(_.emitId).map { cp => s"$flagVarName[${partIndexFunc(cp)}] |= $condition;" }
   }
+
+  /**
+   * Convenience for [[genDepPartTriggers()]] for the GCSM, giving a specific `partIndexFunc`
+   */
+  def genDepPartTriggersGcsm(consumerParts: Seq[CondPart], condition: String): Seq[String] = genDepPartTriggers(
+    consumerParts, condition,
+    cp => s"${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.emitId}]"
+  )
 
   def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[CondPart]],
       suffix: String)(implicit rn: Renamer): Iterable[String] = {
@@ -149,21 +163,26 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   /**
    * Return a list of lines to create the activity tracking flags for the given placeholders.
    * @param placeholders a list of placeholders to create flags for
-   * @param placeholderActivations placeholder -> (instance name ->  list of parts to activate when this placeholder changes)
+   * @param placeholderActivations placeholder -> list of parts to activate when this placeholder changes
    * @param getSuffixed function returning the cached version of a placeholder
    */
   def genAllTriggersGcsm(placeholders: Iterable[GCSMSignalPlaceholder],
-                         placeholderActivations: collection.Map[GCSMSignalPlaceholder, collection.Map[String, collection.Set[CondPart]]],
+                         placeholderActivations: collection.Map[GCSMSignalPlaceholder, collection.Set[CondPart]],
                          getSuffixed: GCSMSignalPlaceholder => String)
                         (implicit rn: Renamer): Iterable[String] = {
-    for {
-      (gcsr, consumerPartsPerInstance) <- selectFromMap(placeholders, placeholderActivations)
-      cp <- consumerPartsPerInstance.maxBy({ case (_, cps) => cps.size })._2.toSeq.sortBy(_.getEmitId)
-      //cp <- consumerParts.toSeq.sortBy(_.id)
-    } yield {
+    selectFromMap(placeholders, placeholderActivations) flatMap { case (gcsr, consumerPartsPerInstance) =>
       val condition = s"${rn.emit(gcsr.name)} != ${getSuffixed(gcsr)}"
-      s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.getEmitId}]] |= $condition;"
+      genDepPartTriggersGcsm(consumerPartsPerInstance.toSeq, condition)
     }
+//    for {
+//      (gcsr, consumerPartsPerInstance) <- selectFromMap(placeholders, placeholderActivations)
+//      //cp <- consumerPartsPerInstance.toSeq.sortBy(_.emitId)
+//      //cp <- consumerParts.toSeq.sortBy(_.id)
+//    } yield {
+//      val condition = s"${rn.emit(gcsr.name)} != ${getSuffixed(gcsr)}"
+//      genDepPartTriggersGcsm(consumerPartsPerInstance.toSeq, condition)
+//      //s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.emitId}]] |= $condition;"
+//    }
   }
 
   def writeZoningPredecs(
@@ -226,7 +245,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggers = memWritesInPart flatMap { mw =>
           val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Nil), condition)
         }
         writeLines(2, memWriteTriggers)
 
@@ -253,7 +272,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         // cache output values
         def placeholderToCacheName(gcsr: GCSMSignalPlaceholder) = rn.removeDots(gcsr.name + condPartWorker.cacheSuffix)
         writeLines(2, gcsmOutputsPlaceholders map { gcsr =>
-          s"${genCppType(gcsr.tpe)} ${placeholderToCacheName(gcsr)} = ${rn.emit(gcsr.name)}; // placeholder #${gcsr.id}"
+          s"${genCppType(gcsr.tpe)} ${placeholderToCacheName(gcsr)} = ${rn.emit(gcsr.name)};"
         })
 
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
@@ -262,27 +281,29 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, "// No reg updates:")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
 
+        // get the placeholder activations for just the main instance
+        val placeholderActivationsForMain = dedupResult.placeholderActivations.mapValues(_(dedupResult.mainInstance))
+
         writeLines(2, "// Triggers 1")
-        writeLines(2, genAllTriggersGcsm(gcsmOutputsPlaceholders, dedupResult.placeholderActivations, placeholderToCacheName))
+        writeLines(2, genAllTriggersGcsm(gcsmOutputsPlaceholders, placeholderActivationsForMain, placeholderToCacheName))
 
         writeLines(2, "// Triggers 2")
         val regUpdateNamesInPart = regUpdates.flatMap(findResultName(_).map(dedupResult.placeholderMap))
-        writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, dedupResult.placeholderActivations, { gcsr =>
+        writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, placeholderActivationsForMain, { gcsr =>
           rn.emit(gcsr.name + "$next")
         }))
 
         writeLines(2, "// Reg updates:")
         writeLines(2, regUpdates flatMap emitStmt)
 
-        // triggers for MemWrites - FIXME not yet done
-//        writeLines(2, "// Triggers Memory")
+        // triggers for MemWrites
+        writeLines(2, "// Triggers Memory")
         val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
-        if (memWritesInPart.nonEmpty) logger.warn(s"found ${memWritesInPart.size} MemWrites which aren't yet handled")
-//        val memWriteTriggers = memWritesInPart flatMap { mw =>
-//          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-//          genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
-//        }
-//        writeLines(2, memWriteTriggers)
+        val memWriteTriggers = memWritesInPart flatMap { mw =>
+          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+          genDepPartTriggersGcsm(outputConsumers.getOrElse(mw.memName, Nil), condition)
+        }
+        writeLines(2, memWriteTriggers)
 
         writeLines(1, "}")
       }
@@ -459,7 +480,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           // write out the struct that gets passed to GCSM partitions
           gcsmStructCode.appendLine(s"struct ${MakeCondPart.gcsmStructType} {")
           dedupResult.placeholderMap.toStream.sorted foreach {
-            case (origName, gcsr) => gcsmStructCode.appendLine(s"  ${genCppType(gcsr.tpe)} *${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id}; // $origName")
+            case (origName, GCSMSignalPlaceholder(name1: String, tpeVec: VectorType)) => // memory
+              val name = "*" + MakeCondPart.gcsmPlaceholderPrefix + rn.removeDots(name1)
+              gcsmStructCode.appendLine(s"  ${genCppDeclaration(name, tpeVec.tpe)}; // memory") // only take the type inside the memory
+            case (origName, gcsr) =>
+              val name = "*" + MakeCondPart.gcsmPlaceholderPrefix + rn.removeDots(gcsr.name)
+              gcsmStructCode.appendLine(s"  ${genCppDeclaration(name, gcsr.tpe)};")
           }
 
           gcsmStructCode.appendLine(s"  std::array<unsigned int, ${condPartWorker.getNumParts()}> ${MakeCondPart.gcsmPartFlagAliasPrefix};")
@@ -472,9 +498,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
             // add placeholder instantiation
             dedupResult.placeholderMap.toStream.sorted foreach {
               case (origSignalName, gcsr) =>
-                gcsmStructInit.append(s"  .${MakeCondPart.gcsmPlaceholderPrefix + gcsr.id} = ")
+                gcsmStructInit.append(s"  .${MakeCondPart.gcsmPlaceholderPrefix + rn.removeDots(gcsr.name)} = ")
                 val signalName = gcsmInstanceName + origSignalName
                 sg.nameToID.get(signalName) match {
+                  case Some(id) if gcsr.tpe.isInstanceOf[VectorType] => // this is a memory
+                    gcsmStructInit.append(rn.emit(signalName))
+                    gcsmStructInit.appendLine(", // memory")
                   case Some(id) if sg.outNeigh(id).nonEmpty => gcsmStructInit.appendLine(s"&(${rn.emit(signalName)}),")
                   case _ => gcsmStructInit.appendLine(s"new ${genCppType(gcsr.tpe)}(), // dummy signal") // FIXME - this is not freed properly
                 }

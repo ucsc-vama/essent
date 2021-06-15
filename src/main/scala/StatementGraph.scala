@@ -8,7 +8,7 @@ import essent.ir._
 
 import java.io.File
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
-import scala.collection.{AbstractSeq, mutable}
+import scala.collection.{AbstractMap, AbstractSeq, mutable}
 import scala.reflect.ClassTag
 
 // Extends Graph to include more attributes per node
@@ -131,6 +131,18 @@ class StatementGraph extends Graph with Serializable {
   }
 
   def extractSourceIDs(e: Expression): Seq[NodeID] = findDependencesExpr(e) map nameToID
+
+  /**
+   * Convenience map to go from name directly to the corresponding statement.
+   */
+  val nameToStmt = new collection.Map[String, Statement] {
+    override def get(name: String) = nameToID.get(name).map(idToStmt)
+    override def iterator = nameToID.iterator.map({ case (name, id) => name -> idToStmt(id) })
+    override def size = nameToID.size
+    private def noModifications = throw new UnsupportedOperationException("you should not modify the graph through this interface")
+    override def +[V1 >: Statement](x: (String, V1)): collection.Map[String, V1] = noModifications
+    override def -(key: String): collection.Map[String, Statement] = noModifications
+  }
 
   // Mutation
   //----------------------------------------------------------------------------
