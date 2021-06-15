@@ -462,6 +462,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
 
     val sg = StatementGraph(circuit, opt.removeFlatConnects, opt.gcsmModule)
+    logger.info(
+      s"""SG Nodes: ${sg.numNodes}
+         |SG Edges: ${sg.numEdges()}
+         |""".stripMargin)
     //sg.saveAsGEXF(s"${circuit.main}.gexf")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
