@@ -441,7 +441,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
   def execute(circuit: Circuit) {
-    val opt = initialOpt.copy(conditionalMuxes = false, regUpdates = false) // FIXME
+    val opt = initialOpt//.copy(conditionalMuxes = false, regUpdates = false) // FIXME
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
     writeLines(0, s"#ifndef $headerGuardName")
