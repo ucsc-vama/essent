@@ -301,14 +301,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
     for ((gcsr, activatedPartsPerInstance) <- placeholderActivations) {
       // for this placeholder, find the instance having the most activated parts
-      val (instanceWithMost, mostPartsActivated) = activatedPartsPerInstance.maxBy({ case (_, activatedParts) => activatedParts.size })
+      val (instanceWithMost, mostPartsActivated) +: others = activatedPartsPerInstance.toSeq
+        .sortBy({ case (_, activatedParts) => activatedParts.size })(Ordering[Int].reverse)
 
       // now for all the other instances, insert activations to the fake signals for the ones this one is missing
       for {
-        (otherInstance, parts) <- activatedPartsPerInstance
-        if otherInstance != instanceWithMost // skip self
+        (otherInstance, parts) <- others
         // find the parts from the maximal set which are NOT in this smaller one
-        cp <- mostPartsActivated.filterNot(p => parts.exists(_.emitId == p.emitId))
+        cp <- mostPartsActivated.filterNot(p => parts.exists(_.mainId == p.mainId))
       } {
         parts += cp.copy(repeatedMainCp = Some(fakeCP)) // causes emitId to be set to this fake
       }
