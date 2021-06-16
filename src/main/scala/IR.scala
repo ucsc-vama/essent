@@ -94,7 +94,7 @@ case class CondPart(
    * The ID of the main partition, if defined by `repeatedMainCp` or else this ID.
    * @note Will not terminate if there's a loop formed by `repeatedMainCp`
    */
-  lazy val emitId: Int = repeatedMainCp.map(_.emitId).getOrElse(id)
+  lazy val mainId: Int = repeatedMainCp.map(_.mainId).getOrElse(id)
 
   def serialize: String = s"CondPart #$id"
   def mapStmt(f: Statement => Statement): Statement = this.copy(memberStmts = memberStmts map f)

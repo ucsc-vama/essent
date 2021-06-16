@@ -141,8 +141,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
    * @param condition a C++ string that would result in a boolean. By default just the CP's `emitId`
    * @param partIndexFunc given a CondPart, the index into the `PARTflags` to activate. It's a C++ string resulting in an integer
    */
-  def genDepPartTriggers(consumerParts: Seq[CondPart], condition: String, partIndexFunc: CondPart => String = (cp => cp.emitId.toString)): Seq[String] = {
-    consumerParts.sortBy(_.emitId).map { cp => s"$flagVarName[${partIndexFunc(cp)}] |= $condition;" }
+  def genDepPartTriggers(consumerParts: Seq[CondPart], condition: String, partIndexFunc: CondPart => String = (cp => cp.id.toString)): Seq[String] = {
+    consumerParts.sortBy(_.id).map { cp => s"$flagVarName[${partIndexFunc(cp)}] |= $condition;" }
   }
 
   /**
@@ -150,7 +150,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
    */
   def genDepPartTriggersGcsm(consumerParts: Seq[CondPart], condition: String): Seq[String] = genDepPartTriggers(
     consumerParts, condition,
-    cp => s"${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.emitId}]"
+    cp => s"${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.mainId}]"
   )
 
   def genAllTriggers(signalNames: Iterable[String], outputConsumers: collection.Map[String, Seq[CondPart]],
