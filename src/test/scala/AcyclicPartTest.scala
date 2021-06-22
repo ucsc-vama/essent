@@ -1,11 +1,10 @@
 package essent
 
 import collection.mutable.ArrayBuffer
+import org.scalatest.flatspec.AnyFlatSpec
 
-import org.scalatest._
 
-
-class AcyclicPartSpec extends FlatSpec {
+class AcyclicPartSpec extends AnyFlatSpec {
   // Test topology, arrows flow left to right
   // 0 - 1 - 2
   //       /

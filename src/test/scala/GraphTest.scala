@@ -1,8 +1,8 @@
 package essent
 
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
-class GraphSpec extends FlatSpec {
+class GraphSpec extends AnyFlatSpec {
   "A Graph" should "grow as necessary for new edges" in {
     val g = new Graph
     g.addEdge(0,1)
