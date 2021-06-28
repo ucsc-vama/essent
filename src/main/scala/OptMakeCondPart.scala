@@ -8,7 +8,7 @@ import essent.MakeCondPart.{CondPartIDMap, ConnectionMap}
 import essent.Util.{IterableUtils, MapUtils, StatementUtils}
 import essent.ir._
 import firrtl.ir._
-import firrtl.{Flow, Kind, MemKind, NodeKind, PortKind, RegKind, WRef, WSubAccess, WSubField, WireKind}
+import firrtl.{ExpKind, Flow, Kind, MemKind, NodeKind, PortKind, RegKind, WRef, WSubAccess, WSubField, WireKind}
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -156,7 +156,12 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         Seq(a, b).flatten
     }).toIterable.toMapOfLists // instanceName -> is compatible with these other instance partitionings
 
-    (ioForGcsm, compatiblePartitionings)
+    if (compatiblePartitionings.isEmpty) {
+      val instName = sg.idToTag.find(_.nonEmpty) // find out the wanted GCSM by looking for what must be the only one tagged
+      assert(instName.nonEmpty)
+      (ioForGcsm, Map(instName.get -> Set.empty))
+    } // in case there is no repetition
+    else (ioForGcsm, compatiblePartitionings)
   }
 
   def doOpt(smallPartCutoff: Int = 20) {
@@ -210,7 +215,10 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       // return the mapping
       macroID -> macroIDForRedundant
     }
-    val mainIDToRedundants = otherInstanceResults.toMapOfLists
+    // if there is no redundancy, just make empty sets for the other instances
+    val mainIDToRedundants =
+      if (otherInstanceResults.isEmpty) ap.iterParts().mapValues(_ => Seq.empty[NodeID])
+      else otherInstanceResults.toMapOfLists
 
     // Partitioning phase 2: all other nodes, except the GCSM ones
     ap = new AcyclicPart(ap.mg, excludedIDs ++ firstInstanceNodes ++ mainIDToRedundants.values.flatten)
@@ -224,7 +232,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val nameToPlaceholderMap = mutable.Map[String, GCSMSignalPlaceholder]()
 
     def isUsefulRefKind(k: Kind) = k match {
-      case NodeKind | PortKind | MemKind | RegKind | WireKind => true
+      case NodeKind | PortKind | MemKind | RegKind | WireKind | ExpKind => true
       case _ => false
     }
     def getGcsmPlaceholder(name: String, tpe: firrtl.ir.Type): Option[GCSMSignalPlaceholder] = {
@@ -280,25 +288,21 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     newRn.addGcsmSignals(nameToPlaceholderMap.values)
 
     // find which other CPs the placeholders connect to
-    val outputConsumers = getPartInputMap()
-    val placeholderActivations: Map[GCSMSignalPlaceholder, Map[String, mutable.Set[CondPart]]] = (for {
-      instanceName <- compatibleInstances
-      (newName, gcsr) <- nameToPlaceholderMap.iterator
-      consumerForName <- outputConsumers.getOrElse(instanceName + newName, Nil)
-    } yield {
-      gcsr -> (instanceName -> consumerForName)
-    }).toMapOfLists.mapValues(_.toMapOfLists)
+    def placeholderActivations: Map[GCSMSignalPlaceholder, Map[String, Set[CondPart]]] = {
+      val outputConsumers = getPartInputMap()
+      (for {
+        instanceName <- compatibleInstances
+        (newName, gcsr) <- nameToPlaceholderMap.iterator
+        consumerForName <- outputConsumers.getOrElse(instanceName + newName, Nil)
+      } yield {
+        gcsr -> (instanceName -> consumerForName)
+      }).toMapOfLists.mapValues(_.toMapOfLists)
+    }
 
     // create a fake partition for the case that one instance's partition triggers more external signals
-    // than other ones. it won't be valid which is fine
-    val fakeCP = CondPart(
-      NoInfo,
-      getNumParts(), // Number is simply the next available one
-      false, Set.empty, Nil, Map.empty
-    )
-    val fakeCPNodeID = sg.addStatementNode("..FAKEPART", Nil, fakeCP)
-    sg.validNodes -= fakeCPNodeID
-
+    // than other ones
+    val newPartsAndInputs = mutable.Buffer[mutable.Set[String]]() // list of inputs for eventual new CondParts
+    val fakeCPIds = mutable.Map[String, (String, mutable.Set[Int])]() // signal going to a fake CP -> (instance name of the signal, IDs it would have activated)
     for ((gcsr, activatedPartsPerInstance) <- placeholderActivations) {
       // for this placeholder, find the instance having the most activated parts
       val (instanceWithMost, mostPartsActivated) +: others = activatedPartsPerInstance.toSeq
@@ -307,14 +311,47 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       // now for all the other instances, insert activations to the fake signals for the ones this one is missing
       for {
         (otherInstance, parts) <- others
-        // find the parts from the maximal set which are NOT in this smaller one
-        cp <- mostPartsActivated.filterNot(p => parts.exists(_.mainId == p.mainId))
+        //_ <- parts.size until mostPartsActivated.size // need to create activations for each missing activation - could be 0 if there's nothing missing for this GCSR
+        missingPartId <- mostPartsActivated.map(_.mainId).diff(parts.map(_.mainId)) // these are the partitions that will be aliased to a fake one
       } {
-        parts += cp.copy(repeatedMainCp = Some(fakeCP)) // causes emitId to be set to this fake
+        // find the first set that doesn't yet contain this signal, and insert it
+        val fqSignal = gcsr.getFullyQualifiedName(otherInstance)
+        if (!newPartsAndInputs.exists(set => set.add(fqSignal))) {
+          // all existing sets already contain this signal, add a new set so we can repeat it again
+          newPartsAndInputs += mutable.Set(fqSignal)
+        }
+
+        // add the alias
+        fakeCPIds
+          .getOrElseUpdate(fqSignal, (otherInstance, mutable.Set[Int]()))
+          ._2 += missingPartId
       }
     }
 
+    // for each of the new parts, create a fake CP to consume the signals we found above
+    val partAliasFromFakes = mutable.Map[String, mutable.Map[Int, Int]]().withDefaultValue(mutable.Map[Int, Int]()) // instance -> (main CP -> actual CP)
+    for (inputs <- newPartsAndInputs) {
+      val fakeCP = CondPart(
+        NoInfo,
+        getNumParts(), // Number is simply the next available one
+        alwaysActive = true, inputs.toSet, Nil, Map.empty
+      )
+      val nodeName = "#FAKEPART" + inputs.mkString(",")
+      val fakeCPNodeID = sg.addStatementNode(nodeName, Nil, fakeCP)
+      inputs.foreach(name => {
+        sg.addEdge(name, nodeName) // add an edge since we're technically reaching the fake CP
+
+        val (instance, mainIds) = fakeCPIds(name)
+        val mapForInstance = partAliasFromFakes
+          .getOrElseUpdate(instance, mutable.Map[Int, Int]())
+        mainIds.foreach(mapForInstance.put(_, fakeCP.id))
+      })
+
+      //sg.validNodes -= fakeCPNodeID
+    }
+
     // find the aliased part ID for each redundant instance
+    val numCPs = getNumParts()
     val partAlias = mainIDToRedundants.toStream.flatMap({ case (mainID, redundants) =>
       def apply(id: NodeID) = sg.idToStmt(mainID) match {
         case mainCP: CondPart => {
@@ -324,10 +361,10 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         case _ => None
       }
       redundants.flatMap(apply) ++ apply(mainID).toList // the last part is to get the self mapping for the main instance too
-    }).toMapOfLists.mapValues(partial => {
+    }).toMapOfLists.map({ case (instanceName, partial) =>
       // this map is only filled in for the redundant CPs, but we want the complete mapping
-      val partialMap = partial.toMap
-      (0 until cpStmts.size).map(idx => partialMap.getOrElse(idx, idx))
+      val partialMap = partAliasFromFakes(instanceName) ++ partial.toMap
+      instanceName -> (0 until numCPs).map(idx => partialMap.getOrElse(idx, idx))
     })
 
     _dedupResult = Some(DedupResult(

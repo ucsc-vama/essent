@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # This may be a brittle way to find $(root_dir)/utils/bin, is there a better way?
-JAVA_FLAGS="-Xmx4G"
+#JAVA_FLAGS="-Xmx100G -Xms10G  -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
 path=`dirname "$0"`
-cmd="java ${JAVA_FLAGS} -cp ${path}/essent.jar essent.Driver ${@:1}"
-eval $cmd
+exec java ${JAVA_FLAGS} -cp ${path}/essent.jar essent.Driver ${@:1}

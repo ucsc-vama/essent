@@ -286,7 +286,10 @@ object Extract extends LazyLogging {
       case (modName, prefix, Some(gcsmPrefix)) =>
         // flatten and apply the annotation
         val gcsmInfo = GCSMInfo(modName, gcsmPrefix)
-        findAndFlatten(modName, prefix, circuit) map { _.mapInfo(i => gcsmInfo ++ i) }
+        findAndFlatten(modName, prefix, circuit) map {
+          case p: Print => p // these are treated specially in MakeCondPart
+          case s => s.mapInfo(i => gcsmInfo ++ i)
+        }
 
       // not in the GCSM, just flatten
       case (modName, prefix, None) => findAndFlatten(modName, prefix, circuit)

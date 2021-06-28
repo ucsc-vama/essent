@@ -92,7 +92,8 @@ class Renamer {
 
   def isDec(name: String, decType: SigDecType): Boolean = nameToMeta.contains(name) && nameToMeta(name).decType == decType
 
-  def emit(canonicalName: String): String = nameToEmitName(canonicalName)
+  def emit(canonicalName: String): String =
+    nameToEmitName(canonicalName)
 
   def getSigType(name: String): firrtl.ir.Type = nameToMeta(name).sigType
 }

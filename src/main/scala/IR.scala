@@ -16,7 +16,7 @@ case class RegUpdate(info: Info, regRef: Expression, expr: Expression) extends S
   def mapExpr(f: Expression => Expression): Statement = this.copy(regRef = f(regRef), expr = f(expr))
   def mapType(f: Type => Type): Statement = this
   def mapString(f: String => String): Statement = this
-  def mapInfo(f: Info => Info): Statement = this
+  def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
   def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = {
     f(regRef)
     f(expr)
@@ -38,7 +38,7 @@ case class MemWrite(info: Info,
   def mapStmt(f: Statement => Statement): Statement = this
   def mapExpr(f: Expression => Expression): Statement = this.copy(wrEn = f(wrEn), wrMask = f(wrMask), wrAddr = f(wrAddr), wrData = f(wrData))
   def mapType(f: Type => Type): Statement = this
-  def mapString(f: String => String): Statement = this.copy(portName = f(portName))
+  def mapString(f: String => String): Statement = this.copy(memName = f(memName))
   def mapInfo(f: Info => Info): Statement = this.copy(info = f(info))
   def nodeName(): String = s"$memName.$portName"
   def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = {
@@ -133,4 +133,9 @@ case class GCSMSignalPlaceholder(name: String, tpe: firrtl.ir.Type) extends Expr
   override def mapWidth(f: Width => Width): Expression = this
   override def serialize: String = s"GCSM Placeholder signal ($name): $tpe"
   override def compare(that: GCSMSignalPlaceholder): Int = this.name compare that.name
+
+  /**
+   * Get the fully-qualified signal name given some prefix
+   */
+  def getFullyQualifiedName(prefix: String): String = prefix + name
 }

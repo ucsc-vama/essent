@@ -215,9 +215,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     sg.stmtsOrdered foreach {
       case cp: CondPart if cp.gcsm.isEmpty => { // not a GCSM part
         writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
-        if (!cp.alwaysActive) writeLines(2, s"$flagVarName[${cp.id}] = false;")
+        if (!cp.alwaysActive) writeLines(2, s"$flagVarName[${cp.mainId}] = false;")
 
-        if (opt.trackParts) writeLines(2, s"$actVarName[${cp.id}]++;")
+        if (opt.trackParts) writeLines(2, s"$actVarName[${cp.mainId}]++;")
 
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
@@ -253,10 +253,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }
       case cp: CondPart if cp.gcsm.nonEmpty && cp.repeatedMainCp.isEmpty => { // CP for main instance of GCSM
         writeLines(1, s"// GCSM partition: instance ${cp.gcsm.get.instanceName} of ${cp.gcsm.get.modName}")
-        writeLines(1, s"void ${genEvalFuncName(cp.id)}(${MakeCondPart.gcsmStructType} *${MakeCondPart.gcsmVarName}) {")
+        writeLines(1, s"void ${genEvalFuncName(cp.mainId)}(${MakeCondPart.gcsmStructType} *${MakeCondPart.gcsmVarName}) {")
 
         if (!cp.alwaysActive)
-          writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.id}]] = false;")
+          writeLines(2, s"$flagVarName[${MakeCondPart.gcsmVarName}->${MakeCondPart.gcsmPartFlagAliasPrefix}[${cp.mainId}]] = false;")
 
         val dedupResult = condPartWorker.dedupResult.get
         implicit val rn = dedupResult.rn // overrides the renamer in this scope, which contains the GCSM overrides
@@ -290,7 +290,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, "// Triggers 2")
         val regUpdateNamesInPart = regUpdates.flatMap(findResultName(_).map(dedupResult.placeholderMap))
         writeLines(2, genAllTriggersGcsm(regUpdateNamesInPart, placeholderActivationsForMain, { gcsr =>
-          rn.emit(gcsr.name + "$next")
+          rn.nameToEmitName.get(gcsr.name + "$next") match {
+            case Some(emitName) => emitName
+            case None => rn.emit(dedupResult.mainInstance + gcsr.name + "$next") // FIXME - this is kind of kludgy
+          }
+          //rn.removeDots(gcsr.name + "$next")
         }))
 
         writeLines(2, "// Reg updates:")
@@ -348,12 +352,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           case None => ""
         }
 
-        val evalFuncId = cp.repeatedMainCp.map(_.id).getOrElse(cp.id)
-
         if (!cp.alwaysActive && !opt.allCondPartsOn)
-          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
+          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.mainId)}($maybeGcsmInstanceVar);")
         else
-          writeLines(2, s"${genEvalFuncName(evalFuncId)}($maybeGcsmInstanceVar);")
+          writeLines(2, s"${genEvalFuncName(cp.mainId)}($maybeGcsmInstanceVar);")
       }
       case stmt => writeLines(2, emitStmt(stmt))
     }
