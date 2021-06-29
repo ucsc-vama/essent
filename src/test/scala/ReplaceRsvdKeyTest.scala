@@ -7,9 +7,9 @@ import firrtl.options.Dependency
 import java.io.{File, FileWriter}
 import scala.io.Source
 
-class ReplaceRsvdKeytest extends FlatSpec{
+class ReplaceRsvdKeyTest extends FlatSpec{
    "Mypass" should "Replace all reserve keyword" in {
-     val sourceReader = Source.fromURL(getClass.getResource("/Testrsvd.fir"))
+     val sourceReader = Source.fromURL(getClass.getResource("/ReplacedRsvdKey.fir"))
      val circuit = firrtl.Parser.parse(sourceReader.getLines, firrtl.Parser.IgnoreInfo)
      sourceReader.close()
 
@@ -21,7 +21,7 @@ class ReplaceRsvdKeytest extends FlatSpec{
      val debugWriter = new FileWriter(tmpfile)
      debugWriter.write(resultState.circuit.serialize)
      debugWriter.close()
-     val sourceReader1 = Source.fromURL(getClass.getResource("/Testrsvd_correct.fir"))
+     val sourceReader1 = Source.fromURL(getClass.getResource("/ReplacedRsvdKey_correct.fir"))
      val sourceReader2 = Source.fromFile(tmpfile)
     // assert(sourceReader1.getLines().sameElements(sourceReader2.getLines()))
     // tmpfile.delete()
