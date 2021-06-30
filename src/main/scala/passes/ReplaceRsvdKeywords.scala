@@ -49,11 +49,6 @@ object ReplaceRsvdKeywords extends Pass {
     case _ => e
   }
 
-  private def analyzeIsVar(iv: IsVar):IsVar = iv match {
-    case vb: VarBound => vb.copy(name = maybeRename(vb.name))
-    case vw: VarWidth => vw.copy(name = maybeRename(vw.name))
-  }
-
   private def analyzeStatement(s: Statement): Statement = s match {
     case d: DefNode => d.copy(name = maybeRename(d.name)).mapExpr(analyzeExpression)
     case c: Connect => c.mapExpr(analyzeExpression)
@@ -67,19 +62,6 @@ object ReplaceRsvdKeywords extends Pass {
     case _ => s
   }
 
-  private def analyzeNode(f: FirrtlNode): FirrtlNode = f match {
-    case fi: Field => fi.copy(name = maybeRename(fi.name))
-    case p: Port => p.copy(name = maybeRename(p.name))
-    case _ => f
-  }
-
-  private def analyzeParam(pa: Param): Param = pa match {
-    case dp: DoubleParam => dp.copy(name = maybeRename(dp.name))
-    case pa: IntParam => pa.copy(name = maybeRename(pa.name))
-    case rsp: RawStringParam => rsp.copy(name = maybeRename(rsp.name))
-    case sp: StringParam => sp.copy(name = maybeRename(sp.name))
-    case _ => pa
-  }
   override def run(c: Circuit): Circuit = c.mapModule {
     //Module(info: Info, name: String, ports: Seq[Port], body: Statement)
     case Module(info, name, ports, body) =>
