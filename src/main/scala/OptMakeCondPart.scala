@@ -216,8 +216,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       macroID -> macroIDForRedundant
     }
     // if there is no redundancy, just make empty sets for the other instances
-    val mainIDToRedundants =
-      if (otherInstanceResults.isEmpty) ap.iterParts().mapValues(_ => Seq.empty[NodeID])
+    val mainIDToRedundants: Map[NodeID, Seq[NodeID]] =
+      if (otherInstanceResults.isEmpty) firstInstanceNodes.map(x => x -> Seq.empty[NodeID]).toMap
       else otherInstanceResults.toMapOfLists
 
     // Partitioning phase 2: all other nodes, except the GCSM ones
@@ -460,6 +460,16 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
      * The main instance name
      */
     val mainInstance = instances.head
+
+    /**
+     * For each placeholder, find the maximum number of partitions that would need to be activated if the former is changed
+     */
+    val placeholderActivationSize = {
+      placeholderActivations.mapValues(activations => {
+        activations.toSeq.maxBy(_._2.size)(Ordering[Int].reverse) // find the instance for which this placeholder changing would activate the most partitions
+          ._2.size // and get the number of partitions it would activate
+      })
+    }
   }
 }
 
