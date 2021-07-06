@@ -1,11 +1,10 @@
 package essent.passes
 
-import firrtl.{Transform, WRef}
-import firrtl.constraint.IsVar
+import firrtl.{DependencyAPIMigration, Transform, WRef}
 import firrtl.ir._
 import firrtl.passes.Pass
 
-object ReplaceRsvdKeywords extends Pass {
+object ReplaceRsvdKeywords extends Pass with DependencyAPIMigration {
   val reservedWords = Set("asm" ,	"else",	"new",	"this",
     "auto",	"enum",	"operator",	"throw",
     "bool",	"explicit",	"private",	"true",
