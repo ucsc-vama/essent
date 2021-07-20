@@ -407,7 +407,8 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.SplitRegUpdates),
       Dependency(essent.passes.FixMulResultWidth),
       Dependency(essent.passes.DistinctTypeInstNames),
-      Dependency(essent.passes.RemoveAsAsyncReset)
+      Dependency(essent.passes.RemoveAsAsyncReset),
+      Dependency(essent.passes.ReplaceRsvdKeywords)
     )
 
   def compileAndEmit(circuit: Circuit) {
