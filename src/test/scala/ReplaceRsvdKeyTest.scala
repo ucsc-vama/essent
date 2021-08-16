@@ -15,15 +15,10 @@ class ReplaceRsvdKeyTest extends FlatSpec{
      val deps = firrtl.stage.Forms.LowFormOptimized ++ Seq(Dependency(ReplaceRsvdKeywords))
      val firrtlCompiler = new firrtl.stage.transforms.Compiler(deps)
      val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
-    // val line1_char = resultState.circuit.serialize
-    // for(line1 <- line1_char){
-    //   println(line1)
-    // }
-    val CorrectReader = Source.fromURL(getClass.getResource("/ReplacedRsvdKey_correct.fir"))
-    for(char_corr <- CorrectReader.getLines.toArray){
-       assert(resultState.circuit.serialize.contains(char_corr))
-     }
-     }
+     val CorrectReader = Source.fromURL(getClass.getResource("/ReplacedRsvdKey_correct.fir"))
+     val correctString = CorrectReader.getLines.mkString("\n")
+     assert(correctString == resultState.circuit.serialize)
+    }
 }
 
 

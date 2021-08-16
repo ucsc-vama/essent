@@ -6,7 +6,7 @@ circuit Testrsvd :
     output out_c : UInt<1>
     output out_d : UInt<1>
     output out_e : UInt<1>
-
+  
     reg my_reg : UInt<1>, clk with :
       reset => (UInt<1>("h0"), my_reg)
     node _GEN_0 = and(case$, in_b)
@@ -27,7 +27,7 @@ circuit Testrsvd :
     output out_4 : UInt<1>
     output out_5 : UInt<1>
     output out_6 : UInt<1>
-
+  
     inst sub_inst1 of Break
     inst sub_inst2 of Break
     out_2 <= sub_inst1.out_c
@@ -41,3 +41,4 @@ circuit Testrsvd :
     sub_inst2.clk <= clk
     sub_inst2.case <= out_2
     sub_inst2.in_b <= sub_inst1.out_d
+
