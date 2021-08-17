@@ -174,6 +174,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
           writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
           writeLines(2, s"$actVarName[${cp.id}]++;")
+
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
@@ -347,7 +348,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
     // if (opt.trackParts)
     //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
     // if (opt.trackParts || opt.trackSigs)
-    //   emitJsonWriter(opt, condPartWorker.getNumParts())
+   //    emitJsonWriter(opt, condPartWorker.getNumParts())
     // if (opt.partStats)
     //   sg.dumpPartInfoToJson(opt, sigNameToID)
     // if (opt.trackExts)
@@ -407,7 +408,8 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.SplitRegUpdates),
       Dependency(essent.passes.FixMulResultWidth),
       Dependency(essent.passes.DistinctTypeInstNames),
-      Dependency(essent.passes.RemoveAsAsyncReset)
+      Dependency(essent.passes.RemoveAsAsyncReset),
+      Dependency(essent.passes.ReplaceRsvdKeywords)
     )
 
   def compileAndEmit(circuit: Circuit) {
