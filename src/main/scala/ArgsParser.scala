@@ -17,7 +17,7 @@ case class OptFlags(
     trackParts: Boolean = false,
     trackExts: Boolean = false,
     partStats: Boolean = false,
-    partCutoff: Int = 20,
+    partCutoff: Int = 8,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
