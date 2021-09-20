@@ -149,6 +149,9 @@ class StatementGraph extends Graph {
   def numValidNodes() = validNodes.size
 
   def numNodeRefs() = idToName.size
+
+  def makeStatsString() =
+    s"Graph has $numNodes nodes ($numValidNodes valid) and $numEdges edges"
 }
 
 

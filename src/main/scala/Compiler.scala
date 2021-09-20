@@ -12,8 +12,10 @@ import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 
+import logger._
 
-class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
+
+class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   val tabs = "  "
   val flagVarName = "PARTflags"
   val actVarName = "ACTcounts"
@@ -333,6 +335,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) {
       writeLines(0, "uint64_t cycle_count = 0;")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
+    logger.info(sg.makeStatsString)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
