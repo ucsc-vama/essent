@@ -11,7 +11,7 @@ import firrtl.passes._
 import firrtl.Utils._
 
 
-object SplitRegUpdates extends Pass with DependencyAPIMigration {
+object SplitRegUpdates extends Pass {
   def desc = "Appends $next to the name of any reg being assigned to"
 
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1), Dependency(essent.passes.ReplaceAsyncRegs) , Dependency(essent.passes.ReplaceRsvdKeywords))

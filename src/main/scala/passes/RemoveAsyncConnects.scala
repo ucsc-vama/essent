@@ -8,7 +8,7 @@ import firrtl.passes._
 import firrtl.PrimOps.AsAsyncReset
 
 
-object RemoveAsAsyncReset extends Pass with DependencyAPIMigration {
+object RemoveAsAsyncReset extends Pass {
   def desc = "Removes AsAsyncReset expressions since async indistinguishable with cycle-level timing"
   //  TODO: remove when multiple clocks supported
 

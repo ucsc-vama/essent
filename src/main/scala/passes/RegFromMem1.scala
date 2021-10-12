@@ -10,7 +10,7 @@ import firrtl.passes._
 import firrtl.Utils._
 
 
-object RegFromMem1 extends Pass with DependencyAPIMigration {
+object RegFromMem1 extends Pass {
   def desc = "Replaces single-element mems with a register"
 
   override def prerequisites = Seq(Dependency(essent.passes.NoClockConnects))

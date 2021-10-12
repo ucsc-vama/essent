@@ -17,7 +17,7 @@ import firrtl.Utils._
 // - Pass 4) inserts new MemWrite FIRRTL nodes
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
 
-object FactorMemWrites extends Pass with DependencyAPIMigration {
+object FactorMemWrites extends Pass {
   def desc = "Transforms mem write ports into MemWrite for easier emission"
 
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))

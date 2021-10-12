@@ -4,7 +4,7 @@ import firrtl.{DependencyAPIMigration, Transform, WRef}
 import firrtl.ir._
 import firrtl.passes.Pass
 
-object ReplaceRsvdKeywords extends Pass with DependencyAPIMigration {
+object ReplaceRsvdKeywords extends Pass {
   val reservedWords = Set("asm" ,	"else",	"new",	"this",
     "auto",	"enum",	"operator",	"throw",
     "bool",	"explicit",	"private",	"true",

@@ -20,7 +20,7 @@ import firrtl.Utils._
 // FUTURE: consider merging internal passes to speed things up (4 passes -> 2)
 // FUTURE: should respect enable for read ports
 
-object FactorMemReads extends Pass with DependencyAPIMigration {
+object FactorMemReads extends Pass {
   def desc = "Transforms mem read ports into SubAccesses for easier emission"
 
   override def prerequisites = Seq(Dependency(essent.passes.RegFromMem1))

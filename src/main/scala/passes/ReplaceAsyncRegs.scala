@@ -5,7 +5,7 @@ import firrtl.ir._
 import firrtl.passes._
 
 
-object ReplaceAsyncRegs extends Pass with DependencyAPIMigration {
+object ReplaceAsyncRegs extends Pass {
   def desc = "Replaces AsyncResetReg (black-box) with non-external module that behaves the same"
   // this pass is inspired by firebox/sim/src/main/scala/passes/AsyncResetReg.scala
 

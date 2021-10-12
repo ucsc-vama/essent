@@ -7,7 +7,7 @@ import firrtl.Mappers._
 import firrtl.passes._
 
 
-object FixMulResultWidth extends Pass with DependencyAPIMigration {
+object FixMulResultWidth extends Pass {
   def desc = "Inserts tail operators on mul operators if result width is too small"
   // FUTURE: is this a bug in firrtl width inference?
 

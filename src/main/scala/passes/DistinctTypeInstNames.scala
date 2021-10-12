@@ -6,7 +6,7 @@ import firrtl.Mappers._
 import firrtl.passes._
 
 
-object DistinctTypeInstNames extends Pass with DependencyAPIMigration {
+object DistinctTypeInstNames extends Pass {
   def desc = "Ensures modules are instantiations don't have same name as type"
   val suffix = "$$inst"
 

@@ -8,7 +8,7 @@ import firrtl.passes._
 import firrtl.Utils._
 
 
-object NoClockConnects extends Pass with DependencyAPIMigration {
+object NoClockConnects extends Pass {
   def desc = "Removes Connects or DefNodes to anything that is ClockType"
   // FUTURE: remove this pass and properly support multi-clock
 
