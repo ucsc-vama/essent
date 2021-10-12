@@ -2,7 +2,7 @@ package essent
 
 import collection.mutable.ArrayBuffer
 
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
 // Test topology, arrows flow left to right
 // 0 - 1 - 2
@@ -11,7 +11,7 @@ import org.scalatest._
 //
 // 6 - 7
 
-class MFFCSpec extends FlatSpec {
+class MFFCSpec extends AnyFlatSpec {
   def buildStartingGraph() = {
     val g = new Graph()
     g.addEdge(0,1)

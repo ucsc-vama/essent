@@ -2,9 +2,9 @@ package essent
 
 import firrtl.ir._
 
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
-class StatementGraphSpec extends FlatSpec {
+class StatementGraphSpec extends AnyFlatSpec {
   "A NamedGraph" should "grow as necessary for new edges" in {
     val sg = new StatementGraph
     sg.addEdge("alpha", "beta")

@@ -1,5 +1,5 @@
 package essent
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import essent.passes.ReplaceRsvdKeywords
 import firrtl.CircuitState
 import firrtl.options.Dependency
@@ -7,7 +7,7 @@ import firrtl.options.Dependency
 import java.io.{File, FileWriter}
 import scala.io.Source
 
-class ReplaceRsvdKeyTest extends FlatSpec{
+class ReplaceRsvdKeyTest extends AnyFlatSpec{
    "Mypass" should "Replace all reserve keyword" in {
      val sourceReader = Source.fromURL(getClass.getResource("/ReplacedRsvdKey.fir"))
      val circuit = firrtl.Parser.parse(sourceReader.getLines, firrtl.Parser.IgnoreInfo)
