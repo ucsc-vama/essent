@@ -6,6 +6,7 @@ import scopt.OptionParser
 
 
 case class OptFlags(
+    java: Boolean = false,
     firInputFile: File = null,
     removeFlatConnects: Boolean = true,
     regUpdates: Boolean = true,
@@ -28,6 +29,10 @@ class ArgsParser {
   val parser = new OptionParser[OptFlags]("essent") {
     arg[File]("<file>").required().unbounded().action( (x, c) =>
       c.copy(firInputFile = x) ).text(".fir input file")
+
+    opt[Unit]("java").abbr("java").action( (_, c) => c.copy(
+        java = true)
+    ).text("java test")
 
     opt[Unit]("O0").abbr("O0").action( (_, c) => c.copy(
         removeFlatConnects = false,

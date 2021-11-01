@@ -14,6 +14,11 @@ import firrtl.stage.transforms
 
 import logger._
 
+class JavaEmitter(initialOpt: OptFlags, writer: Writer) {
+  def execute() {
+    writer.write("This is java test")
+  }
+}
 
 class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   val tabs = "  "
@@ -418,6 +423,13 @@ class EssentCompiler(opt: OptFlags) {
 
   def compileAndEmit(circuit: Circuit) {
     val topName = circuit.main
+    if (opt.java) {
+      val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.java"))
+      val emitter = new JavaEmitter(opt, dutWriter)
+      emitter.execute()
+      dutWriter.close()
+      return
+    }
     if (opt.writeHarness) {
       val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
