@@ -383,8 +383,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
-    if (containsAsserts)
+    if (containsAsserts) {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+      writeLines(2, "if (!done_reset) assert_triggered = false;")
+    }
+
     writeRegResetOverrides(sg)
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
