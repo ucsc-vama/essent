@@ -239,7 +239,7 @@ object Emitter {
       Seq(s"if (UNLIKELY(${emitExpr(st.en)})) {assert_triggered = true; assert_exit_code = ${st.ret};}")
     }
     case mw: MemWrite => {
-      Seq(s"if (update_registers && ${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}) ${mw.memName}[${emitExprWrap(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
+      Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)}.as_single_word()] = ${emitExpr(mw.wrData)};")
     }
     case ru: RegUpdate => Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${emitExpr(ru.expr)};")
     case r: DefRegister => Seq()

@@ -98,7 +98,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
-        writeLines(indentLevel, s"if ($muxCond) {")
+        writeLines(indentLevel, s"if (UNLIKELY($muxCond)) {")
         writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), noMoreMuxOpts)
         writeLines(indentLevel, "} else {")
         writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
@@ -226,7 +226,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     sg.stmtsOrdered foreach { stmt => stmt match {
       case cp: CondPart => {
         if (!cp.alwaysActive)
-          writeLines(2, s"if ($flagVarName[${cp.id}]) ${genEvalFuncName(cp.id)}();")
+          writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${genEvalFuncName(cp.id)}();")
         else
           writeLines(2, s"${genEvalFuncName(cp.id)}();")
       }
