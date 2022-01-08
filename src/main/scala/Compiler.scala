@@ -187,7 +187,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
-        writeLines(2, regUpdates flatMap emitStmt)
         // triggers for MemWrites
         val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggers = memWritesInPart flatMap { mw => {
@@ -195,6 +194,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }}
         writeLines(2, memWriteTriggers)
+        writeLines(2, regUpdates flatMap emitStmt)
         writeLines(1, "}")
       }
       case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
