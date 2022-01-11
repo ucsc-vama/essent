@@ -416,7 +416,8 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.FixMulResultWidth),
       Dependency(essent.passes.DistinctTypeInstNames),
       Dependency(essent.passes.RemoveAsAsyncReset),
-      Dependency(essent.passes.ReplaceRsvdKeywords)
+      Dependency(essent.passes.ReplaceRsvdKeywords),
+      Dependency(essent.passes.CheckStatistics)
     )
 
   def compileAndEmit(circuit: Circuit) {
