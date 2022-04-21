@@ -1,11 +1,11 @@
 package essent
 
 import firrtl.ir._
-
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 
+import java.io.{File, FileWriter}
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.reflect.ClassTag
 
@@ -152,6 +152,34 @@ class StatementGraph extends Graph {
 
   def makeStatsString() =
     s"Graph has $numNodes nodes ($numValidNodes valid) and $numEdges edges"
+
+
+
+  def paint(fileName: String) = {
+    val dotWriter = new FileWriter(new File("./", fileName))
+
+    def writeLine(indentLevel: Int, line: String) {
+      dotWriter write ("  "*indentLevel + line + "\n")
+    }
+
+    writeLine(0, "digraph MergeGraph {")
+
+    for (eachNode <- idToStmt.indices) {
+      val node_irName = idToStmt(eachNode).getClass.getName()
+      val nodeLabel = s"${eachNode}"
+      writeLine(1, s"""n$eachNode [label=\"$nodeLabel\", irType=\"$node_irName\"];""")
+    }
+
+    for (eachNode <- idToStmt.indices) {
+      for (eachSrcNode <- inNeigh(eachNode).distinct) {
+        writeLine(1, s"n$eachSrcNode -> n$eachNode;")
+      }
+    }
+
+    writeLine(0, "}")
+
+    dotWriter.close()
+  }
 }
 
 

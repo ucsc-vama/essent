@@ -73,3 +73,17 @@ case class CondPart(
   def foreachString(f: String => Unit): Unit = ???
   def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
 }
+
+case class CodeGen(code: String) extends Statement {
+  def serialize: String = s"CodeGen: $code"
+  def mapStmt(f: Statement => Statement): Statement = this
+  def mapExpr(f: Expression => Expression): Statement = this
+  def mapType(f: Type => Type): Statement = this
+  def mapString(f: String => String): Statement = this
+  def mapInfo(f: Info => Info): Statement = this
+  def foreachExpr(f: firrtl.ir.Expression => Unit): Unit = ???
+  def foreachInfo(f: firrtl.ir.Info => Unit): Unit = ???
+  def foreachStmt(f: firrtl.ir.Statement => Unit): Unit = ???
+  def foreachString(f: String => Unit): Unit = ???
+  def foreachType(f: firrtl.ir.Type => Unit): Unit = ???
+}

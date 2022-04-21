@@ -111,6 +111,45 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     }}
   }
 
+
+  def writeBodyInner_TP(indentLevel: Int, sg: StatementGraph, opt: OptFlags, pid: Int,
+                     keepAvail: Set[String] = Set()) {
+    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
+    if (opt.conditionalMuxes)
+      MakeCondMux(sg, rn, keepAvail)
+    val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
+
+    def stmtNeedDeferred(stmt: Statement) = {stmt match {
+      case m: MemWrite => true
+      case ru: RegUpdate => true
+      case _ => false
+    }}
+
+    val stmtsOrdered = sg.stmtsOrdered()
+    val stmtsOrdered_deferRegMem = stmtsOrdered.filterNot(stmtNeedDeferred) ++
+      Seq(CodeGen("#pragma omp barrier")) ++
+      stmtsOrdered.filter(stmtNeedDeferred)
+
+    stmtsOrdered_deferRegMem foreach { stmt => stmt match {
+      case cm: CondMux => {
+        if (rn.nameToMeta(cm.name).decType == MuxOut)
+          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
+        val muxCondRaw = emitExpr(cm.mux.cond)
+        val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
+        writeLines(indentLevel, s"if (UNLIKELY($muxCond)) {")
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), noMoreMuxOpts)
+        writeLines(indentLevel, "} else {")
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
+        writeLines(indentLevel, "}")
+      }
+      case _ => {
+        writeLines(indentLevel, emitStmt(stmt))
+        if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
+      }
+    }}
+  }
+
+
   def writeRegResetOverrides(sg: StatementGraph) {
     val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     assert(updatesWithResets.isEmpty)
@@ -239,6 +278,43 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
 
+  def writeZoningBody_TP(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags, pid: Int) {
+    writeLines(2, "if (reset || !done_reset) {")
+    writeLines(3, "sim_cached = false;")
+    writeLines(3, "regs_set = false;")
+    writeLines(2, "}")
+    writeLines(2, "if (!sim_cached) {")
+    writeLines(3, s"$flagVarName.fill(true);")
+    writeLines(2, "}")
+    writeLines(2, "sim_cached = regs_set;")
+    writeLines(2, "this->update_registers = update_registers;")
+    writeLines(2, "this->done_reset = done_reset;")
+    writeLines(2, "this->verbose = verbose;")
+    val outputConsumers = condPartWorker.getPartInputMap()
+    val externalPartInputNames = condPartWorker.getExternalPartInputNames()
+    // do activity detection on other inputs (external IOs and resets)
+    writeLines(2, genAllTriggers(externalPartInputNames, outputConsumers, condPartWorker.cacheSuffix))
+    // cache old versions
+    val extIOCaches = externalPartInputNames map {
+      sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
+    }
+    writeLines(2, extIOCaches.toSeq)
+    sg.stmtsOrdered foreach { stmt => stmt match {
+      case cp: CondPart => {
+        if (!cp.alwaysActive)
+          writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${genEvalFuncName(cp.id)}();")
+        else
+          writeLines(2, s"${genEvalFuncName(cp.id)}();")
+      }
+      case _ => writeLines(2, emitStmt(stmt))
+    }}
+    // writeLines(2,  "#ifdef ALL_ON")
+    // writeLines(2, s"$flagVarName.fill(true);" )
+    // writeLines(2,  "#endif")
+    writeLines(2, "regs_set = true;")
+  }
+
+
   def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
     val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
@@ -323,6 +399,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
     writeLines(0, "#include <array>")
+    writeLines(0, "#include <thread>")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
@@ -334,24 +411,20 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
+    writeLines(0, "uint64_t debug_cycle_count = 0;")
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
-    val condPartWorker = MakeCondPart(sg, rn, extIOMap)
+
     rn.populateFromSG(sg, extIOMap)
-    if (opt.useCondParts) {
-      condPartWorker.doOpt(opt.partCutoff)
-    } else {
-      if (opt.regUpdates)
-        OptElideRegUpdates(sg)
-    }
+
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
     // if (opt.trackParts)
     //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
     // if (opt.trackParts || opt.trackSigs)
-   //    emitJsonWriter(opt, condPartWorker.getNumParts())
+    //    emitJsonWriter(opt, condPartWorker.getNumParts())
     // if (opt.partStats)
     //   sg.dumpPartInfoToJson(opt, sigNameToID)
     // if (opt.trackExts)
@@ -374,27 +447,141 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "int assert_exit_code;")
       writeLines(0, "")
     }
-    if (opt.useCondParts)
-      writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
-    writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackParts || opt.trackSigs)
-      writeLines(2, "cycle_count++;")
-    if (opt.useCondParts)
-      writeZoningBody(sg, condPartWorker, opt)
-    else
-      writeBodyInner(2, sg, opt)
-    if (containsAsserts) {
-      writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-      writeLines(2, "if (!done_reset) assert_triggered = false;")
+
+    if (opt.parallel > 1) {
+
+      def gen_tp_eval_name(pid: Int) = s"eval_tp_$pid"
+
+      val pm = PreMergeGraph(sg)
+      val preMerger = PreMerger(pm)
+
+      val seeds = preMerger.findSeeds(100)
+
+      val pg = PartGraph(sg)
+
+      val tp = ThreadPartitioner(pg, opt)
+      val parts = tp.doOpt(seeds)
+
+      // For each part
+      parts.zipWithIndex.foreach {case(part, pid) => {
+        // Modify valid nodes
+        sg.validNodes --= sg.validNodes
+        sg.validNodes ++= part
+
+
+        val condPartWorker = MakeCondPart(sg, rn, extIOMap)
+
+        if (opt.useCondParts) {
+          throw new Exception("Parallel for O3 not supported yet")
+          condPartWorker.doOpt(opt.partCutoff)
+        } else {
+          if (opt.regUpdates)
+            OptElideRegUpdates(sg)
+        }
+
+//        if (containsAsserts) {
+//          writeLines(1, s"bool assert_triggered_$pid = false;")
+//          writeLines(1, s"int assert_exit_code_$pid;")
+//          writeLines(0, "")
+//        }
+
+        if (opt.useCondParts)
+          writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
+        writeLines(1, s"void ${gen_tp_eval_name(pid)}(bool update_registers, bool verbose, bool done_reset) {")
+        if ((opt.trackParts || opt.trackSigs))
+          writeLines(2, "cycle_count++;")
+        if (opt.useCondParts)
+          writeZoningBody_TP(sg, condPartWorker, opt, pid)
+        else
+          writeBodyInner_TP(2, sg, opt, pid)
+        if (containsAsserts) {
+          writeLines(2, s"if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+          writeLines(2, s"if (!done_reset) assert_triggered = false;")
+        }
+
+        writeRegResetOverrides(sg)
+        writeLines(1, "}")
+        // if (opt.trackParts || opt.trackSigs) {
+        //   writeLines(1, s"~$topName() {")
+        //   writeLines(2, "writeActToJson();")
+        //   writeLines(1, "}")
+        // }
+
+      }}
+
+      writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
+      if ((opt.trackParts || opt.trackSigs)) {
+        writeLines(2, "cycle_count++;")
+      }
+
+      parts.indices.foreach{pid => {
+        writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset); };")
+      }}
+      writeLines(2, s"const std::function<void(void)> tasks[] = {${parts.indices.map("t_" + _).mkString(", ")}};")
+
+      writeLines(2, s"// Start thread for each part")
+
+      writeLines(2, "#pragma omp parallel for num_threads(2)")
+      writeLines(2, s"for (int i = 0; i < ${opt.parallel}; i++) tasks[i]();")
+
+
+      //    writeLines(2, s"// Wait all threads complete")
+      //    parts.indices.foreach{pid => {
+      //      writeLines(2, s"t_$pid.join();")
+      //    }}
+
+      writeLines(2, "debug_cycle_count ++;")
+      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+      writeLines(1, "}")
+    } else {
+      // non parallel
+      val condPartWorker = MakeCondPart(sg, rn, extIOMap)
+
+      if (opt.useCondParts) {
+        condPartWorker.doOpt(opt.partCutoff)
+      } else {
+        if (opt.regUpdates)
+          OptElideRegUpdates(sg)
+      }
+      // if (opt.trackSigs)
+      //   declareSigTracking(sg, topName, opt)
+      // if (opt.trackParts)
+      //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
+      // if (opt.trackParts || opt.trackSigs)
+      //    emitJsonWriter(opt, condPartWorker.getNumParts())
+      // if (opt.partStats)
+      //   sg.dumpPartInfoToJson(opt, sigNameToID)
+      // if (opt.trackExts)
+      //   sg.dumpNodeTypeToJson(sigNameToID)
+      // sg.reachableAfter(sigNameToID)
+
+      if (opt.useCondParts)
+        writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
+      writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
+      if (opt.trackParts || opt.trackSigs)
+        writeLines(2, "cycle_count++;")
+      if (opt.useCondParts)
+        writeZoningBody(sg, condPartWorker, opt)
+      else
+        writeBodyInner(2, sg, opt)
+      if (containsAsserts) {
+        writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+        writeLines(2, "if (!done_reset) assert_triggered = false;")
+      }
+
+      writeRegResetOverrides(sg)
+
+      writeLines(2, "debug_cycle_count ++;")
+      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+
+      writeLines(1, "}")
+      // if (opt.trackParts || opt.trackSigs) {
+      //   writeLines(1, s"~$topName() {")
+      //   writeLines(2, "writeActToJson();")
+      //   writeLines(1, "}")
+      // }
     }
 
-    writeRegResetOverrides(sg)
-    writeLines(1, "}")
-    // if (opt.trackParts || opt.trackSigs) {
-    //   writeLines(1, s"~$topName() {")
-    //   writeLines(2, "writeActToJson();")
-    //   writeLines(1, "}")
-    // }
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")

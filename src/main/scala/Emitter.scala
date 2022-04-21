@@ -232,7 +232,7 @@ object Emitter {
         case (str, (searchFor, replaceWith)) => str.replaceFirst(searchFor, replaceWith)
       }
       val printfArgs = Seq(s""""$formatString"""") ++
-                        (p.args map {arg => s"${emitExprWrap(arg)}.as_single_word()"})
+        (p.args map {arg => s"${emitExprWrap(arg)}.as_single_word()"})
       Seq(s"if (UNLIKELY(done_reset && update_registers && verbose && ${emitExprWrap(p.en)})) printf(${printfArgs mkString(", ")});")
     }
     case st: Stop => {
@@ -246,6 +246,7 @@ object Emitter {
     case w: DefWire => Seq()
     case m: DefMemory => Seq()
     case i: WDefInstance => Seq()
+    case cg: CodeGen => Seq(cg.code)
     case _ => throw new Exception(s"Don't yet support $s")
   }
 }

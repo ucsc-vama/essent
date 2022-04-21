@@ -18,6 +18,7 @@ case class OptFlags(
     trackExts: Boolean = false,
     partStats: Boolean = false,
     partCutoff: Int = 8,
+    parallel: Int = 1,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
@@ -105,6 +106,10 @@ class ArgsParser {
     opt[Int]("part-cutoff").action( (x, c) => c.copy(
         partCutoff = x)
     ).text("parameter used for partitioning")
+
+    opt[Int]("parallel").action( (x, c) => c.copy(
+      parallel = x
+    ))
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())

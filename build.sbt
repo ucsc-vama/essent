@@ -16,6 +16,8 @@ libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.9"
 
 libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.4.3"
 
+libraryDependencies += "com.lihaoyi" %% "os-lib" % "0.2.7"
+
 
 // Assembly
 
