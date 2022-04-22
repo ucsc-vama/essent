@@ -117,21 +117,22 @@ class PartGraph extends StatementGraph {
     }}
 
 
-    for (i <- parts.indices; j <- ((i+1) until parts.length)) {
-      if ((partL1Nodes(i) & partL1Nodes(j)).nonEmpty){
+      for (i <- parts.indices; j <- ((i+1) until parts.length)) {
+//      if ((partL1Nodes(i) & partL1Nodes(j)).nonEmpty){
 
-        val duplicateNodeCount = (parts(i) & parts(j)).size
-
+        // val duplicateNodeCount = (parts(i) & parts(j)).size
+      val duplicateNodeCount = (partL1Nodes(i) & partL1Nodes(j)).size
+      if (duplicateNodeCount != 0){
 //        if (duplicateNodeCount != 0) {
-          // edge exists
-          edgeCount += 1
+        // edge exists
+        edgeCount += 1
 
-          partAdjList(i) += j
-          partAdjList(j) += i
-          edgeWeight(i)(j) = duplicateNodeCount
-          edgeWeight(j)(i) = duplicateNodeCount
+        partAdjList(i) += j
+        partAdjList(j) += i
+        edgeWeight(i)(j) = duplicateNodeCount
+        edgeWeight(j)(i) = duplicateNodeCount
 
-          partAdjList_nodup(i) += j
+        partAdjList_nodup(i) += j
 //        }
 
       }

@@ -411,7 +411,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    writeLines(0, "uint64_t debug_cycle_count = 0;")
+//    writeLines(0, "uint64_t debug_cycle_count = 0;")
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
     val containsAsserts = sg.containsStmtOfType[Stop]()
@@ -530,8 +530,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       //      writeLines(2, s"t_$pid.join();")
       //    }}
 
-      writeLines(2, "debug_cycle_count ++;")
-      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+//      writeLines(2, "debug_cycle_count ++;")
+//      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
       writeLines(1, "}")
     } else {
       // non parallel
@@ -571,8 +571,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       writeRegResetOverrides(sg)
 
-      writeLines(2, "debug_cycle_count ++;")
-      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+//      writeLines(2, "debug_cycle_count ++;")
+//      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
 
       writeLines(1, "}")
       // if (opt.trackParts || opt.trackSigs) {
