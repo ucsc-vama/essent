@@ -1,7 +1,9 @@
 essent (essential signal simulation enabled by netlist transformations) [![Build Status](https://github.com/ucsc-vama/essent/actions/workflows/scala-ci.yml/badge.svg)](https://github.com/ucsc-vama/essent/actions/workflows/scala-ci.yml)
 ================================================================================
 
-This is a beta of essent, a high-performance RTL simulator generator. Essent operates on hardware designs in the form of [firrtl](https://github.com/freechipsproject/firrtl), an IR for hardware with a well-defined [spec](https://github.com/ucb-bar/firrtl/blob/master/spec/spec.pdf). Given a hardware design in firrtl, essent emits C++ that can be compiled to make a fast simulator of the design. Essent provides several optimizations to improve performance, and they can be turned on or off with command line flags. A typical flow using the tool will: use essent to make C++ from the firrtl input, write a C++ harness for the emitted code, compile everything, and finally run the simulation. To make a simulator with essent, you will need a JVM (compatible with Scala), and a C++ compiler capable of C++11.
+This is a beta of _essent_, a high-performance RTL simulator generator. Essent operates on hardware designs in the form of [firrtl](https://github.com/freechipsproject/firrtl), an IR for hardware with a well-defined [spec](https://github.com/chipsalliance/firrtl-spec/releases/latest/download/spec.pdf). Given a hardware design in firrtl, essent emits C++ that can be compiled to make a fast simulator of the design. Essent provides several optimizations to improve performance, and they can be turned on or off with command line flags. A typical flow using the tool will: use essent to make C++ from the firrtl input, write a C++ harness for the emitted code, compile everything, and finally run the simulation. To make a simulator with essent, you will need a JVM (compatible with Scala), and a C++ compiler capable of C++11.
+
+Essent incorporates a number of optimizations to deliver great performance. To learn more about essent as a whole as well as its optimizations, the [talk](https://woset-workshop.github.io/Videos/2021/a23-video.mp4) and [paper](https://woset-workshop.github.io/PDFs/2021/a23.pdf) from [WOSET 2021](https://woset-workshop.github.io) give a good overview. Our other publications (below) dive into the details of the optimizations and bottlenecks of current host CPUs.
 
 Without optimization, essent will generate a simulator that is a very literal translation of the firrtl design. Essent flattens the design, and typically represents each firrtl statement with a single line of C++. Most signals are ephemeral and are locally scoped, which gives the compiler the maximum flexibility to optimize them. Signals that must persist between cycles, such as state elements (registers or memories) or external IOs, are declared in structs which match the module hierarchy. Some optimizations require additional signals to persist between cycles, and these variables are declared effectively globally. Long chains of simple connect statements (no other modifications to signals) will be compressed down to just the chain endpoints. Without optimization, each register has two variables associated with it, and they represent the current value and the next value of the register (two-phase update).
 
@@ -83,7 +85,9 @@ _Design Automation Conference (DAC), San Francisco, July 2020_
 Scott Beamer  
 _IEEE Micro, 2020_
 
-
+**ESSENT: A High-Performance RTL Simulator**  
+Scott Beamer, Thomas Nijssen, Krishna Pandian, Kyle Zhang  
+_Workshop on Open-Source EDA Technology (WOSET), at International Conference on Computer-Aided Design (ICCAD), 2021_
 
 Legal
 --------------------------------------------------------------------------------
