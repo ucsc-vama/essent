@@ -155,8 +155,8 @@ class StatementGraph extends Graph {
 
 
 
-  def paint(fileName: String) = {
-    val dotWriter = new FileWriter(new File("./", fileName))
+  def paint(parent: String, fileName: String) = {
+    val dotWriter = new FileWriter(new File(parent, fileName))
 
     def writeLine(indentLevel: Int, line: String) {
       dotWriter write ("  "*indentLevel + line + "\n")
@@ -166,8 +166,8 @@ class StatementGraph extends Graph {
 
     for (eachNode <- idToStmt.indices) {
       val node_irName = idToStmt(eachNode).getClass.getName()
-      val nodeLabel = s"${eachNode}"
-      writeLine(1, s"""n$eachNode [label=\"$nodeLabel\", irType=\"$node_irName\"];""")
+      val nodeLabel = s"id:${eachNode}, ${node_irName}"
+      writeLine(1, s"""n$eachNode [label=\"$nodeLabel\", irType=\"$node_irName\", stmtID=\"${eachNode}\", valid=\"${validNodes(eachNode)}\"];""")
     }
 
     for (eachNode <- idToStmt.indices) {
@@ -188,7 +188,7 @@ object StatementGraph {
   def apply(bodies: Seq[Statement]): StatementGraph = {
     val sg = new StatementGraph
     sg.buildFromBodies(bodies)
-    sg.addOrderingDepsForStateUpdates()
+    // sg.addOrderingDepsForStateUpdates()
     sg
   }
 

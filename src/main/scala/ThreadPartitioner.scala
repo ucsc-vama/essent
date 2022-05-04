@@ -289,6 +289,9 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   val gpmetis_input_filename = "parts.metis"
   val absOutputPath: String = if (java.nio.file.Paths.get(opt.outputDir()).isAbsolute) opt.outputDir() else (os.pwd/os.RelPath(opt.outputDir())).toString()
 
+  val parts = ArrayBuffer[BitSet]()
+  val parts_read = ArrayBuffer[Set[Int]]()
+  val parts_write = ArrayBuffer[Set[Int]]()
 
 
   def doOpt(seeds: Array[Set[NodeID]]) = {
@@ -326,8 +329,6 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
     val partResult = parseMetisResult(metis_return_file)
 
-    val parts = ArrayBuffer[mutable.BitSet]()
-
     val partCount = partResult.max + 1
     parts ++= ArrayBuffer.fill(partCount)(mutable.BitSet())
 
@@ -355,11 +356,41 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 //    val components = pg.findPartComponents()
 //    print(s"Size: ${components.map(_.size)}\n")
 
+    // val parts_read = partidToID(partID).flatMap(inNeigh).toSet -- partidToID(partID)
+
+
+    parts.foreach {part => {
+      val part_read = part.flatMap(pg.inNeigh).toSet -- part
+      val part_write = part.filter(pg.outNeigh(_).isEmpty).toSet
+
+      val part_write_supect = part_write.filter(pg.idToStmt(_) match {
+        case r: RegUpdate => false
+        case mw: MemWrite => false
+        case p: Print => false
+        case st: Stop => false
+        case _ => true
+      })
+
+      val part_write_suspect_stmt = part_write_supect map pg.idToStmt
+
+      val allRegMems = part filter(pg.idToStmt(_) match {
+        case r: RegUpdate => true
+        case mw: MemWrite => true
+        case _ => false
+      })
+
+      val regMemInBetween = allRegMems -- part_write
+      val regMemInBetween_stmt = regMemInBetween map pg.idToStmt
+
+      parts_read.append(part_read)
+      parts_write.append(part_write)
+
+    }}
+
 
 
     logger.info("Done")
 
-    parts
   }
 
 

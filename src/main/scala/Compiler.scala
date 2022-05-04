@@ -83,6 +83,40 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
 
+  def getThreadDataName(pid: Int) = s"td_$pid"
+  def memNameToDeclName(mem: String) = mem.replace('.', '_')
+
+  def declareThreadWriteData(writes: Seq[Statement], pid: Int, rn: Renamer) {
+
+    val decls = writes flatMap {stmt => stmt match {
+      case ru: RegUpdate => {
+        val typeStr = genCppType (ru.regRef.tpe)
+        val lhs_orig = emitExpr(ru.expr)(rn)
+        Seq (s"$typeStr $lhs_orig;")
+      }
+      case m: MemWrite => {
+
+        val typeStr = genCppType(m.wrData.tpe)
+        val declName = memNameToDeclName(m.nodeName())
+        Seq(s"bool ${declName}_write_en;",
+          s"int ${declName}_index;",
+          s"$typeStr ${declName}_data;")
+      }
+
+      case st: Stop => Seq()
+      case pr: Print => Seq()
+
+      case _ => Seq()
+    }}
+
+    writeLines(1, s"typedef struct ThreadData_$pid {")
+    writeLines(2, decls)
+    writeLines(1, s"} ThreadData_$pid;")
+
+  }
+
+
+
   // Write General-purpose Eval
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
@@ -112,6 +146,30 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
 
+
+  def writeRegSyncBody(indentLevel: Int, writes: Seq[Statement], pid: Int, rn: Renamer) = {
+    val lines = writes flatMap  {stmt => stmt match {
+      case mw: MemWrite => {
+        // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
+        val declName = memNameToDeclName(mw.nodeName())
+        val var_wen = s"${getThreadDataName(pid)}.${declName}_write_en"
+        val var_index = s"${getThreadDataName(pid)}.${declName}_index"
+        val var_data = s"${getThreadDataName(pid)}.${declName}_data"
+
+        Seq(s"if (UNLIKELY(update_registers && ${var_wen})) ${mw.memName}[${var_index}] = ${var_data};")
+      }
+
+      case ru: RegUpdate => {
+        val lhs_orig = emitExpr(ru.expr)(rn)
+        Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${getThreadDataName(pid)}.${lhs_orig};")
+      }
+      case _ => Seq()
+    }}
+
+    writeLines(indentLevel, lines)
+  }
+
+
   def writeBodyInner_TP(indentLevel: Int, sg: StatementGraph, opt: OptFlags, pid: Int,
                      keepAvail: Set[String] = Set()) {
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
@@ -119,18 +177,18 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
 
-    def stmtNeedDeferred(stmt: Statement) = {stmt match {
-      case m: MemWrite => true
-      case ru: RegUpdate => true
-      case _ => false
-    }}
+//    def stmtNeedDeferred(stmt: Statement) = {stmt match {
+//      case m: MemWrite => true
+//      case ru: RegUpdate => true
+//      case _ => false
+//    }}
 
     val stmtsOrdered = sg.stmtsOrdered()
-    val stmtsOrdered_deferRegMem = stmtsOrdered.filterNot(stmtNeedDeferred) ++
-      Seq(CodeGen("#pragma omp barrier")) ++
-      stmtsOrdered.filter(stmtNeedDeferred)
+//    val stmtsOrdered_deferRegMem = stmtsOrdered.filterNot(stmtNeedDeferred) ++
+//      Seq(CodeGen("#pragma omp barrier")) ++
+//      stmtsOrdered.filter(stmtNeedDeferred)
 
-    stmtsOrdered_deferRegMem foreach { stmt => stmt match {
+    stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
           writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
@@ -143,7 +201,22 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(indentLevel, "}")
       }
       case _ => {
-        writeLines(indentLevel, emitStmt(stmt))
+        def emitStmt_T(s: Statement)(rn: Renamer) = s match {
+          case mw: MemWrite => {
+            // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
+            val declName = memNameToDeclName(mw.nodeName())
+            Seq(s"${getThreadDataName(pid)}.${declName}_write_en = ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)};",
+              s"${getThreadDataName(pid)}.${declName}_index = ${emitExprWrap(mw.wrAddr)(rn)}.as_single_word();",
+              s"${getThreadDataName(pid)}.${declName}_data = ${emitExpr(mw.wrData)(rn)};")
+          }
+
+          case ru: RegUpdate => {
+            val lhs_orig = emitExpr(ru.expr)(rn)
+            Seq(s"${getThreadDataName(pid)}.${lhs_orig} = ${emitExpr(ru.expr)(rn)};")
+          }
+          case _ => emitStmt(s)(rn)
+        }
+        writeLines(indentLevel, emitStmt_T(stmt)(rn))
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
@@ -414,6 +487,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 //    writeLines(0, "uint64_t debug_cycle_count = 0;")
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
+
+
+    sg.paint(opt.outputDir, s"$topName.dot")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
 
@@ -451,6 +527,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.parallel > 1) {
 
       def gen_tp_eval_name(pid: Int) = s"eval_tp_$pid"
+      def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
 
       val pm = PreMergeGraph(sg)
       val preMerger = PreMerger(pm)
@@ -460,10 +537,18 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       val pg = PartGraph(sg)
 
       val tp = ThreadPartitioner(pg, opt)
-      val parts = tp.doOpt(seeds)
+      tp.doOpt(seeds)
+
+
+      // data structure for each part
+      tp.parts.indices.foreach {pid => {
+        val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
+        declareThreadWriteData(part_write_stmts.toSeq, pid, rn)
+        writeLines(1, s"ThreadData_$pid ${getThreadDataName(pid)};")
+      }}
 
       // For each part
-      parts.zipWithIndex.foreach {case(part, pid) => {
+      tp.parts.zipWithIndex.foreach {case(part, pid) => {
         // Modify valid nodes
         sg.validNodes --= sg.validNodes
         sg.validNodes ++= part
@@ -507,6 +592,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         //   writeLines(1, "}")
         // }
 
+        writeLines(1, "")
+
+        // Function for sync registers to global copy
+        writeLines(1, s"void ${gen_tp_wsync_name(pid)}(bool update_registers) {")
+        val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
+
+        writeRegSyncBody(2, part_write_stmts.toSeq, pid, rn)
+        writeLines(1, s"}")
+
       }}
 
       writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
@@ -514,15 +608,21 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, "cycle_count++;")
       }
 
-      parts.indices.foreach{pid => {
+      tp.parts.indices.foreach{pid => {
         writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset); };")
       }}
-      writeLines(2, s"const std::function<void(void)> tasks[] = {${parts.indices.map("t_" + _).mkString(", ")}};")
+      writeLines(2, s"const std::function<void(void)> tasks[] = {${tp.parts.indices.map("t_" + _).mkString(", ")}};")
 
       writeLines(2, s"// Start thread for each part")
 
       writeLines(2, "#pragma omp parallel for num_threads(2)")
       writeLines(2, s"for (int i = 0; i < ${opt.parallel}; i++) tasks[i]();")
+
+      writeLines(2, "")
+
+      tp.parts.indices.foreach{pid => {
+        writeLines(2, s"${gen_tp_wsync_name(pid)}(update_registers);")
+      }}
 
 
       //    writeLines(2, s"// Wait all threads complete")
