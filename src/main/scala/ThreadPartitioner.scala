@@ -21,7 +21,7 @@ import scala.reflect.ClassTag
 
 class PartGraph extends StatementGraph {
 
-//  val idToPartID = ArrayBuffer[mutable.BitSet]()
+  val idToPartID = ArrayBuffer[mutable.Set[NodeID]]()
 //  val partidToID = mutable.HashMap[NodeID, ArrayBuffer[NodeID]]()
 
 
@@ -39,9 +39,11 @@ class PartGraph extends StatementGraph {
 
 
 
+
   def buildFromGraph(sg: StatementGraph): Unit = {
 //    partInNeigh.appendAll(ArrayBuffer.fill(sg.numNodes())(ArrayBuffer[NodeID]()))
 //    partOutNeigh.appendAll(ArrayBuffer.fill(sg.numNodes())(ArrayBuffer[NodeID]()))
+    idToPartID.appendAll(ArrayBuffer.fill(sg.numNodes())(mutable.Set[NodeID]()))
 
 
     // Deep copy
@@ -94,6 +96,11 @@ class PartGraph extends StatementGraph {
     parts.clear()
     parts ++= collectedParts
 
+    parts.indices.foreach{partID => {parts(partID).foreach{ nodeID => {
+      idToPartID(nodeID) += partID
+    }}}}
+
+
   }
 
 
@@ -112,32 +119,38 @@ class PartGraph extends StatementGraph {
 
 
 
-    val partL1Nodes = parts map { part => {
-      (part.flatMap(inNeigh).toSet -- part).flatMap(outNeigh) & part
+//    val partL1Nodes = parts map { part => {
+//      (part.flatMap(inNeigh).toSet -- part).flatMap(outNeigh) & part
+//    }}
+
+
+    parts.indices.foreach{i => {
+      val partsIntersected = (parts(i) flatMap idToPartID)
+      partsIntersected.foreach(j => {
+        if (i > j) {
+           val duplicateNodeCount = (parts(i) & parts(j)).size
+//          val duplicateNodeCount = 1
+
+          edgeCount += 1
+
+          partAdjList(i) += j
+          partAdjList(j) += i
+          edgeWeight(i)(j) = duplicateNodeCount
+          edgeWeight(j)(i) = duplicateNodeCount
+
+          partAdjList_nodup(i) += j
+        }
+      })
     }}
 
 
-      for (i <- parts.indices; j <- ((i+1) until parts.length)) {
-//      if ((partL1Nodes(i) & partL1Nodes(j)).nonEmpty){
-
-        // val duplicateNodeCount = (parts(i) & parts(j)).size
-      val duplicateNodeCount = (partL1Nodes(i) & partL1Nodes(j)).size
-      if (duplicateNodeCount != 0){
-//        if (duplicateNodeCount != 0) {
-        // edge exists
-        edgeCount += 1
-
-        partAdjList(i) += j
-        partAdjList(j) += i
-        edgeWeight(i)(j) = duplicateNodeCount
-        edgeWeight(j)(i) = duplicateNodeCount
-
-        partAdjList_nodup(i) += j
-//        }
-
-      }
-//      val duplicateNodeCount = (parts(i) & parts(j)).size
-//      if (duplicateNodeCount != 0) {
+//      for (i <- parts.indices; j <- ((i+1) until parts.length)) {
+////      if ((partL1Nodes(i) & partL1Nodes(j)).nonEmpty){
+//
+//        // val duplicateNodeCount = (parts(i) & parts(j)).size
+//      val duplicateNodeCount = (partL1Nodes(i) & partL1Nodes(j)).size
+//      if (duplicateNodeCount != 0){
+////        if (duplicateNodeCount != 0) {
 //        // edge exists
 //        edgeCount += 1
 //
@@ -147,8 +160,10 @@ class PartGraph extends StatementGraph {
 //        edgeWeight(j)(i) = duplicateNodeCount
 //
 //        partAdjList_nodup(i) += j
+////        }
+//
 //      }
-    }
+
   }
 
 
@@ -227,23 +242,23 @@ class PartGraph extends StatementGraph {
     }
 
 
-    val stmtReferenceCount = mutable.HashMap[NodeID, Int]()
-    val partWeight = mutable.HashMap[NodeID, Int]()
-
-    idToStmt.indices.foreach {id => {stmtReferenceCount(id) = 0}}
-    parts.indices.foreach{pid => {partWeight(pid) = 0}}
-
-    parts.foreach{_.foreach{id => {stmtReferenceCount(id) += 1}}}
-
-    val max_ref_count = stmtReferenceCount.values.max
-
-    parts.indices.foreach{ pid => {
-      parts(pid).foreach{ id => {
-        // Add 1 to avoid weight of 0
-        partWeight(pid) += (max_ref_count - stmtReferenceCount(id) + 1)
-      }}
-      partWeight(pid) = (partWeight(pid)) / max_ref_count
-    }}
+//    val stmtReferenceCount = mutable.HashMap[NodeID, Int]()
+//    val partWeight = mutable.HashMap[NodeID, Int]()
+//
+//    idToStmt.indices.foreach {id => {stmtReferenceCount(id) = 0}}
+//    parts.indices.foreach{pid => {partWeight(pid) = 0}}
+//
+//    parts.foreach{_.foreach{id => {stmtReferenceCount(id) += 1}}}
+//
+//    val max_ref_count = stmtReferenceCount.values.max
+//
+//    parts.indices.foreach{ pid => {
+//      parts(pid).foreach{ id => {
+//        // Add 1 to avoid weight of 0
+//        partWeight(pid) += (max_ref_count - stmtReferenceCount(id) + 1)
+//      }}
+//      partWeight(pid) = (partWeight(pid)) / max_ref_count
+//    }}
     println(s"Largest part size is ${parts.map(_.size).max}")
 
 
@@ -255,9 +270,9 @@ class PartGraph extends StatementGraph {
       val edges = partAdjList(node)
       val weights = edges map edgeWeight(node)
 
-      // val node_weight = parts(node).size
+       val node_weight = parts(node).size
       // val node_weight = 1
-      val node_weight = partWeight(node)
+//      val node_weight = partWeight(node)
       // metis requires node id starts from 1
       val line = Seq(node_weight) ++ ((edges map (_+1)) zip weights).flatten{ case (a, b) => Seq(a, b)}
 
@@ -398,7 +413,9 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   def hiMetis(desiredParts: Int) = {
     val cmd = List(gpmetis_path,
       (os.Path(absOutputPath)/gpmetis_input_filename).toString(),
-      desiredParts.toString)
+      desiredParts.toString,
+//      "-objtype=vol"
+    )
 
     val r = os.proc(cmd).call(check = false)
 

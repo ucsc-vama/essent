@@ -109,6 +109,7 @@ class ArgsParser {
 
     opt[Int]("parallel").action( (x, c) => c.copy(
       parallel = x
+//      regUpdates = false
     ))
   }
 
