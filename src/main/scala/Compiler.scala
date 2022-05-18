@@ -529,15 +529,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       def gen_tp_eval_name(pid: Int) = s"eval_tp_$pid"
       def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
 
-      val pm = PreMergeGraph(sg)
-      val preMerger = PreMerger(pm)
-
-      val seeds = preMerger.findSeeds(100)
+//      val pm = PreMergeGraph(sg)
+//      val preMerger = PreMerger(pm)
+//
+//      val seeds = preMerger.findSeeds(100)
 
       val pg = PartGraph(sg)
 
       val tp = ThreadPartitioner(pg, opt)
-      tp.doOpt(seeds)
+      tp.doOpt()
 
 
       // data structure for each part

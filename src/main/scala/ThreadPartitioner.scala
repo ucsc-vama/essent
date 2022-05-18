@@ -11,8 +11,6 @@ import java.io.{File, FileWriter}
 import collection.mutable.ArrayBuffer
 import scala.collection.{BitSet, mutable}
 import scala.io.Source
-import scala.reflect.ClassTag
-
 
 
 
@@ -21,11 +19,15 @@ import scala.reflect.ClassTag
 
 class PartGraph extends StatementGraph {
 
-  val idToPartID = ArrayBuffer[mutable.Set[NodeID]]()
+  val idToTreeID = ArrayBuffer[mutable.Set[NodeID]]()
 //  val partidToID = mutable.HashMap[NodeID, ArrayBuffer[NodeID]]()
 
+  val idToPieceID = ArrayBuffer[NodeID]()
 
-  var parts = mutable.ArrayBuffer[BitSet]()
+  val sinkNodes = ArrayBuffer[NodeID]()
+  var trees = mutable.ArrayBuffer[BitSet]()
+  val pieces = mutable.ArrayBuffer[BitSet]()
+
   var edgeCount = 0
   // val validParts = mutable.BitSet()
 
@@ -33,17 +35,23 @@ class PartGraph extends StatementGraph {
 //  val partOutNeigh = ArrayBuffer[ArrayBuffer[NodeID]]()
 
   // part connection graph, undirected weighted graph
-  val partAdjList = ArrayBuffer[ArrayBuffer[NodeID]]()
-  val partAdjList_nodup = ArrayBuffer[ArrayBuffer[NodeID]]()
-  val edgeWeight = ArrayBuffer[ArrayBuffer[Int]]()
+//  val partAdjList = ArrayBuffer[ArrayBuffer[NodeID]]()
+//  val partAdjList_nodup = ArrayBuffer[ArrayBuffer[NodeID]]()
+//  val edgeWeight = ArrayBuffer[ArrayBuffer[Int]]()
 
+  val pieceInNeigh = ArrayBuffer[ArrayBuffer[NodeID]]()
+  val pieceOutNeigh = ArrayBuffer[ArrayBuffer[NodeID]]()
+  val pieceAdjList_dup = ArrayBuffer[ArrayBuffer[NodeID]]()
+
+  val pieceEdgeWeight = ArrayBuffer[mutable.HashMap[Int, Int]]()
 
 
 
   def buildFromGraph(sg: StatementGraph): Unit = {
 //    partInNeigh.appendAll(ArrayBuffer.fill(sg.numNodes())(ArrayBuffer[NodeID]()))
 //    partOutNeigh.appendAll(ArrayBuffer.fill(sg.numNodes())(ArrayBuffer[NodeID]()))
-    idToPartID.appendAll(ArrayBuffer.fill(sg.numNodes())(mutable.Set[NodeID]()))
+    idToTreeID.appendAll(ArrayBuffer.fill(sg.numNodes())(mutable.Set[NodeID]()))
+    idToPieceID ++= ArrayBuffer.fill(sg.numNodes())(-1)
 
 
     // Deep copy
@@ -65,11 +73,13 @@ class PartGraph extends StatementGraph {
 
 
 
-  def initPartition(seeds: Array[Set[NodeID]]) = {
+  def initPartition() = {
+
+    sinkNodes ++= validNodes.filter(outNeigh(_).isEmpty)
 
     val cache = mutable.HashMap[NodeID, BitSet]()
 
-    def collectPart(seed: NodeID): BitSet = {
+    def collectTree(seed: NodeID): BitSet = {
 
       idToStmt(seed) match {
         case inv if (!validNodes.contains(seed)) => BitSet() // invalid
@@ -78,7 +88,7 @@ class PartGraph extends StatementGraph {
           if (cache.contains(seed)) {
             return cache(seed)
           }
-          val ret = BitSet(seed) ++ (inNeigh(seed) flatMap collectPart)
+          val ret = BitSet(seed) ++ (inNeigh(seed) flatMap collectTree)
           // Save for data may be used again
           if (outNeigh(seed).length > 1)  cache(seed) = ret
           ret
@@ -86,36 +96,114 @@ class PartGraph extends StatementGraph {
       }
     }
 
-//    val allValidSinkNodes = validNodes.filter(outNeigh(_).isEmpty)
-
 //    println(s"${allValidSinkNodes.size} sink nodes in total")
-    val collectedParts = seeds.map{_.map(collectPart).reduce(_ ++ _)}
+    val collectedParts = sinkNodes.map{collectTree}
+
+    println("Trees collected")
 
 //    val collectedParts = ((allValidSinkNodes.toArray map collectPart) filter (_.nonEmpty))
 
-    parts.clear()
-    parts ++= collectedParts
+    trees.clear()
+    trees ++= collectedParts
 
-    parts.indices.foreach{partID => {parts(partID).foreach{ nodeID => {
-      idToPartID(nodeID) += partID
+    trees.indices.foreach{partID => {trees(partID).foreach{ nodeID => {
+      idToTreeID(nodeID) += partID
     }}}}
 
+
+    // Assuming pieces(pid) is an empty BitSet
+    def findPiece(pid: NodeID)(seed: NodeID): Unit = {
+      if (idToPieceID(seed) == -1) {
+        pieces(pid) += seed
+        idToPieceID(seed) = pid
+        val connectedVertecies = (inNeigh(seed) ++ outNeigh(seed)).filter(validNodes.contains)
+        val samePieceVertecies = connectedVertecies.filter(vid => {idToTreeID(vid) == idToTreeID(seed)})
+        samePieceVertecies foreach findPiece(pid)
+      }
+    }
+
+    // First, collect all pieces for all sink nodes
+    sinkNodes.zipWithIndex.foreach{case(sinkNode, pid) => {
+      pieces.append(BitSet())
+      findPiece(pid)(sinkNode)
+    }}
+
+    // Collect pieces for all other nodes
+    do {
+      val unvisited = idToPieceID.indices.filter(idToPieceID(_) == -1)
+      val newPid = pieces.length
+      pieces.append(BitSet())
+      findPiece(newPid)(unvisited.head)
+
+    } while(idToPieceID.indices.exists(idToPieceID(_) == -1))
 
   }
 
 
   def updateEdgeInfo() = {
 
-    partAdjList.clear()
-    partAdjList ++= (ArrayBuffer.fill(parts.length)(ArrayBuffer[NodeID]()))
+    pieceInNeigh.clear()
+    pieceInNeigh ++= (ArrayBuffer.fill(pieces.length)(ArrayBuffer[NodeID]()))
 
-    partAdjList_nodup.clear()
-    partAdjList_nodup ++= (ArrayBuffer.fill(parts.length)(ArrayBuffer[NodeID]()))
+    pieceOutNeigh.clear()
+    pieceOutNeigh ++= (ArrayBuffer.fill(pieces.length)(ArrayBuffer[NodeID]()))
 
-    edgeWeight.clear()
-    edgeWeight ++= ArrayBuffer.fill(parts.length)(ArrayBuffer.fill(parts.length)(0))
+    pieceAdjList_dup.clear()
+    pieceAdjList_dup ++= (ArrayBuffer.fill(pieces.length)(ArrayBuffer[NodeID]()))
+
+    pieceEdgeWeight.clear()
+    pieceEdgeWeight ++= ArrayBuffer.fill(pieces.length)(mutable.HashMap[Int, Int]())
+
 
     edgeCount = 0
+
+
+    def findParentsOutsidePiece(pid: NodeID) = pieces(pid).flatMap(inNeigh).toSet -- pieces(pid)
+
+    def findChildsOutsidePiece(pid: NodeID) = pieces(pid).flatMap(outNeigh).toSet -- pieces(pid)
+
+    def idListToPieceID(ids: Set[NodeID]) = ids.map(idToPieceID).toSet
+
+
+    // Find edges
+    pieces.indices.foreach{ pid_i => {
+      val pieceParentNodes = findParentsOutsidePiece(pid_i)
+      val pieceChildNodes = findChildsOutsidePiece(pid_i)
+
+      val pieceParents = idListToPieceID(pieceParentNodes)
+      val pieceChilds = idListToPieceID(pieceChildNodes)
+
+      pieceInNeigh(pid_i) ++= pieceParents
+      pieceOutNeigh(pid_i) ++= pieceChilds
+
+      edgeCount += pieceParents.size
+
+    }}
+
+
+    // Update edge weight
+    val pieceDepSize = mutable.HashMap[NodeID, Int]()
+
+    def findDepSize(pid: Int): Int = {
+      if (!pieceDepSize.contains(pid)) {
+        val depSize = pieces(pid).size + (pieceInNeigh(pid) map findDepSize).sum
+        pieceDepSize(pid) = depSize
+      }
+      pieceDepSize(pid)
+    }
+
+    pieces.indices.foreach{pid_i => {
+      pieceInNeigh(pid_i).foreach{pid_j => {
+        // Edge pid_i -> pid_j
+
+        val weight = findDepSize(pid_i)
+
+        pieceEdgeWeight(pid_i)(pid_j) = findDepSize(pid_i)
+        pieceEdgeWeight(pid_j)(pid_i) = findDepSize(pid_i)
+      }}
+    }}
+
+
 
 
 
@@ -124,24 +212,24 @@ class PartGraph extends StatementGraph {
 //    }}
 
 
-    parts.indices.foreach{i => {
-      val partsIntersected = (parts(i) flatMap idToPartID)
-      partsIntersected.foreach(j => {
-        if (i > j) {
-           val duplicateNodeCount = (parts(i) & parts(j)).size
-//          val duplicateNodeCount = 1
-
-          edgeCount += 1
-
-          partAdjList(i) += j
-          partAdjList(j) += i
-          edgeWeight(i)(j) = duplicateNodeCount
-          edgeWeight(j)(i) = duplicateNodeCount
-
-          partAdjList_nodup(i) += j
-        }
-      })
-    }}
+//    parts.indices.foreach{i => {
+//      val partsIntersected = (parts(i) flatMap idToPartID)
+//      partsIntersected.foreach(j => {
+//        if (i > j) {
+//           val duplicateNodeCount = (parts(i) & parts(j)).size
+////          val duplicateNodeCount = 1
+//
+//          edgeCount += 1
+//
+//          partAdjList(i) += j
+//          partAdjList(j) += i
+//          edgeWeight(i)(j) = duplicateNodeCount
+//          edgeWeight(j)(i) = duplicateNodeCount
+//
+//          partAdjList_nodup(i) += j
+//        }
+//      })
+//    }}
 
 
 //      for (i <- parts.indices; j <- ((i+1) until parts.length)) {
@@ -168,42 +256,6 @@ class PartGraph extends StatementGraph {
 
 
 
-  def brief() = {
-    // print out info
-    val part_count = parts.size
-    val node_count = validNodes.size
-    val part_node_cnt = (parts.map { _.size }).sum
-
-    print(s"$part_count parts in total, with $node_count valid nodes, $part_node_cnt nodes in parts\n")
-
-  }
-
-
-  def findPartComponents() = {
-    // Find all connected components
-    val visited = mutable.Set[NodeID]()
-    def traverse(seed: NodeID): Seq[NodeID] = {
-      if (visited.contains(seed)) {
-        Seq()
-      } else {
-        visited += seed
-        Seq(seed) ++ partAdjList(seed).flatMap(traverse)
-      }
-    }
-
-    val components = ArrayBuffer[Set[NodeID]]()
-    var unvisited = parts.indices.toSet
-
-    while (unvisited.nonEmpty) {
-      val newComponent = traverse(unvisited.head).toSet
-      components += newComponent
-      unvisited = unvisited -- visited
-    }
-
-    components
-  }
-
-
 
 
   def paintPartConnection(dir: String, fileName: String) = {
@@ -213,17 +265,17 @@ class PartGraph extends StatementGraph {
       dotWriter write ("  "*indentLevel + line + "\n")
     }
 
-    writeLine(0, "graph PartConnection {")
+    writeLine(0, "digraph PartConnection {")
 
-    for (eachPart <- parts.indices) {
-      val nodeLabel = s"Part ${eachPart}, Size ${parts(eachPart).size}"
+    for (eachPart <- pieces.indices) {
+      val nodeLabel = s"Part ${eachPart}, Size ${pieces(eachPart).size}"
       writeLine(1, s"""n$eachPart [label=\"$nodeLabel\"];""")
     }
 
-    for (n1 <- partAdjList_nodup.indices) {
-      for (n2 <- partAdjList_nodup(n1)) {
-        val weight = edgeWeight(n1)(n2)
-        writeLine(1, s"n$n1 -- n$n2[weight=$weight];")
+    for (n1 <- pieceOutNeigh.indices) {
+      for (n2 <- pieceOutNeigh(n1)) {
+        val weight = pieceEdgeWeight(n1)(n2)
+        writeLine(1, s"n$n1 -> n$n2[weight=$weight];")
       }
     }
 
@@ -259,18 +311,25 @@ class PartGraph extends StatementGraph {
 //      }}
 //      partWeight(pid) = (partWeight(pid)) / max_ref_count
 //    }}
-    println(s"Largest part size is ${parts.map(_.size).max}")
+    println(s"Largest part size is ${pieces.map(_.size).max}")
 
 
     // metis file header
     // weighted graph, weight on both edges and vertices
-    writeLine(Seq(s"${parts.length}", edgeCount, "011"))
+    writeLine(Seq(s"${pieces.length}", edgeCount, "011"))
 
-    for (node <- parts.indices) {
-      val edges = partAdjList(node)
-      val weights = edges map edgeWeight(node)
+    for (node <- pieces.indices) {
 
-       val node_weight = parts(node).size
+      val inEdges = pieceInNeigh(node)
+      val outEdges = pieceOutNeigh(node)
+
+      val inWeights = inEdges.map(pieceEdgeWeight(_)(node))
+      val outWeights = outEdges.map(pieceEdgeWeight(node)(_))
+
+      val edges = inEdges ++ outEdges
+      val weights = inWeights ++ outWeights
+
+       val node_weight = pieces(node).size
       // val node_weight = 1
 //      val node_weight = partWeight(node)
       // metis requires node id starts from 1
@@ -309,12 +368,12 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   val parts_write = ArrayBuffer[Set[Int]]()
 
 
-  def doOpt(seeds: Array[Set[NodeID]]) = {
+  def doOpt() = {
 
     // pg.paint("opt-raw.dot")
 
     logger.info("Start collect partitions")
-    pg.initPartition(seeds)
+    pg.initPartition()
     logger.info("Done collect partitions")
 
     logger.info("Start calculate edge connections")
@@ -336,20 +395,14 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 //    pg.updateEdgeInfo()
 //    logger.info("Done edge connections")
 
-    pg.paintPartConnection(absOutputPath, "opt-part-pre-merged.dot")
+    pg.paintPartConnection(absOutputPath, "opt-pieces-pre-merged.dot")
 
     pg.writeToMetis(absOutputPath, gpmetis_input_filename)
 
     val metis_return_file = hiMetis(opt.parallel)
 
-    val partResult = parseMetisResult(metis_return_file)
+    parseMetisResult(metis_return_file)
 
-    val partCount = partResult.max + 1
-    parts ++= ArrayBuffer.fill(partCount)(mutable.BitSet())
-
-    partResult.zipWithIndex.foreach{case(partID, nodeID) => {
-      parts(partID) ++= pg.parts(nodeID)
-    }}
 
     parts.indices.foreach{pid => {
       println(s"Pid: $pid, part size: ${parts(pid).size}")
@@ -362,16 +415,17 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
     // Check correctness
 
-    val partNodeCount = pg.parts.reduce(_ ++ _).size
+    val partNodeCount = parts.reduce(_ ++ _).size
 
     println(s"Total node counts in partitions (deduplicated) is $partNodeCount")
+
+    val duplicateNodeCount = parts.map(_.size).sum - partNodeCount
+    println(s"Duplication cost: ${duplicateNodeCount} (${(duplicateNodeCount.toFloat / partNodeCount.toFloat) * 100}%)")
 
 //    pg.brief()
 //
 //    val components = pg.findPartComponents()
 //    print(s"Size: ${components.map(_.size)}\n")
-
-    // val parts_read = partidToID(partID).flatMap(inNeigh).toSet -- partidToID(partID)
 
 
     parts.foreach {part => {
@@ -439,7 +493,15 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
     fileSource.close()
 
-    partResult
+
+    val partCount = partResult.max + 1
+    parts ++= ArrayBuffer.fill(partCount)(mutable.BitSet())
+
+    partResult.zipWithIndex.foreach{case(partID, pieceID) => {
+      if (pg.sinkNodes.indices.contains(pieceID)) {
+        parts(partID) ++= pg.trees(pieceID)
+      }
+    }}
   }
 
 
