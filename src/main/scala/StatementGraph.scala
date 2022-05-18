@@ -164,14 +164,16 @@ class StatementGraph extends Graph {
 
     writeLine(0, "digraph MergeGraph {")
 
-    for (eachNode <- idToStmt.indices) {
+    for (eachNode <- validNodes) {
       val node_irName = idToStmt(eachNode).getClass.getName()
-      val nodeLabel = s"id:${eachNode}, ${node_irName}"
+      val node_name = idToName(eachNode)
+      val nodeLabel = s"id:${eachNode}, ${node_irName}, ${node_name}"
       writeLine(1, s"""n$eachNode [label=\"$nodeLabel\", irType=\"$node_irName\", stmtID=\"${eachNode}\", valid=\"${validNodes(eachNode)}\"];""")
     }
 
     for (eachNode <- idToStmt.indices) {
       for (eachSrcNode <- inNeigh(eachNode).distinct) {
+        if (validNodes.contains(eachNode) && validNodes.contains(eachSrcNode))
         writeLine(1, s"n$eachSrcNode -> n$eachNode;")
       }
     }
