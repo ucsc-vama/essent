@@ -522,10 +522,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(2, s"for (int i = 0; i < ${opt.parallel}; i++) tasks[i]();")
 
 
-      //    writeLines(2, s"// Wait all threads complete")
-      //    parts.indices.foreach{pid => {
-      //      writeLines(2, s"t_$pid.join();")
-      //    }}
+      writeLines(2, s"// Wait all threads complete")
+      parts.indices.foreach{pid => {
+        writeLines(2, s"t_$pid.join();")
+      }}
 
       //      writeLines(2, "debug_cycle_count ++;")
       //      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")

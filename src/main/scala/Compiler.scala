@@ -539,6 +539,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       val tp = ThreadPartitioner(pg, opt)
       tp.doOpt()
 
+//      val overlapped = tp.parts(0) & tp.parts(1)
+//      sg.validNodes.clear()
+//      sg.validNodes ++= overlapped
+//      sg.paint(opt.outputDir(), "overlapped-0-1.dot")
+
 
       // data structure for each part
       tp.parts.indices.foreach {pid => {
