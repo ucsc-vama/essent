@@ -523,7 +523,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
 
       writeLines(2, s"// Wait all threads complete")
-      parts.indices.foreach{pid => {
+      tp.parts.indices.foreach{pid => {
         writeLines(2, s"t_$pid.join();")
       }}
 
