@@ -616,6 +616,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       tp.parts.indices.foreach{pid => {
         writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset); };")
       }}
+
+//      tp.parts.indices.foreach{pid => {
+//        writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { ")
+//        writeLines(3, s"this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset);")
+//        writeLines(3, s"#pragma omp barrier")
+//        writeLines(3, s"${gen_tp_wsync_name(pid)}(update_registers);")
+//        writeLines(2, s"};")
+//      }}
+      
       writeLines(2, s"const std::function<void(void)> tasks[] = {${tp.parts.indices.map("t_" + _).mkString(", ")}};")
 
       writeLines(2, s"// Start thread for each part")
@@ -630,10 +639,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }}
 
 
-      //    writeLines(2, s"// Wait all threads complete")
-      //    parts.indices.foreach{pid => {
-      //      writeLines(2, s"t_$pid.join();")
-      //    }}
 
 //      writeLines(2, "debug_cycle_count ++;")
 //      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
