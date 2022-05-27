@@ -57,10 +57,7 @@ class PartGraph extends StatementGraph {
   }
 
 
-
-
-  def initPartition() = {
-
+  def initTrees(): Unit = {
     sinkNodes ++= validNodes.filter(outNeigh(_).isEmpty)
 
     val cache = mutable.HashMap[NodeID, BitSet]()
@@ -82,13 +79,14 @@ class PartGraph extends StatementGraph {
       }
     }
 
-//    println(s"${allValidSinkNodes.size} sink nodes in total")
+    //    println(s"${allValidSinkNodes.size} sink nodes in total")
     val collectedParts = sinkNodes.map{collectTree}
-
-    println("Trees collected")
 
     trees.clear()
     trees ++= collectedParts
+  }
+
+  def initPieces() = {
 
     trees.indices.foreach{partID => {trees(partID).foreach{ nodeID => {
       idToTreeID(nodeID) += partID
@@ -137,10 +135,6 @@ class PartGraph extends StatementGraph {
         // For all edges
         val edgeWeight = pieces(elem).size
         val edgeNodes = idToTreeID(pieces(elem).head).to[mutable.ArrayBuffer]
-
-        if (edgeNodes.isEmpty) {
-          println("Here")
-        }
 
         hg.addEdge(edgeNodes, edgeWeight)
       }
@@ -211,20 +205,42 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   def doOpt() = {
 
 
-    logger.info("Start collect partitions")
-    pg.initPartition()
-    logger.info("Done collect partitions")
+    logger.info("Collect trees")
+    val startTime_tree = System.currentTimeMillis()
+    pg.initTrees()
+    val endTime_tree = System.currentTimeMillis()
+    val elapse_tree = (endTime_tree - startTime_tree)
+    logger.info(s"Done collect trees in $elapse_tree ms")
+
+    logger.info("Collect pieces")
+    val startTime_pieces = System.currentTimeMillis()
+    pg.initPieces()
+    val endTime_pieces = System.currentTimeMillis()
+    val elapse_pieces = (endTime_pieces - startTime_pieces)
+    logger.info(s"Done collect pieces in $elapse_pieces ms")
 
     logger.info("Update hyper graph")
-
+    val startTime_hg = System.currentTimeMillis()
     pg.updateHyperGraph()
+    val endTime_hg = System.currentTimeMillis()
+    val elapse_hg = (endTime_hg - startTime_hg)
+    logger.info(s"Done hyper graph updating in $elapse_hg ms")
+
 
     logger.info("Write to hMetis output file")
-
+    val startTime_hmetis = System.currentTimeMillis()
     pg.writeTohMetis(absOutputPath, hmetis_input_filename)
+    val endTime_hmetis = System.currentTimeMillis()
+    val elapse_hmetis = (endTime_hmetis - startTime_hmetis)
+    logger.info(s"Done output in $elapse_hmetis ms")
+
 
     logger.info("Call KaHyPar")
+    val startTime_kahypar = System.currentTimeMillis()
     val metis_return_file = hiKaHyPar(opt.parallel)
+    val endTime_kahypar = System.currentTimeMillis()
+    val elapse_kahypar = (endTime_kahypar - startTime_kahypar)
+    logger.info(s"KaHyPar spend $elapse_kahypar ms")
 
     logger.info("Parse result")
     parseMetisResult(metis_return_file)
