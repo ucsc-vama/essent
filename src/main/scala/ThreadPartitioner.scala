@@ -196,7 +196,8 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
   val hmetis_input_filename = "parts.hmetis"
 
-  val kahypar_path = "/Users/hwang/project/kahypar/build/kahypar/application/KaHyPar"
+  //val kahypar_path = "/Users/hwang/project/kahypar/build/kahypar/application/KaHyPar"
+  val kahypar_path = "KaHyPar"
   val kahypar_config_filename = "KaHyPar.config"
 //  val kahypar_preset = "/Users/hwang/project/kahypar/config/km1_kKaHyPar_sea20.ini"
 
@@ -244,6 +245,9 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     println(s"Total node counts in partitions (deduplicated) is $partNodeCount")
     println(s"Duplication cost: ${duplicateNodeCount} (${(duplicateNodeCount.toFloat / partNodeCount.toFloat) * 100}%)")
 
+    val smallestSize = parts.map(_.size).min
+    val largestSize = parts.map(_.size).max
+    println(s"Partition size: max: ${largestSize}, min: ${smallestSize}, avg: ${partNodeCount / parts.length}")
 
     parts.foreach {part => {
       val part_read = part.flatMap(pg.inNeigh).toSet -- part

@@ -629,7 +629,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       writeLines(2, s"// Start thread for each part")
 
-      writeLines(2, "#pragma omp parallel for num_threads(2)")
+      writeLines(2, s"#pragma omp parallel for num_threads(${opt.parallel})")
       writeLines(2, s"for (int i = 0; i < ${opt.parallel}; i++) tasks[i]();")
 
       writeLines(2, "")
