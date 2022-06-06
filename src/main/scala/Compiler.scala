@@ -132,7 +132,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       // Thread entry point
 
       for (tid <- 1 to worker_thread_count) {
-        writeLines(1, s"${gen_thread_func_name(tid)}() {")
+        writeLines(1, s"void ${gen_thread_func_name(tid)}() {")
         writeLines(2, "while (true) {")
         writeLines(3, s"while (${gen_thread_token_name(tid)}.load() == false) {")
         writeLines(4, s"if (sim_token.load() == false) return;")
