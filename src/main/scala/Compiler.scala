@@ -26,6 +26,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
   implicit val rn = new Renamer
 
+
+  // parallel function name
+  def gen_tp_eval_name(pid: Int) = s"eval_tp_$pid"
+  def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
+
+  def gen_thread_func_name(tid: Int) = s"worker_thread_${tid}"
+  def gen_thread_obj_name(tid: Int) = s"thread_${tid}"
+  def gen_thread_token_name(tid: Int) = s"thread_${tid}_token"
+
   // Writing To File
   //----------------------------------------------------------------------------
   def writeLines(indentLevel: Int, lines: String) {
@@ -63,9 +72,80 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(1, m.ports flatMap emitPort(modName == topName))
     writeLines(1, moduleDecs)
     writeLines(0, "")
+
+    val worker_thread_count = initialOpt.parallel - 1
+
+    if ((modName == topName) && (initialOpt.parallel > 1)) {
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(1, s"std::atomic<bool> ${gen_thread_token_name(tid)};")
+      }
+      writeLines(0, "")
+      writeLines(1, s"std::atomic<bool> sim_token;")
+
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(1, s"std::thread *${gen_thread_obj_name(tid)};")
+      }
+
+      writeLines(0, "")
+      writeLines(1, "bool update_registers;")
+      writeLines(1, "bool verbose;")
+      writeLines(1, "bool done_reset;")
+
+      writeLines(0, "")
+    }
+
+    // Constructor
     writeLines(1, s"$modName() {")
     writeLines(2, initializeVals(modName == topName)(m, registers, memories))
+    if ((modName == topName) && (initialOpt.parallel > 1)) {
+      // reset tokens
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"${gen_thread_token_name(tid)}.store(false);")
+      }
+      writeLines(0, "")
+      writeLines(2, s"sim_token.store(true);")
+
+      // Create worker threads
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"${gen_thread_obj_name(tid)} = std::thread([=]() -> void { this->${gen_thread_func_name(tid)}(); });")
+      }
+
+    }
     writeLines(1, "}")
+
+    if ((modName == topName) && (initialOpt.parallel > 1)) {
+
+      // Destructor
+      writeLines(0, "")
+      writeLines(1, s"~$modName() {")
+      writeLines(2, s"sim_token.store(false);")
+      // Join worker threads
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"${gen_thread_obj_name(tid)} -> join();")
+      }
+      writeLines(1, "}")
+
+      // Thread entry point
+
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(1, s"${gen_thread_func_name(tid)}() {")
+        writeLines(2, "while (true) {")
+        writeLines(3, s"while (${gen_thread_token_name(tid)}.load() == false) {")
+        writeLines(4, s"if (sim_token.load() == false) return;")
+        writeLines(3, "}")
+
+        // call task
+        writeLines(3, s"${gen_tp_eval_name(tid)}(update_registers, verbose, done_reset);")
+
+        writeLines(3, s"${gen_thread_token_name(tid)}.store(false);")
+        writeLines(2, "}")
+        writeLines(1, "}")
+      }
+    }
     if (modName == topName) {
       writeLines(0, "")
       // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
@@ -473,6 +553,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
     writeLines(0, "#include <array>")
     writeLines(0, "#include <thread>")
+    writeLines(0, "#include <atomic>")
     writeLines(0, "#include <cstdint>")
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
@@ -525,8 +606,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
     if (opt.parallel > 1) {
 
-      def gen_tp_eval_name(pid: Int) = s"eval_tp_$pid"
-      def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
+
 
 //      val pm = PreMergeGraph(sg)
 //      val preMerger = PreMerger(pm)
@@ -582,6 +662,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 //      sg.validNodes ++= overlapped
 //      sg.paint(opt.outputDir(), "overlapped-0-1.dot")
 
+      val worker_thread_count = initialOpt.parallel - 1
 
       // data structure for each part
       tp.parts.indices.foreach {pid => {
@@ -651,26 +732,27 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, "cycle_count++;")
       }
 
-      tp.parts.indices.foreach{pid => {
-        writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset); };")
-      }}
+      writeLines(2, "this->update_registers = update_registers;")
+      writeLines(2, "this->verbose = verbose;")
+      writeLines(2, "this->done_reset = done_reset;")
 
-//      tp.parts.indices.foreach{pid => {
-//        writeLines(2, s"const std::function<void(void)> t_$pid = [=]() -> void { ")
-//        writeLines(3, s"this->${gen_tp_eval_name(pid)}(update_registers, verbose, done_reset);")
-//        writeLines(3, s"#pragma omp barrier")
-//        writeLines(3, s"${gen_tp_wsync_name(pid)}(update_registers);")
-//        writeLines(2, s"};")
-//      }}
-      
-      writeLines(2, s"const std::function<void(void)> tasks[] = {${tp.parts.indices.map("t_" + _).mkString(", ")}};")
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"${gen_thread_token_name(tid)}.store(true);")
+      }
 
-      writeLines(2, s"// Start thread for each part")
+      writeLines(0, "")
+      // Main thread is also an worker thread
+      writeLines(2, s"${gen_tp_eval_name(0)}(update_registers, verbose, done_reset);")
 
-      writeLines(2, s"#pragma omp parallel for num_threads(${opt.parallel})")
-      writeLines(2, s"for (int i = 0; i < ${opt.parallel}; i++) tasks[i]();")
+      writeLines(0, "")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true);")
+      }
 
-      writeLines(2, "")
+
+
+      writeLines(0, "")
 
       tp.parts.indices.foreach{pid => {
         writeLines(2, s"${gen_tp_wsync_name(pid)}(update_registers);")
