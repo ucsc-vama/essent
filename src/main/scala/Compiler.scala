@@ -110,7 +110,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       // Create worker threads
       writeLines(0, "")
       for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_obj_name(tid)} = std::thread([=]() -> void { this->${gen_thread_func_name(tid)}(); });")
+        writeLines(2, s"${gen_thread_obj_name(tid)} = new std::thread([=]() -> void { this->${gen_thread_func_name(tid)}(); });")
       }
 
     }
