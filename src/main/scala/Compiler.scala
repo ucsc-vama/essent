@@ -489,7 +489,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     logger.info(sg.makeStatsString)
 
 
-    sg.paint(opt.outputDir, s"$topName.dot")
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
 
@@ -538,6 +537,45 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       val tp = ThreadPartitioner(pg, opt)
       tp.doOpt()
+
+
+
+
+
+//      def findWriteRegName(writes: Set[Int]) = {
+//        writes.map(pg.idToStmt) flatMap { stmt => stmt match {
+//          case mw: MemWrite => {
+//            Seq(mw.memName)
+//          }
+//          case ru: RegUpdate => {
+//            //          Seq(ru.regRef.name)
+//            Seq(emitExpr(ru.regRef)(rn))
+//          }
+//          case _ => Seq()
+//        }}
+//      }
+
+//      def findReadRegName(reads: Set[Int]) = {
+//        reads.map(pg.idToStmt) flatMap { stmt => stmt match {
+//          case r: DefRegister => {
+//            Seq(r.name)
+//          }
+//          case m: DefMemory => {
+//            Seq(m.name)
+//          }
+//          case _ => Seq()
+//        }}
+//      }
+//
+//      tp.parts.indices.foreach{pid_i => {
+//        val read_name = findReadRegName(tp.parts_read(pid_i))
+//        println(s"Part ${pid_i} reads ${read_name.size} mem or regs")
+//        tp.parts.indices.foreach{pid_j => {
+//          val write_name = findWriteRegName(tp.parts_write(pid_j))
+//          val intersect_cnt = (read_name & write_name).size
+//          println(s"Part ${pid_i} read intersect with part ${pid_j} write: ${intersect_cnt}/${write_name.size}")
+//        }}
+//      }}
 
 //      val overlapped = tp.parts(0) & tp.parts(1)
 //      sg.validNodes.clear()

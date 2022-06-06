@@ -212,6 +212,8 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     val elapse_tree = (endTime_tree - startTime_tree)
     logger.info(s"Done collect trees in $elapse_tree ms")
 
+    logger.info(s"Found ${pg.sinkNodes.size} sink nodes")
+
     logger.info("Collect pieces")
     val startTime_pieces = System.currentTimeMillis()
     pg.initPieces()
