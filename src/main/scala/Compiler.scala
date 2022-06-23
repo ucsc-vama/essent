@@ -32,6 +32,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
 
   def gen_thread_func_name(tid: Int) = s"worker_thread_${tid}"
+  def gen_thread_wait_token_func_name(tid: Int) = s"wait_token_${tid}"
   def gen_thread_obj_name(tid: Int) = s"thread_${tid}"
   def gen_thread_token_name(tid: Int) = s"thread_${tid}_token"
 
@@ -80,7 +81,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(1, s"std::atomic<bool> ${gen_thread_token_name(tid)};")
       }
       writeLines(0, "")
-      writeLines(1, s"std::atomic<bool> sim_token;")
+      writeLines(1, s"bool sim_token;")
 
       writeLines(0, "")
       for (tid <- 1 to worker_thread_count) {
@@ -105,7 +106,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(2, s"${gen_thread_token_name(tid)}.store(false);")
       }
       writeLines(0, "")
-      writeLines(2, s"sim_token.store(true);")
+      writeLines(2, s"sim_token = true;")
 
       // Create worker threads
       writeLines(0, "")
@@ -121,7 +122,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       // Destructor
       writeLines(0, "")
       writeLines(1, s"~$modName() {")
-      writeLines(2, s"sim_token.store(false);")
+      writeLines(2, s"sim_token = false;")
       // Join worker threads
       writeLines(0, "")
       for (tid <- 1 to worker_thread_count) {
@@ -132,11 +133,22 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       // Thread entry point
 
       for (tid <- 1 to worker_thread_count) {
-        writeLines(1, s"void ${gen_thread_func_name(tid)}() {")
+        writeLines(1, s"void ${gen_thread_wait_token_func_name(tid)}() {")
         writeLines(2, "while (true) {")
         writeLines(3, s"while (${gen_thread_token_name(tid)}.load() == false) {")
-        writeLines(4, s"if (sim_token.load() == false) return;")
+        writeLines(4, s"_mm_pause();")
+        writeLines(4, s"_mm_pause();")
+        writeLines(4, s"_mm_pause();")
+        writeLines(4, s"_mm_pause();")
+        writeLines(4, s"if (sim_token == false) return;")
         writeLines(3, "}")
+        writeLines(2, "}")
+        writeLines(1, "}")
+
+        writeLines(0, "")
+        writeLines(1, s"void ${gen_thread_func_name(tid)}() {")
+        writeLines(2, "while (true) {")
+        writeLines(3, s"${gen_thread_wait_token_func_name(tid)}();")
 
         // call task
         writeLines(3, s"${gen_tp_eval_name(tid)}(update_registers, verbose, done_reset);")
@@ -551,6 +563,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
+    writeLines(0, "#include <immintrin.h>")
     writeLines(0, "#include <array>")
     writeLines(0, "#include <thread>")
     writeLines(0, "#include <atomic>")
@@ -747,7 +760,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       writeLines(0, "")
       for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true);")
+        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true) {")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(2, s"};")
+
       }
 
 
