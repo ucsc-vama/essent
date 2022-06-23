@@ -136,9 +136,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(1, s"void ${gen_thread_wait_token_func_name(tid)}() {")
         writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == false && sim_token == true) {")
         writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
         writeLines(2, "}")
         writeLines(1, "}")
 
@@ -742,9 +739,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "void eval_wait_thread_complete() {")
       for (tid <- 1 to worker_thread_count) {
         writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
         writeLines(3, s"_mm_pause();")
         writeLines(2, s"};")
       }
