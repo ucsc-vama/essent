@@ -740,6 +740,19 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       }}
 
+      writeLines(0, "")
+      writeLines(1, "void eval_wait_thread_complete() {")
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true) {")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(3, s"_mm_pause();")
+        writeLines(2, s"};")
+      }
+      writeLines(1, "}")
+      writeLines(0, "")
+
       writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
       if ((opt.trackParts || opt.trackSigs)) {
         writeLines(2, "cycle_count++;")
@@ -759,17 +772,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(2, s"${gen_tp_eval_name(0)}(update_registers, verbose, done_reset);")
 
       writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(3, s"_mm_pause();")
-        writeLines(2, s"};")
-
-      }
-
-
+      writeLines(2, "eval_wait_thread_complete();")
 
       writeLines(0, "")
 
