@@ -32,9 +32,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   def gen_tp_wsync_name(pid: Int) = s"sync_tp_$pid"
 
   def gen_thread_func_name(tid: Int) = s"worker_thread_${tid}"
-  def gen_thread_wait_token_func_name(tid: Int) = s"wait_token_${tid}"
   def gen_thread_obj_name(tid: Int) = s"thread_${tid}"
-  def gen_thread_token_name(tid: Int) = s"thread_${tid}_token"
+  def gen_thread_eval_token_name(tid: Int) = s"thread_${tid}_eval_token"
+  def gen_thread_sync_token_name(tid: Int) = s"thread_${tid}_sync_token"
 
   // Writing To File
   //----------------------------------------------------------------------------
@@ -47,6 +47,325 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
 
+  def declareFlattenSubModule(c: Circuit): Unit = {
+    val topName = c.main
+    val modules = c.modules.collect {case m: Module => m}
+    val extModules = c.modules.collect {case e: ExtModule => e}
+
+    val moduleDict = modules.map(x => (x.name, x)).toMap
+    val extModuleDict = extModules.map(x => (x.name, x)).toMap
+
+    val topModule = moduleDict(topName)
+    // TODO : remove top module
+    val modulesAndPrefixes = findAllModuleInstances(c) filter {case (modName, _) => moduleDict.contains(modName)}
+
+
+    val registerDesc = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val registers = findInstancesOf[DefRegister](moduleDict(moduleName).body)
+      registers flatMap {d: DefRegister => {
+        val typeStr = genCppType(d.tpe)
+        val regName = d.name
+        Seq(s"$typeStr ${prefix_rename}$regName;")
+      }}
+    }}
+
+    val memoryDesc = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories map {m: DefMemory => {
+        s"${genCppType(m.dataType)} ${prefix_rename}${m.name}[${m.depth}];"
+      }}
+    }}
+
+
+
+    val registerInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val registers = findInstancesOf[DefRegister](moduleDict(moduleName).body)
+      registers flatMap {d: DefRegister => {
+        val regName = d.name
+        Seq(s"${prefix_rename}${regName}.rand_init();")
+      }}
+    }}
+
+    val memoryInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories flatMap {m: DefMemory => {
+        val mem_name = s"${prefix_rename}${m.name}"
+        if ((m.depth > 1000) && (bitWidth(m.dataType)) <= 64) {
+          Seq(s"${mem_name}[0].rand_init();",
+            s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a] = ${mem_name}[0].as_single_word() + a;")
+        } else {
+          Seq(s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a].rand_init();")
+        }
+      }}
+    }}
+
+
+    val modName = "DesignData"
+
+
+
+    writeLines(0, "")
+    writeLines(0, s"typedef struct ${modName} {")
+    writeLines(0, "")
+    writeLines(1, "// Registers")
+    writeLines(1, registerDesc)
+    writeLines(0, "")
+    writeLines(1, "// Memories")
+    writeLines(1, memoryDesc)
+    // No need emit port. This would not be the top level
+    //    writeLines(1, m.ports flatMap emitPort(modName == topName))
+    // No need to declare moduleDesc, as the whole design is flattened
+    //    writeLines(1, moduleDecs)
+    writeLines(0, "")
+
+
+    // Constructor
+    writeLines(1, s"$modName() {")
+
+    writeLines(2, registerInit)
+    writeLines(2, memoryInit)
+
+
+    writeLines(1, "}")
+
+    writeLines(0, s"} $modName;")
+
+  }
+
+
+
+  def declareFlattenSubModule(c: Circuit, part_write: Seq[Seq[Statement]]): Unit = {
+    val topName = c.main
+    val modules = c.modules.collect {case m: Module => m}
+    val extModules = c.modules.collect {case e: ExtModule => e}
+
+    val moduleDict = modules.map(x => (x.name, x)).toMap
+    val extModuleDict = extModules.map(x => (x.name, x)).toMap
+
+    val topModule = moduleDict(topName)
+    // TODO : remove top module
+    val modulesAndPrefixes = findAllModuleInstances(c) filter {case (modName, _) => moduleDict.contains(modName)}
+
+
+    val allRegisters = part_write.map(_.collect {case ru: RegUpdate => ru})
+    val allMemories = part_write.flatten.collect {case mw: MemWrite => mw}
+
+    val registerDesc = allRegisters.map(_.flatMap {ru => {
+      ru.regRef match {
+        case reg: Reference => {
+          val typeStr = genCppType(reg.tpe)
+          val regName = reg.name
+          val genName = regName.replace('.', '_')
+          Seq(s"$typeStr ${genName};")
+        }
+        case _ => Seq()
+      }
+
+    }})
+
+
+
+    val memoryDesc = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories map {m: DefMemory => {
+        s"${genCppType(m.dataType)} ${prefix_rename}${m.name}[${m.depth}];"
+      }}
+    }}
+
+
+
+    val registerInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val registers = findInstancesOf[DefRegister](moduleDict(moduleName).body)
+      registers flatMap {d: DefRegister => {
+        val regName = d.name
+        Seq(s"${prefix_rename}${regName}.rand_init();")
+      }}
+    }}
+
+    val memoryInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val prefix_rename = prefix.replace('.', '_')
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories flatMap {m: DefMemory => {
+        val mem_name = s"${prefix_rename}${m.name}"
+        if ((m.depth > 1000) && (bitWidth(m.dataType)) <= 64) {
+          Seq(s"${mem_name}[0].rand_init();",
+            s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a] = ${mem_name}[0].as_single_word() + a;")
+        } else {
+          Seq(s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a].rand_init();")
+        }
+      }}
+    }}
+
+
+    val modName = "DesignData"
+
+
+    writeLines(0, "")
+    writeLines(0, s"typedef struct ${modName} {")
+    writeLines(0, "")
+    writeLines(1, "// Registers")
+
+    registerDesc.zipWithIndex.foreach{case(p, i) => {
+      writeLines(0, "")
+      writeLines(1, s"// Registers for partition ${i}")
+      writeLines(1, p)
+
+    }}
+
+    writeLines(0, "")
+    writeLines(1, "// Memories")
+    writeLines(1, memoryDesc)
+    // No need emit port. This would not be the top level
+    //    writeLines(1, m.ports flatMap emitPort(modName == topName))
+    // No need to declare moduleDesc, as the whole design is flattened
+    //    writeLines(1, moduleDecs)
+    writeLines(0, "")
+
+
+    // Constructor
+    writeLines(1, s"$modName() {")
+
+    writeLines(2, registerInit)
+    writeLines(2, memoryInit)
+
+
+    writeLines(1, "}")
+
+    writeLines(0, s"} $modName;")
+
+  }
+
+
+
+  // Declaring Top level Module. This function is used only by parallel version
+  //----------------------------------------------------------------------------
+  def declareTopModule(m: Module, c: Circuit) {
+    val topName = m.name
+
+    val extModules = c.modules.collect {case e: ExtModule => e}
+    val extModuleDict = extModules.map(x => (x.name, x)).toMap
+
+    val registers = findInstancesOf[DefRegister](m.body)
+    val memories = findInstancesOf[DefMemory](m.body)
+    val registerDecs = registers flatMap {d: DefRegister => {
+      val typeStr = genCppType(d.tpe)
+      val regName = d.name
+      Seq(s"$typeStr $regName;")
+    }}
+    val memDecs = memories map {m: DefMemory => {
+      s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
+    }}
+    val modulesAndPrefixes = findModuleInstances(m.body)
+    val extModulesAndPrefixes = modulesAndPrefixes.filter{case(modName, _) => {extModuleDict.contains(modName)}}
+    val extModuleDecs = extModulesAndPrefixes map { case (module, fullName) => {
+      val instanceName = fullName.split("\\.").last
+      s"$module $instanceName;"
+    }}
+    val modName = m.name
+    writeLines(0, "")
+    writeLines(0, s"typedef struct $modName {")
+    writeLines(1, registerDecs)
+    writeLines(1, memDecs)
+    writeLines(1, m.ports flatMap emitPort(modName == topName))
+    writeLines(1, extModuleDecs)
+    writeLines(1, s"DesignData ${getGlobalDataName()};")
+    writeLines(0, "")
+
+    val worker_thread_count = initialOpt.parallel - 1
+
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(1, s"std::atomic<bool> ${gen_thread_eval_token_name(tid)};")
+      writeLines(1, s"std::atomic<bool> ${gen_thread_sync_token_name(tid)};")
+    }
+    writeLines(0, "")
+    writeLines(1, s"bool sim_token;")
+
+    writeLines(0, "")
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(1, s"std::thread *${gen_thread_obj_name(tid)};")
+    }
+
+    writeLines(0, "")
+    writeLines(1, "bool update_registers;")
+    writeLines(1, "bool verbose;")
+    writeLines(1, "bool done_reset;")
+
+    writeLines(0, "")
+
+    // Constructor
+    writeLines(1, s"$modName() {")
+    writeLines(2, initializeVals(modName == topName)(m, registers, memories))
+
+
+    // reset tokens
+    writeLines(0, "")
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"${gen_thread_eval_token_name(tid)}.store(false);")
+      writeLines(2, s"${gen_thread_sync_token_name(tid)}.store(false);")
+    }
+    writeLines(0, "")
+    writeLines(2, s"sim_token = true;")
+
+    // Create worker threads
+    writeLines(0, "")
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"${gen_thread_obj_name(tid)} = new std::thread([=]() -> void { this->${gen_thread_func_name(tid)}(); });")
+    }
+
+
+    writeLines(1, "}")
+
+    // Destructor
+    writeLines(0, "")
+    writeLines(1, s"~$modName() {")
+    writeLines(2, s"sim_token = false;")
+    // Join worker threads
+    writeLines(0, "")
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"${gen_thread_obj_name(tid)} -> join();")
+    }
+    writeLines(1, "}")
+
+    // Thread entry point
+
+    for (tid <- 1 to worker_thread_count) {
+
+      writeLines(0, "")
+      writeLines(1, s"void ${gen_thread_func_name(tid)}() {")
+      writeLines(2, "while (true) {")
+      writeLines(3, s"while (${gen_thread_eval_token_name(tid)}.load() == false && sim_token == true) {")
+      writeLines(4, s"_mm_pause();")
+      writeLines(3, "}")
+      writeLines(3, s"if (sim_token == false) return;")
+
+      // call task
+      writeLines(3, s"${gen_tp_eval_name(tid)}(update_registers, verbose, done_reset);")
+
+      writeLines(3, s"${gen_thread_eval_token_name(tid)}.store(false);")
+
+      writeLines(3, s"while (${gen_thread_sync_token_name(tid)}.load() == false) {")
+      writeLines(4, s"_mm_pause();")
+      writeLines(3, "}")
+
+      writeLines(3, s"${gen_tp_wsync_name(tid)}(update_registers);")
+
+
+      writeLines(3, s"${gen_thread_sync_token_name(tid)}.store(false);")
+
+      writeLines(2, "}")
+      writeLines(1, "}")
+    }
+
+    // Not done yet
+    writeLines(0, "")
+    // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+  }
   // Declaring Modules
   //----------------------------------------------------------------------------
   def declareModule(m: Module, topName: String) {
@@ -74,85 +393,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(1, moduleDecs)
     writeLines(0, "")
 
-    val worker_thread_count = initialOpt.parallel - 1
-
-    if ((modName == topName) && (initialOpt.parallel > 1)) {
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(1, s"std::atomic<bool> ${gen_thread_token_name(tid)};")
-      }
-      writeLines(0, "")
-      writeLines(1, s"bool sim_token;")
-
-      writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(1, s"std::thread *${gen_thread_obj_name(tid)};")
-      }
-
-      writeLines(0, "")
-      writeLines(1, "bool update_registers;")
-      writeLines(1, "bool verbose;")
-      writeLines(1, "bool done_reset;")
-
-      writeLines(0, "")
-    }
-
     // Constructor
     writeLines(1, s"$modName() {")
     writeLines(2, initializeVals(modName == topName)(m, registers, memories))
-    if ((modName == topName) && (initialOpt.parallel > 1)) {
-      // reset tokens
-      writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_token_name(tid)}.store(false);")
-      }
-      writeLines(0, "")
-      writeLines(2, s"sim_token = true;")
-
-      // Create worker threads
-      writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_obj_name(tid)} = new std::thread([=]() -> void { this->${gen_thread_func_name(tid)}(); });")
-      }
-
-    }
     writeLines(1, "}")
 
-    if ((modName == topName) && (initialOpt.parallel > 1)) {
-
-      // Destructor
-      writeLines(0, "")
-      writeLines(1, s"~$modName() {")
-      writeLines(2, s"sim_token = false;")
-      // Join worker threads
-      writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_obj_name(tid)} -> join();")
-      }
-      writeLines(1, "}")
-
-      // Thread entry point
-
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(1, s"void ${gen_thread_wait_token_func_name(tid)}() {")
-        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == false && sim_token == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(2, "}")
-        writeLines(1, "}")
-
-        writeLines(0, "")
-        writeLines(1, s"void ${gen_thread_func_name(tid)}() {")
-        writeLines(2, "while (true) {")
-        writeLines(3, s"${gen_thread_wait_token_func_name(tid)}();")
-        writeLines(3, s"if (sim_token == false) return;")
-
-        // call task
-        writeLines(3, s"${gen_tp_eval_name(tid)}(update_registers, verbose, done_reset);")
-
-        writeLines(3, s"${gen_thread_token_name(tid)}.store(false);")
-        writeLines(2, "}")
-        writeLines(1, "}")
-      }
-    }
     if (modName == topName) {
       writeLines(0, "")
       // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
@@ -169,18 +414,20 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, s"} $modName;")
   }
 
-
-  def getThreadDataName(pid: Int) = s"td_$pid"
+  def getGlobalDataName() = s"dat"
+  def getThreadDataName_Reg(pid: Int) = s"tdr_$pid"
+  def getThreadDataName_Mem(pid: Int) = s"tdm_$pid"
   def memNameToDeclName(mem: String) = mem.replace('.', '_')
 
-  def declareThreadWriteData(writes: Seq[Statement], pid: Int, rn: Renamer) {
+  def declareThreadMemWriteData(writes: Seq[Statement], pid: Int, rn: Renamer) {
 
     val decls = writes flatMap {stmt => stmt match {
-      case ru: RegUpdate => {
-        val typeStr = genCppType (ru.regRef.tpe)
-        val lhs_orig = emitExpr(ru.expr)(rn)
-        Seq (s"$typeStr $lhs_orig;")
-      }
+      // Don't need extra space for regwrite anymore
+//      case ru: RegUpdate => {
+//        val typeStr = genCppType (ru.regRef.tpe)
+//        val lhs_orig = emitExpr(ru.expr)(rn)
+//        Seq (s"$typeStr $lhs_orig;")
+//      }
       case m: MemWrite => {
 
         val typeStr = genCppType(m.wrData.tpe)
@@ -190,13 +437,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           s"$typeStr ${declName}_data;")
       }
 
-      case st: Stop => Seq()
-      case pr: Print => Seq()
-
       case _ => Seq()
     }}
 
-    writeLines(1, s"typedef struct ThreadData_$pid {")
+    writeLines(1, s"typedef struct ThreadData_Mem_$pid {")
     writeLines(2, decls)
     writeLines(1, s"} ThreadData_$pid;")
 
@@ -234,22 +478,44 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
 
 
-  def writeRegSyncBody(indentLevel: Int, writes: Seq[Statement], pid: Int, rn: Renamer) = {
+  def writeSyncBody(indentLevel: Int, writes: Seq[Statement], pid: Int, rn: Renamer) = {
+    val allRegisters = writes.collect{case ru:RegUpdate => ru}
+
+    val registerNames = allRegisters.flatMap {ru => {
+      ru.regRef match {
+        case reg: Reference => {
+          val regName = reg.name
+          val genName = regName.replace('.', '_')
+          Seq(s"${genName}")
+        }
+        case _ => Seq()
+      }
+    }}
+
+    val memcpy_src = s"reinterpret_cast<char*>(&${getThreadDataName_Reg(pid)}) + offsetof(DesignData, ${registerNames.head})"
+    val memcpy_dst = s"reinterpret_cast<char*>(&${getGlobalDataName()}) + offsetof(DesignData, ${registerNames.head})"
+    val memcpy_size = s"offsetof(DesignData, ${registerNames.last}) + sizeof(${getGlobalDataName()}.${registerNames.last}) - offsetof(DesignData, ${registerNames.head})"
+
+    writeLines(indentLevel, s"std::memcpy(${memcpy_dst}, ${memcpy_src}, ${memcpy_size});")
+
+
     val lines = writes flatMap  {stmt => stmt match {
       case mw: MemWrite => {
         // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
         val declName = memNameToDeclName(mw.nodeName())
-        val var_wen = s"${getThreadDataName(pid)}.${declName}_write_en"
-        val var_index = s"${getThreadDataName(pid)}.${declName}_index"
-        val var_data = s"${getThreadDataName(pid)}.${declName}_data"
+        val var_wen = s"${getThreadDataName_Mem(pid)}.${declName}_write_en"
+        val var_index = s"${getThreadDataName_Mem(pid)}.${declName}_index"
+        val var_data = s"${getThreadDataName_Mem(pid)}.${declName}_data"
 
-        Seq(s"if (UNLIKELY(update_registers && ${var_wen})) ${mw.memName}[${var_index}] = ${var_data};")
+        val memName = s"${getGlobalDataName()}.${mw.memName.replace('.', '_')}"
+
+        Seq(s"if (UNLIKELY(update_registers && ${var_wen})) ${memName}[${var_index}] = ${var_data};")
       }
 
-      case ru: RegUpdate => {
-        val lhs_orig = emitExpr(ru.expr)(rn)
-        Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${getThreadDataName(pid)}.${lhs_orig};")
-      }
+//      case ru: RegUpdate => {
+//        val lhs_orig = emitExpr(ru.expr)(rn)
+//        Seq(s"if (update_registers) ${emitExpr(ru.regRef)} = ${getThreadDataName_Reg(pid)}.${lhs_orig};")
+//      }
       case _ => Seq()
     }}
 
@@ -263,6 +529,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.conditionalMuxes)
       MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
+
+    def changePrefix(st: String, from: String, to: String) = st.replace(from, to)
 
 //    def stmtNeedDeferred(stmt: Statement) = {stmt match {
 //      case m: MemWrite => true
@@ -292,15 +560,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           case mw: MemWrite => {
             // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
             val declName = memNameToDeclName(mw.nodeName())
-            Seq(s"${getThreadDataName(pid)}.${declName}_write_en = ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)};",
-              s"${getThreadDataName(pid)}.${declName}_index = ${emitExprWrap(mw.wrAddr)(rn)}.as_single_word();",
-              s"${getThreadDataName(pid)}.${declName}_data = ${emitExpr(mw.wrData)(rn)};")
+            Seq(s"${getThreadDataName_Mem(pid)}.${declName}_write_en = ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)};",
+              s"${getThreadDataName_Mem(pid)}.${declName}_index = ${emitExprWrap(mw.wrAddr)(rn)}.as_single_word();",
+              s"${getThreadDataName_Mem(pid)}.${declName}_data = ${emitExpr(mw.wrData)(rn)};")
           }
 
-          case ru: RegUpdate => {
-            val lhs_orig = emitExpr(ru.expr)(rn)
-            Seq(s"${getThreadDataName(pid)}.${lhs_orig} = ${emitExpr(ru.expr)(rn)};")
-          }
+//          case ru: RegUpdate => {
+//            val lhs_orig = emitExpr(ru.expr)(rn)
+//            Seq(s"${getThreadDataName_Reg(pid)}.${lhs_orig} = ${emitExpr(ru.expr)(rn)};")
+//          }
+          case ru: RegUpdate => Seq(s"if (update_registers /**/) ${changePrefix(emitExpr(ru.regRef)(rn), "dat.", getThreadDataName_Reg(pid) + ".")} = ${emitExpr(ru.expr)(rn)};")
+
           case _ => emitStmt(s)(rn)
         }
         writeLines(indentLevel, emitStmt_T(stmt)(rn))
@@ -594,89 +864,56 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     // if (opt.trackExts)
     //   sg.dumpNodeTypeToJson(sigNameToID)
     // sg.reachableAfter(sigNameToID)
-    circuit.modules foreach {
-      case m: Module => declareModule(m, topName)
-      case m: ExtModule => declareExtModule(m)
-    }
-    val topModule = findModule(topName, circuit) match {case m: Module => m}
-    if (initialOpt.writeHarness) {
-      writeLines(0, "")
-      writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
-      writeLines(2, HarnessGenerator.harnessConnections(topModule))
-      writeLines(1, "}")
-      writeLines(0, "")
-    }
-    if (containsAsserts) {
-      writeLines(1, "bool assert_triggered = false;")
-      writeLines(1, "int assert_exit_code;")
-      writeLines(0, "")
-    }
+
 
     if (opt.parallel > 1) {
 
-
-
-//      val pm = PreMergeGraph(sg)
-//      val preMerger = PreMerger(pm)
-//
-//      val seeds = preMerger.findSeeds(100)
 
       val pg = PartGraph(sg)
 
       val tp = ThreadPartitioner(pg, opt)
       tp.doOpt()
 
+      val part_write_stmts = tp.parts_write.map(_.map(sg.idToStmt(_)).toSeq).toSeq
+
+
+
+      declareFlattenSubModule(circuit, part_write_stmts)
+
+      circuit.modules foreach {
+        case m: ExtModule => declareExtModule(m)
+        case _ => Unit
+      }
+
+      val topModule = findModule(topName, circuit) match {case m: Module => m}
+      declareTopModule(topModule, circuit)
+
+      if (initialOpt.writeHarness) {
+        writeLines(0, "")
+        writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+        writeLines(2, HarnessGenerator.harnessConnections(topModule))
+        writeLines(1, "}")
+        writeLines(0, "")
+      }
+      if (containsAsserts) {
+        writeLines(1, "bool assert_triggered = false;")
+        writeLines(1, "int assert_exit_code;")
+        writeLines(0, "")
+      }
 
 
 
 
-//      def findWriteRegName(writes: Set[Int]) = {
-//        writes.map(pg.idToStmt) flatMap { stmt => stmt match {
-//          case mw: MemWrite => {
-//            Seq(mw.memName)
-//          }
-//          case ru: RegUpdate => {
-//            //          Seq(ru.regRef.name)
-//            Seq(emitExpr(ru.regRef)(rn))
-//          }
-//          case _ => Seq()
-//        }}
-//      }
-
-//      def findReadRegName(reads: Set[Int]) = {
-//        reads.map(pg.idToStmt) flatMap { stmt => stmt match {
-//          case r: DefRegister => {
-//            Seq(r.name)
-//          }
-//          case m: DefMemory => {
-//            Seq(m.name)
-//          }
-//          case _ => Seq()
-//        }}
-//      }
-//
-//      tp.parts.indices.foreach{pid_i => {
-//        val read_name = findReadRegName(tp.parts_read(pid_i))
-//        println(s"Part ${pid_i} reads ${read_name.size} mem or regs")
-//        tp.parts.indices.foreach{pid_j => {
-//          val write_name = findWriteRegName(tp.parts_write(pid_j))
-//          val intersect_cnt = (read_name & write_name).size
-//          println(s"Part ${pid_i} read intersect with part ${pid_j} write: ${intersect_cnt}/${write_name.size}")
-//        }}
-//      }}
-
-//      val overlapped = tp.parts(0) & tp.parts(1)
-//      sg.validNodes.clear()
-//      sg.validNodes ++= overlapped
-//      sg.paint(opt.outputDir(), "overlapped-0-1.dot")
 
       val worker_thread_count = initialOpt.parallel - 1
 
       // data structure for each part
       tp.parts.indices.foreach {pid => {
         val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
-        declareThreadWriteData(part_write_stmts.toSeq, pid, rn)
-        writeLines(1, s"ThreadData_$pid ${getThreadDataName(pid)};")
+        declareThreadMemWriteData(part_write_stmts.toSeq, pid, rn)
+        writeLines(1, s"ThreadData_Mem_$pid ${getThreadDataName_Mem(pid)};")
+
+        writeLines(1, s"DesignData ${getThreadDataName_Reg(pid)};")
       }}
 
       // For each part
@@ -730,20 +967,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(1, s"void ${gen_tp_wsync_name(pid)}(bool update_registers) {")
         val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
 
-        writeRegSyncBody(2, part_write_stmts.toSeq, pid, rn)
+        writeSyncBody(2, part_write_stmts.toSeq, pid, rn)
         writeLines(1, s"}")
 
       }}
 
       writeLines(0, "")
-      writeLines(1, "void eval_wait_thread_complete() {")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"while (${gen_thread_token_name(tid)}.load() == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(2, s"};")
-      }
-      writeLines(1, "}")
-      writeLines(0, "")
+
 
       writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
       if ((opt.trackParts || opt.trackSigs)) {
@@ -756,7 +986,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
       writeLines(0, "")
       for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_token_name(tid)}.store(true);")
+        writeLines(2, s"${gen_thread_eval_token_name(tid)}.store(true);")
       }
 
       writeLines(0, "")
@@ -764,13 +994,29 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(2, s"${gen_tp_eval_name(0)}(update_registers, verbose, done_reset);")
 
       writeLines(0, "")
-      writeLines(2, "eval_wait_thread_complete();")
+
+      // Wait eval complete
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"while (${gen_thread_eval_token_name(tid)}.load() == true) {")
+        writeLines(3, s"_mm_pause();")
+        writeLines(2, s"};")
+      }
 
       writeLines(0, "")
 
-      tp.parts.indices.foreach{pid => {
-        writeLines(2, s"${gen_tp_wsync_name(pid)}(update_registers);")
-      }}
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"${gen_thread_sync_token_name(tid)}.store(true);")
+      }
+
+      writeLines(0, "")
+      writeLines(2, s"${gen_tp_wsync_name(0)}(update_registers);")
+
+      // Wait sync complete
+      for (tid <- 1 to worker_thread_count) {
+        writeLines(2, s"while (${gen_thread_sync_token_name(tid)}.load() == true) {")
+        writeLines(3, s"_mm_pause();")
+        writeLines(2, s"};")
+      }
 
 
 
@@ -779,6 +1025,25 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
     } else {
       // non parallel
+
+      circuit.modules foreach {
+        case m: Module => declareModule(m, topName)
+        case m: ExtModule => declareExtModule(m)
+      }
+      val topModule = findModule(topName, circuit) match {case m: Module => m}
+      if (initialOpt.writeHarness) {
+        writeLines(0, "")
+        writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+        writeLines(2, HarnessGenerator.harnessConnections(topModule))
+        writeLines(1, "}")
+        writeLines(0, "")
+      }
+      if (containsAsserts) {
+        writeLines(1, "bool assert_triggered = false;")
+        writeLines(1, "int assert_exit_code;")
+        writeLines(0, "")
+      }
+
       val condPartWorker = MakeCondPart(sg, rn, extIOMap)
 
       if (opt.useCondParts) {

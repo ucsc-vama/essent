@@ -51,6 +51,18 @@ class Renamer {
     namesToLocalize foreach {
       name => nameToEmitName(name) = removeDots(nameToEmitName(name))
     }
+
+    def shouldBeGlobal(meta: SigMeta) = meta.decType match {
+      case RegSet => true
+      case _ => false
+    }
+
+    val namesToGlobalize = nameToMeta collect {
+      case (name, meta) if (shouldBeGlobal(meta)) => name
+    }
+    namesToGlobalize foreach {
+      name => nameToEmitName(name) = decGlobalize(nameToEmitName(name))
+    }
   }
 
   def mutateDecTypeIfLocal(name: String, newDecType: SigDecType) {
@@ -70,6 +82,8 @@ class Renamer {
     }
     notLocalSigs.toSet
   }
+
+  def decGlobalize(s: String) = "dat." + s.replace('.', '_')
 
   def removeDots(s: String) = s.replace('.','$')
 
