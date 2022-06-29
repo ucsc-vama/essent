@@ -492,11 +492,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }
     }}
 
-    val memcpy_src = s"reinterpret_cast<char*>(&${getThreadDataName_Reg(pid)}) + offsetof(DesignData, ${registerNames.head})"
-    val memcpy_dst = s"reinterpret_cast<char*>(&${getGlobalDataName()}) + offsetof(DesignData, ${registerNames.head})"
-    val memcpy_size = s"offsetof(DesignData, ${registerNames.last}) + sizeof(${getGlobalDataName()}.${registerNames.last}) - offsetof(DesignData, ${registerNames.head})"
+    if (registerNames.nonEmpty) {
+      // memcpy only if writes to registers
+      val memcpy_src = s"reinterpret_cast<char*>(&${getThreadDataName_Reg(pid)}) + offsetof(DesignData, ${registerNames.head})"
+      val memcpy_dst = s"reinterpret_cast<char*>(&${getGlobalDataName()}) + offsetof(DesignData, ${registerNames.head})"
+      val memcpy_size = s"offsetof(DesignData, ${registerNames.last}) + sizeof(${getGlobalDataName()}.${registerNames.last}) - offsetof(DesignData, ${registerNames.head})"
 
-    writeLines(indentLevel, s"std::memcpy(${memcpy_dst}, ${memcpy_src}, ${memcpy_size});")
+      writeLines(indentLevel, s"std::memcpy(${memcpy_dst}, ${memcpy_src}, ${memcpy_size});")
+    }
 
 
     val lines = writes flatMap  {stmt => stmt match {
