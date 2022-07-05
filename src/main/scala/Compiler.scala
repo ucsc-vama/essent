@@ -47,96 +47,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
 
-  def declareFlattenSubModule(c: Circuit): Unit = {
-    val topName = c.main
-    val modules = c.modules.collect {case m: Module => m}
-    val extModules = c.modules.collect {case e: ExtModule => e}
-
-    val moduleDict = modules.map(x => (x.name, x)).toMap
-    val extModuleDict = extModules.map(x => (x.name, x)).toMap
-
-    val topModule = moduleDict(topName)
-    // TODO : remove top module
-    val modulesAndPrefixes = findAllModuleInstances(c) filter {case (modName, _) => moduleDict.contains(modName)}
-
-
-    val registerDesc = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
-      val prefix_rename = prefix.replace('.', '_')
-      val registers = findInstancesOf[DefRegister](moduleDict(moduleName).body)
-      registers flatMap {d: DefRegister => {
-        val typeStr = genCppType(d.tpe)
-        val regName = d.name
-        Seq(s"$typeStr ${prefix_rename}$regName;")
-      }}
-    }}
-
-    val memoryDesc = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
-      val prefix_rename = prefix.replace('.', '_')
-      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
-      memories map {m: DefMemory => {
-        s"${genCppType(m.dataType)} ${prefix_rename}${m.name}[${m.depth}];"
-      }}
-    }}
-
-
-
-    val registerInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
-      val prefix_rename = prefix.replace('.', '_')
-      val registers = findInstancesOf[DefRegister](moduleDict(moduleName).body)
-      registers flatMap {d: DefRegister => {
-        val regName = d.name
-        Seq(s"${prefix_rename}${regName}.rand_init();")
-      }}
-    }}
-
-    val memoryInit = modulesAndPrefixes.flatMap{case (moduleName, prefix) => {
-      val prefix_rename = prefix.replace('.', '_')
-      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
-      memories flatMap {m: DefMemory => {
-        val mem_name = s"${prefix_rename}${m.name}"
-        if ((m.depth > 1000) && (bitWidth(m.dataType)) <= 64) {
-          Seq(s"${mem_name}[0].rand_init();",
-            s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a] = ${mem_name}[0].as_single_word() + a;")
-        } else {
-          Seq(s"for (size_t a=0; a < ${m.depth}; a++) ${mem_name}[a].rand_init();")
-        }
-      }}
-    }}
-
-
-    val modName = "DesignData"
-
-
-
-    writeLines(0, "")
-    writeLines(0, s"typedef struct ${modName} {")
-    writeLines(0, "")
-    writeLines(1, "// Registers")
-    writeLines(1, registerDesc)
-    writeLines(0, "")
-    writeLines(1, "// Memories")
-    writeLines(1, memoryDesc)
-    // No need emit port. This would not be the top level
-    //    writeLines(1, m.ports flatMap emitPort(modName == topName))
-    // No need to declare moduleDesc, as the whole design is flattened
-    //    writeLines(1, moduleDecs)
-    writeLines(0, "")
-
-
-    // Constructor
-    writeLines(1, s"$modName() {")
-
-    writeLines(2, registerInit)
-    writeLines(2, memoryInit)
-
-
-    writeLines(1, "}")
-
-    writeLines(0, s"} $modName;")
-
-  }
-
-
 
   def declareFlattenSubModule(c: Circuit, part_write: Seq[Seq[Statement]]): Unit = {
     val topName = c.main
@@ -261,10 +171,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val memDecs = memories map {m: DefMemory => {
       s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
     }}
-    val modulesAndPrefixes = findModuleInstances(m.body)
+    val modulesAndPrefixes = findAllModuleInstances(c)
     val extModulesAndPrefixes = modulesAndPrefixes.filter{case(modName, _) => {extModuleDict.contains(modName)}}
     val extModuleDecs = extModulesAndPrefixes map { case (module, fullName) => {
-      val instanceName = fullName.split("\\.").last
+      // val instanceName = fullName.split("\\.").last
+      val instanceName = fullName.replace('.', '_').dropRight(1)
       s"$module $instanceName;"
     }}
     val modName = m.name
@@ -572,7 +483,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 //            val lhs_orig = emitExpr(ru.expr)(rn)
 //            Seq(s"${getThreadDataName_Reg(pid)}.${lhs_orig} = ${emitExpr(ru.expr)(rn)};")
 //          }
-          case ru: RegUpdate => Seq(s"if (update_registers /**/) ${changePrefix(emitExpr(ru.regRef)(rn), "dat.", getThreadDataName_Reg(pid) + ".")} = ${emitExpr(ru.expr)(rn)};")
+          case ru: RegUpdate => Seq(s"if (update_registers) ${changePrefix(emitExpr(ru.regRef)(rn), "dat.", getThreadDataName_Reg(pid) + ".")} = ${emitExpr(ru.expr)(rn)};")
 
           case _ => emitStmt(s)(rn)
         }
@@ -854,7 +765,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
 
-    rn.populateFromSG(sg, extIOMap)
 
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
@@ -871,6 +781,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
     if (opt.parallel > 1) {
 
+      rn.populateFromSG(sg, extIOMap, isParallel = true)
 
       val pg = PartGraph(sg)
 
@@ -1028,6 +939,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
     } else {
       // non parallel
+
+      rn.populateFromSG(sg, extIOMap, isParallel = false)
 
       circuit.modules foreach {
         case m: Module => declareModule(m, topName)

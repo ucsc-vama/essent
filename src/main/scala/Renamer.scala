@@ -20,15 +20,15 @@ class Renamer {
   val nameToEmitName = HashMap[String,String]()
   val nameToMeta = HashMap[String,SigMeta]()
 
-  def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
+  def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type], isParallel: Boolean = false) {
     val stateNames = sg.stateElemNames.toSet
     sg.nodeRange foreach { id => {
       val name = sg.idToName(id)
       val decType = if (stateNames.contains(name))        RegSet
-                    else if (extIOMap.contains(name))     ExtIO
-                    else                                  Local
+      else if (extIOMap.contains(name))     ExtIO
+      else                                  Local
       val sigType = if (extIOMap.contains(name)) extIOMap(name)
-                    else findResultType(sg.idToStmt(id))
+      else findResultType(sg.idToStmt(id))
       nameToEmitName(name) = name
       nameToMeta(name) = SigMeta(decType, sigType)
     }}
@@ -37,10 +37,10 @@ class Renamer {
       nameToEmitName(name) = name
       nameToMeta(name) = SigMeta(ExtIO, extIOMap(name))
     }}
-    fixEmitNames()
+    fixEmitNames(isParallel)
   }
 
-  def fixEmitNames() {
+  def fixEmitNames(isParallel: Boolean) {
     def shouldBeLocal(meta: SigMeta) = meta.decType match {
       case Local | MuxOut | PartOut => true
       case _ => false
@@ -52,16 +52,31 @@ class Renamer {
       name => nameToEmitName(name) = removeDots(nameToEmitName(name))
     }
 
-    def shouldBeGlobal(meta: SigMeta) = meta.decType match {
-      case RegSet => true
-      case _ => false
-    }
+    if (isParallel) {
+      def shouldBeGlobal(meta: SigMeta) = meta.decType match {
+        case RegSet => true
+        case _ => false
+      }
 
-    val namesToGlobalize = nameToMeta collect {
-      case (name, meta) if (shouldBeGlobal(meta)) => name
-    }
-    namesToGlobalize foreach {
-      name => nameToEmitName(name) = decGlobalize(nameToEmitName(name))
+      val namesToGlobalize = nameToMeta collect {
+        case (name, meta) if (shouldBeGlobal(meta)) => name
+      }
+      namesToGlobalize foreach {
+        name => nameToEmitName(name) = decGlobalize(nameToEmitName(name))
+      }
+
+      def shouldBeExtIO(meta: SigMeta) = meta.decType match {
+        case ExtIO => true
+        case _ => false
+      }
+
+      val extIOs = nameToMeta collect {
+        case (name, meta) if (shouldBeExtIO(meta)) => name
+      }
+
+      extIOs foreach {
+        name => nameToEmitName(name) = extIOGlobalize(name)
+      }
     }
   }
 
@@ -84,6 +99,17 @@ class Renamer {
   }
 
   def decGlobalize(s: String) = "dat." + s.replace('.', '_')
+
+  // Assumption: ExtModules are only 1 level depth
+  def extIOGlobalize(s: String) = {
+
+    val tokens = s.split('.')
+    if (tokens.length == 1) {
+      tokens.last
+    } else {
+      tokens.slice(0, tokens.length - 1).mkString("_") + "." + tokens.last
+    }
+  }
 
   def removeDots(s: String) = s.replace('.','$')
 
