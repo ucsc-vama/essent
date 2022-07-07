@@ -48,7 +48,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
 
 
-  def declareFlattenSubModule(c: Circuit, part_write: Seq[Seq[Statement]]): Unit = {
+  def declareFlattenSubModule(c: Circuit, part_read: Seq[Seq[Statement]], part_write: Seq[Seq[Statement]]): Unit = {
     val topName = c.main
     val modules = c.modules.collect {case m: Module => m}
     val extModules = c.modules.collect {case e: ExtModule => e}
@@ -61,11 +61,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val modulesAndPrefixes = findAllModuleInstances(c) filter {case (modName, _) => moduleDict.contains(modName)}
 
 
-    val allRegisters = part_write.map(_.collect {case ru: RegUpdate => ru})
+    val allRegisters = part_write.map(_.collect {
+      case ru: RegUpdate => ru
+      case dr: DefRegister => dr
+    })
     val allMemories = part_write.flatten.collect {case mw: MemWrite => mw}
 
-    val registerDesc = allRegisters.map(_.flatMap {ru => {
-      ru.regRef match {
+    val registerDesc = allRegisters.map(_.flatMap {_ match{
+      case ru: RegUpdate => ru.regRef match {
         case reg: Reference => {
           val typeStr = genCppType(reg.tpe)
           val regName = reg.name
@@ -73,6 +76,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           Seq(s"$typeStr ${genName};")
         }
         case _ => Seq()
+      }
+
+      case dr: DefRegister => {
+        val typeStr = genCppType(dr.tpe)
+        val regName = dr.name
+        val genName = regName.replace('.', '_')
+        Seq(s"$typeStr ${genName};")
       }
 
     }})
@@ -789,10 +799,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       tp.doOpt()
 
       val part_write_stmts = tp.parts_write.map(_.map(sg.idToStmt(_)).toSeq).toSeq
-
-
-
-      declareFlattenSubModule(circuit, part_write_stmts)
+      val part_read_stmts = tp.parts_read.map(_.map(sg.idToStmt(_)).toSeq).toSeq
+      declareFlattenSubModule(circuit, part_read_stmts, part_write_stmts)
 
       circuit.modules foreach {
         case m: ExtModule => declareExtModule(m)
