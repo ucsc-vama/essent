@@ -202,8 +202,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
 
     registerDesc.zipWithIndex.foreach{case(p, writerId) => {
-      writeLines(0, s"#define PART_${writerId}_DATA_HEAD ${p.head.head._2}")
-      writeLines(0, s"#define PART_${writerId}_DATA_LAST ${p.last.last._2}")
+      if (p.nonEmpty) {
+        writeLines(0, s"#define PART_${writerId}_DATA_HEAD ${p.head.head._2}")
+        writeLines(0, s"#define PART_${writerId}_DATA_LAST ${p.last.last._2}")
+      }
     }}
 
   }
