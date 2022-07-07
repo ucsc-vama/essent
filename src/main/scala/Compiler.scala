@@ -14,6 +14,7 @@ import firrtl.stage.transforms
 
 import logger._
 
+import scala.collection.mutable
 
 class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   val tabs = "  "
@@ -61,31 +62,67 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val modulesAndPrefixes = findAllModuleInstances(c) filter {case (modName, _) => moduleDict.contains(modName)}
 
 
-    val allRegisters = part_write.map(_.collect {
-      case ru: RegUpdate => ru
-      case dr: DefRegister => dr
-    })
-    val allMemories = part_write.flatten.collect {case mw: MemWrite => mw}
+//    val allMemories = part_write.flatten.collect {case mw: MemWrite => mw}
 
-    val registerDesc = allRegisters.map(_.flatMap {_ match{
-      case ru: RegUpdate => ru.regRef match {
-        case reg: Reference => {
-          val typeStr = genCppType(reg.tpe)
-          val regName = reg.name
-          val genName = regName.replace('.', '_')
-          Seq(s"$typeStr ${genName};")
+    val allWriteRegisters = part_write.map(_.collect { case ru: RegUpdate => ru})
+    val allReadRegisters = part_read.map(_.collect { case dr: DefRegister => dr})
+
+    val allReadRegisterName = allReadRegisters.map(_.map(_.name))
+    val allWriteRegisterName = allWriteRegisters.map(_.flatMap(_.regRef match {
+      case reg: Reference => Seq(reg.name)
+      case _ => Seq()
+    }))
+
+    val regNameToReadPartId = mutable.HashMap[String, Set[Int]]()
+    val regNameToWritePartId = mutable.HashMap[String, Int]()
+
+    allReadRegisterName.zipWithIndex.foreach{case (readPart, partId) => {
+      readPart.foreach{reg => {
+        if (!regNameToReadPartId.contains(reg)) {
+          regNameToReadPartId(reg) = Set[Int]()
         }
-        case _ => Seq()
-      }
+        regNameToReadPartId(reg) += partId
+      }}
+    }}
 
-      case dr: DefRegister => {
-        val typeStr = genCppType(dr.tpe)
-        val regName = dr.name
-        val genName = regName.replace('.', '_')
-        Seq(s"$typeStr ${genName};")
-      }
+    allWriteRegisterName.zipWithIndex.foreach{case (writePart, partId) => {
+      writePart.foreach{reg => {
+        if (regNameToWritePartId.contains(reg)) {
+          throw new Exception(s"Register ${reg} is written by multiple partition")
+        }
+        regNameToWritePartId(reg) = partId
+      }}
+    }}
 
-    }})
+    val registerDesc = allWriteRegisters.zipWithIndex.map {case (partWrites, partId) => {
+      val reordered = partWrites.groupBy{writeReg => {
+        writeReg.regRef match {
+          case regRef: Reference => {
+            // It's possible that no body reading this register
+            if (regNameToReadPartId.contains(regRef.name)) {
+              regNameToReadPartId(regRef.name).head
+            } else partId
+          }
+          case _ => throw new Exception("Unknown register write")
+        }
+      }}
+
+      reordered.map{case (readerId, regWrites) => {
+        regWrites.flatMap{_ match {
+          case ru: RegUpdate => ru.regRef match {
+            case reg: Reference => {
+              val typeStr = genCppType(reg.tpe)
+              val regName = reg.name
+              val genName = regName.replace('.', '_')
+//              Seq(s"$typeStr ${genName};")
+              Seq((typeStr, genName))
+            }
+            case _ => Seq()
+          }}}
+      }}.toSeq
+    }}
+
+
 
 
 
@@ -131,11 +168,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
     writeLines(1, "// Registers")
 
-    registerDesc.zipWithIndex.foreach{case(p, i) => {
-      writeLines(0, "")
-      writeLines(1, s"// Registers for partition ${i}")
-      writeLines(1, p)
-
+    registerDesc.zipWithIndex.foreach{case(p, writerId) => {
+      p.zipWithIndex.foreach{case (regs, readerId) => {
+        writeLines(0, "")
+        writeLines(1, s"// Registers written by part ${writerId} and read by part ${readerId}")
+        regs.foreach{case(typeStr, declName) => {
+          writeLines(1, s"${typeStr} ${declName};")
+        }}
+      }}
     }}
 
     writeLines(0, "")
@@ -158,6 +198,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(1, "}")
 
     writeLines(0, s"} $modName;")
+
+    writeLines(0, "")
+
+    registerDesc.zipWithIndex.foreach{case(p, writerId) => {
+      writeLines(0, s"#define PART_${writerId}_DATA_HEAD ${p.head.head._2}")
+      writeLines(0, s"#define PART_${writerId}_DATA_LAST ${p.last.last._2}")
+    }}
 
   }
 
@@ -363,7 +410,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
     writeLines(1, s"typedef struct ThreadData_Mem_$pid {")
     writeLines(2, decls)
-    writeLines(1, s"} ThreadData_$pid;")
+    writeLines(1, s"} ThreadData_Mem_$pid;")
 
   }
 
@@ -415,9 +462,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
     if (registerNames.nonEmpty) {
       // memcpy only if writes to registers
-      val memcpy_src = s"reinterpret_cast<char*>(&${getThreadDataName_Reg(pid)}) + offsetof(DesignData, ${registerNames.head})"
-      val memcpy_dst = s"reinterpret_cast<char*>(&${getGlobalDataName()}) + offsetof(DesignData, ${registerNames.head})"
-      val memcpy_size = s"offsetof(DesignData, ${registerNames.last}) + sizeof(${getGlobalDataName()}.${registerNames.last}) - offsetof(DesignData, ${registerNames.head})"
+      val memcpy_src = s"reinterpret_cast<char*>(&${getThreadDataName_Reg(pid)}) + offsetof(DesignData, PART_${pid}_DATA_HEAD)"
+      val memcpy_dst = s"reinterpret_cast<char*>(&${getGlobalDataName()}) + offsetof(DesignData, PART_${pid}_DATA_HEAD)"
+      val memcpy_size = s"offsetof(DesignData, PART_${pid}_DATA_LAST) + sizeof(${getGlobalDataName()}.PART_${pid}_DATA_LAST) - offsetof(DesignData, PART_${pid}_DATA_HEAD)"
 
       writeLines(indentLevel, s"std::memcpy(${memcpy_dst}, ${memcpy_src}, ${memcpy_size});")
     }
