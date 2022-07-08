@@ -198,8 +198,8 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   val absOutputPath: String = if (java.nio.file.Paths.get(opt.outputDir()).isAbsolute) opt.outputDir() else (os.pwd/os.RelPath(opt.outputDir())).toString()
 
   val parts = ArrayBuffer[BitSet]()
-  val parts_read = ArrayBuffer[Set[Int]]()
-  val parts_write = ArrayBuffer[Set[Int]]()
+  val parts_read = ArrayBuffer[ArrayBuffer[Int]]()
+  val parts_write = ArrayBuffer[ArrayBuffer[Int]]()
 
 
   def doOpt() = {
@@ -267,31 +267,38 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     val largestSize = parts.map(_.size).max
     println(s"Partition size: max: ${largestSize}, min: ${smallestSize}, avg: ${partNodeCount / parts.length}")
 
+
+    val stmtsIdOrdered = TopologicalSort(pg)
+    def isReadStmtId(id: NodeID) = pg.idToStmt(id) match {
+      case dr: DefRegister => true
+      case dm: DefMemory => true
+      // EmptyStmt exists in source nodes but not actually a read
+      // case EmptyStmt => true
+      case _ => false
+    }
+    def isWriteStmtId(id: NodeID) = pg.idToStmt(id) match {
+      case ru: RegUpdate => true
+      case mw: MemWrite => true
+      // Following IR exists in sink nodes not not actually a write
+//      case p: Print => true
+//      case s: Stop => true
+//      case c: Connect => true
+      case _ => false
+    }
+
+    val readStmtIdsOrdered = stmtsIdOrdered.collect{case id if isReadStmtId(id) => id}
+    val writeStmtIdsOrdered = stmtsIdOrdered.collect{case id if isWriteStmtId(id) => id}
+
     parts.foreach {part => {
-      val part_read = part.flatMap(pg.inNeigh).toSet -- part
-      val part_write = part.filter(pg.outNeigh(_).isEmpty).toSet
+      val part_source = part.flatMap(pg.inNeigh).toSet -- part
+      val part_sink = part.filter(pg.outNeigh(_).isEmpty).toSet
 
-      val part_write_supect = part_write.filter(pg.idToStmt(_) match {
-        case r: RegUpdate => false
-        case mw: MemWrite => false
-        case p: Print => false
-        case st: Stop => false
-        case _ => true
-      })
+      val part_read_ordered = readStmtIdsOrdered.filter(part_source.contains)
+      val part_write_ordered = writeStmtIdsOrdered.filter(part_sink.contains)
 
-      val part_write_suspect_stmt = part_write_supect map pg.idToStmt
 
-      val allRegMems = part filter(pg.idToStmt(_) match {
-        case r: RegUpdate => true
-        case mw: MemWrite => true
-        case _ => false
-      })
-
-      val regMemInBetween = allRegMems -- part_write
-      val regMemInBetween_stmt = regMemInBetween map pg.idToStmt
-
-      parts_read.append(part_read)
-      parts_write.append(part_write)
+      parts_read.append(part_read_ordered)
+      parts_write.append(part_write_ordered)
 
     }}
 
