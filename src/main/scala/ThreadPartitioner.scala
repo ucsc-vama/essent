@@ -23,6 +23,8 @@ class PartGraph extends StatementGraph {
 
   val idToPieceID = ArrayBuffer[NodeID]()
 
+  val idToNodeWeight = ArrayBuffer[NodeID]()
+
   val sinkNodes = ArrayBuffer[NodeID]()
   var trees = mutable.ArrayBuffer[BitSet]()
   val pieces = mutable.ArrayBuffer[BitSet]()
@@ -34,6 +36,8 @@ class PartGraph extends StatementGraph {
   def buildFromGraph(sg: StatementGraph): Unit = {
     idToTreeID.appendAll(ArrayBuffer.fill(sg.numNodes())(mutable.Set[NodeID]()))
     idToPieceID ++= ArrayBuffer.fill(sg.numNodes())(-1)
+
+    idToNodeWeight.appendAll(ArrayBuffer.fill(sg.numNodes())(-1))
 
     // -1 => unvisited
     // -2 => invalid
@@ -56,31 +60,32 @@ class PartGraph extends StatementGraph {
 
   }
 
+  val treeCache = mutable.HashMap[NodeID, BitSet]()
+
+  def collectTree(seed: NodeID): BitSet = {
+
+    idToStmt(seed) match {
+      case inv if (!validNodes.contains(seed)) => BitSet() // invalid
+      case d: DefRegister => BitSet() // Stop at register read
+      case _ => {
+        if (treeCache.contains(seed)) {
+          return treeCache(seed)
+        }
+        val ret = BitSet(seed) ++ (inNeigh(seed) flatMap {
+          collectTree(_)
+        })
+        // Save for data may be used again
+        if (outNeigh(seed).length > 1)  treeCache(seed) = ret
+        ret
+      }
+    }
+  }
 
   def initTrees(): Unit = {
     sinkNodes ++= validNodes.filter(outNeigh(_).isEmpty)
 
-    val cache = mutable.HashMap[NodeID, BitSet]()
-
-    def collectTree(seed: NodeID): BitSet = {
-
-      idToStmt(seed) match {
-        case inv if (!validNodes.contains(seed)) => BitSet() // invalid
-        case d: DefRegister => BitSet() // Stop at register read
-        case _ => {
-          if (cache.contains(seed)) {
-            return cache(seed)
-          }
-          val ret = BitSet(seed) ++ (inNeigh(seed) flatMap collectTree)
-          // Save for data may be used again
-          if (outNeigh(seed).length > 1)  cache(seed) = ret
-          ret
-        }
-      }
-    }
-
     //    println(s"${allValidSinkNodes.size} sink nodes in total")
-    val collectedParts = sinkNodes.map{collectTree}
+    val collectedParts = sinkNodes.map{collectTree(_)}
 
     trees.clear()
     trees ++= collectedParts
@@ -123,17 +128,327 @@ class PartGraph extends StatementGraph {
 
 
 
+
+  /*
+  * Partition
+  *
+  *
+  *
+  *
+  * */
+
+  def findCutPoints() = {
+    val cutPoints = pieces flatMap {piece => {
+      val sinkNodeList = piece.toSeq.filter{id => {(outNeigh(id).toSet intersect piece).isEmpty}}
+
+      if (sinkNodeList.size != 1) {
+        // Has multiple sink nodes. This piece cannot be a cut point
+        Seq()
+      } else {
+        val singleSinkNode = sinkNodeList.head
+        if (idToTreeID(singleSinkNode).size != 2) {
+          Seq()
+        } else Seq(singleSinkNode)
+      }
+    }}
+
+    cutPoints
+  }
+
+  def getCutCosts(cutPoints: ArrayBuffer[NodeID]) = {
+    val cutCosts = cutPoints map {cutPoint => {
+      collectTree(cutPoint).map(calculateNodeWeight).sum
+    }}
+
+    cutCosts
+  }
+
+
+  def partition_bisection() = {
+    val cutPoints = findCutPoints()
+    println(s"Found ${cutPoints.size} cut points")
+    val cutCosts = getCutCosts(cutPoints)
+    println(s"Got all costs")
+
+    val costTuple_sorted = cutPoints.zip(cutCosts).sortBy(_._2)
+
+    // Try cut with smallest cost?
+    val cutAt = costTuple_sorted.head._1
+
+    val cutParts = idToTreeID(cutAt).toSeq
+    assert(cutParts.size == 2)
+
+    val lhs_seed = cutParts.head
+    val rhs_seed = cutParts.last
+
+//    val lhs_parts = mutable.Set[NodeID]()
+//    val rhs_parts = mutable.Set[NodeID]()
+    val lhs_parts = mutable.BitSet()
+    val rhs_parts = mutable.BitSet()
+
+    // Those seeds are tree ID
+    lhs_parts += lhs_seed
+    rhs_parts += rhs_seed
+
+
+    val cutPointTree = collectTree(cutAt)
+
+    val cutAffectedTrees = cutPointTree.toSeq.flatMap(idToTreeID).distinct
+
+    println("Collecting tree weight")
+
+    val treeSeeds = sinkNodes
+    // This weight only contains non-overlapping part of tree
+    val treePieceWeight = (trees map calculatePieceWeight).sorted(Ordering[Int].reverse)
+
+    treeSeeds.toSet.zipWithIndex.foreach{case(seed, treeID) => {
+
+      val treeWeight = treePieceWeight(treeID)
+
+      val lhs_weight = calculatePieceWeight(lhs_parts.toSeq.map(trees).fold(BitSet())(_ ++ _))
+      val rhs_weight = calculatePieceWeight(rhs_parts.toSeq.map(trees).fold(BitSet())(_ ++ _))
+
+      if (lhs_weight < rhs_weight) {
+        lhs_parts += treeID
+      } else {
+        rhs_parts += treeID
+      }
+    }}
+
+    (lhs_parts, rhs_parts)
+  }
+
+
+
+
+
+
+
+
+
+  def calculateNodeWeight(id: NodeID): Int = {
+    if (idToNodeWeight(id) != -1) {
+      return idToNodeWeight(id)
+    }
+
+    val MemReadWeight = 0
+    val MemWriteWeight = 1
+    val RegReadWeight = 0
+    val RegWriteWeight = 8
+    // IO R/W weight: ExtIO(top) and ExtModule
+    val IOReadWeight = 0
+    val IOWriteWeight = 0
+    val PrimOpWeight = 0
+    val MuxOpWeight = 1
+    val NodeKindWeight = 2
+
+    def exprWeight(e: Expression, is_lvalue: Boolean): Int = e match {
+
+      case r: Reference => r.kind match {
+        case firrtl.PortKind => if (is_lvalue) IOWriteWeight else IOReadWeight
+        case firrtl.MemKind => if (is_lvalue) {
+          throw new Exception("Register write should not happen here")
+        } else MemReadWeight
+        case firrtl.RegKind => if (is_lvalue) {
+          throw new Exception("Register write should not happen here")
+        } else RegReadWeight
+        case firrtl.InstanceKind => if (is_lvalue) IOWriteWeight else IOReadWeight
+        // Connect to other nodes will be handled as dependency, ignore here
+        case firrtl.NodeKind => NodeKindWeight
+        case _ => throw new Exception("Not supported yet")
+      }
+      case u: UIntLiteral => 0
+      case s: SIntLiteral => 0
+
+      case op: DoPrim => {
+        PrimOpWeight + (op.args map{exprWeight(_, is_lvalue = false)}).sum
+      }
+
+      case m: Mux => {
+        val condWeight = exprWeight(m.cond, is_lvalue = false)
+        val tvalWeight = exprWeight(m.tval, is_lvalue = false)
+        val fvalWeight = exprWeight(m.fval, is_lvalue = false)
+        MuxOpWeight + condWeight + ((tvalWeight + fvalWeight) )
+      }
+
+      case sf: SubField => exprWeight(sf.expr, is_lvalue)
+
+      // SubAccess: A field in memory
+      case sa: SubAccess => {
+        if (is_lvalue) {
+          throw new Exception("A SubAccess cannot be lvalue")
+        }
+        exprWeight(sa.expr, is_lvalue = false) + exprWeight(sa.index, is_lvalue = false)
+      }
+
+      case _ => throw new Exception("Unknown expression type")
+    }
+
+
+    val currentWeight = idToStmt(id) match {
+      case d: DefInstance => throw new Exception("DefInstance should not exists here")
+      case d: DefRegister => throw new Exception("DefRegister should not exists here")
+      case m: DefMemory => throw new Exception("DefMemory should not exists here")
+
+      case st: Stop => 0
+      case pr: Print => 0
+      case EmptyStmt => 0
+
+      case mw: MemWrite => MemWriteWeight
+      case ru: RegUpdate => RegWriteWeight
+
+      case c: Connect => {
+        exprWeight(c.loc, is_lvalue = true) + exprWeight(c.expr, is_lvalue = false)
+      }
+
+      case d: DefNode => exprWeight(d.value, is_lvalue = false)
+
+      case _ => throw new Exception("Unknown IR type")
+    }
+
+    idToNodeWeight(id) = currentWeight
+    currentWeight
+  }
+
+  def calculatePieceWeight(piece: BitSet) = {
+
+    // TODO : is this correct?
+    val pieceSinkNodes = piece.toSeq.filter{id => {(outNeigh(id).toSet intersect piece).isEmpty}}
+
+    val visitedNodes = mutable.Set[NodeID]()
+
+
+    def stmtWeight(sinkId: NodeID): Int = {
+
+      if (visitedNodes.contains(sinkId)) 0 else {
+        visitedNodes += sinkId
+
+        if (idToNodeWeight(sinkId) == -1) {
+          idToNodeWeight(sinkId) = calculateNodeWeight(sinkId)
+        }
+
+
+        val currentWeight = idToNodeWeight(sinkId)
+
+        currentWeight + ((inNeigh(sinkId) filter validNodes) map stmtWeight).sum
+      }
+    }
+
+    // Weight should be at least 1 to make KaHyPar happy
+    (pieceSinkNodes map stmtWeight).sum + 1
+  }
+
+  def calculatePieceWeight_Trace(piece: BitSet) = {
+
+
+    // TODO : is this correct?
+    val pieceSinkNodes = piece.toSeq.filter{id => {(outNeigh(id).toSet intersect piece).isEmpty}}
+
+    val visitedNodes = mutable.Set[NodeID]()
+
+
+
+    def exprWeight(e: Expression, is_lvalue: Boolean): Seq[String] = e match {
+
+      case r: Reference => r.kind match {
+        case firrtl.PortKind => if (is_lvalue) Seq("IOWriteWeight") else Seq("IOReadWeight")
+        case firrtl.MemKind => if (is_lvalue) {
+          throw new Exception("Register write should not happen here")
+        } else Seq("MemReadWeight")
+        case firrtl.RegKind => if (is_lvalue) {
+          throw new Exception("Register write should not happen here")
+        } else Seq("RegReadWeight")
+        case firrtl.InstanceKind => if (is_lvalue) Seq("IOWriteWeight") else Seq("IOReadWeight")
+        // Connect to other nodes will be handled as dependency, ignore here
+        case firrtl.NodeKind => Seq("NodeKindWeight")
+        case _ => throw new Exception("Not supported yet")
+      }
+      case u: UIntLiteral => Seq()
+      case s: SIntLiteral => Seq()
+
+      case op: DoPrim => {
+        Seq("PrimOpWeight") ++ (op.args flatMap {exprWeight(_, is_lvalue = false)})
+      }
+
+      case m: Mux => {
+        val condWeight = exprWeight(m.cond, is_lvalue = false)
+        val tvalWeight = exprWeight(m.tval, is_lvalue = false)
+        val fvalWeight = exprWeight(m.fval, is_lvalue = false)
+        Seq("MuxOpWeight") ++ condWeight ++ tvalWeight ++ fvalWeight
+      }
+
+      case sf: SubField => exprWeight(sf.expr, is_lvalue)
+
+      // SubAccess: A field in memory
+      case sa: SubAccess => {
+        if (is_lvalue) {
+          throw new Exception("A SubAccess cannot be lvalue")
+        }
+        exprWeight(sa.expr, is_lvalue = false) ++ exprWeight(sa.index, is_lvalue = false)
+      }
+
+      case _ => throw new Exception("Unknown expression type")
+    }
+
+    def stmtWeight(sinkId: NodeID): Seq[String] = {
+      if (visitedNodes.contains(sinkId)) Seq() else {
+        visitedNodes += sinkId
+
+        val currentWeight = idToStmt(sinkId) match {
+          case d: DefInstance => throw new Exception("DefInstance should not exists here")
+          case d: DefRegister => throw new Exception("DefRegister should not exists here")
+          case m: DefMemory => throw new Exception("DefMemory should not exists here")
+
+          case st: Stop => Seq()
+          case pr: Print => Seq()
+          case EmptyStmt => Seq()
+
+          case mw: MemWrite => Seq("MemWriteWeight")
+          case ru: RegUpdate => Seq("RegWriteWeight")
+
+          case c: Connect => {
+            exprWeight(c.loc, is_lvalue = true) ++ exprWeight(c.expr, is_lvalue = false)
+          }
+
+          case d: DefNode => exprWeight(d.value, is_lvalue = false)
+
+          case _ => throw new Exception("Unknown IR type")
+        }
+
+        currentWeight ++ ((inNeigh(sinkId) filter validNodes) flatMap  stmtWeight)
+      }
+    }
+
+    // Weight should be at least 1 to make KaHyPar happy
+    val raw = pieceSinkNodes flatMap stmtWeight
+
+    val ret = mutable.HashMap[String, Int]()
+    for (e <- raw) {
+      if (ret.contains(e)) {
+        ret(e) += 1
+      } else {
+        ret(e) = 1
+      }
+    }
+
+    ret
+  }
+
+
+
+
   def updateHyperGraph(): Unit = {
     // Add nodes
     for (elem <- trees.indices) {
-      hg.addNode(elem, pieces(elem).size)
+      val weight = calculatePieceWeight(pieces(elem))
+      hg.addNode(elem, weight)
     }
 
     // Add edges
     for (elem <- pieces.indices) {
       if (elem >= trees.length) {
         // For all edges
-        val edgeWeight = pieces(elem).size
+        val edgeWeight = calculatePieceWeight(pieces(elem))
         val edgeNodes = idToTreeID(pieces(elem).head).to[mutable.ArrayBuffer]
 
         hg.addEdge(edgeNodes, edgeWeight)
@@ -221,6 +536,21 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     val elapse_pieces = (endTime_pieces - startTime_pieces)
     logger.info(s"Done collect pieces in $elapse_pieces ms")
 
+    // Test
+//    logger.info("Testing bisection")
+//    val (lhs, rhs) = pg.partition_bisection()
+//    logger.info("Bisection complete")
+
+    val lhs_all = lhs.flatMap(pg.trees)
+    val rhs_all = rhs.flatMap(pg.trees)
+
+
+    println(s"lhs, part weight: ${pg.calculatePieceWeight(lhs_all)}")
+    println(s"lhs, part weight: ${pg.calculatePieceWeight(rhs_all)}")
+
+    println("Done")
+
+
     logger.info("Update hyper graph")
     val startTime_hg = System.currentTimeMillis()
     pg.updateHyperGraph()
@@ -247,10 +577,22 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     logger.info("Parse result")
     parseMetisResult(metis_return_file)
 
-
     parts.indices.foreach{pid => {
-      println(s"Pid: $pid, part size: ${parts(pid).size}")
+      println(s"Pid: $pid, part size: ${parts(pid).size}, part weight: ${pg.calculatePieceWeight(parts(pid))}")
     }}
+
+    println("StartJSON")
+    println("{")
+    parts.indices.foreach{pid => {
+      val trace = pg.calculatePieceWeight_Trace(parts(pid))
+      println("    {")
+      for ((k, v) <- trace) {
+        println(s"""        \"${k}\" : ${v},  """)
+      }
+      println("    },")
+    }}
+    println("}")
+    println("EndJSON")
 
     val totalNodeCount = parts.map(_.size).sum
 
@@ -429,7 +771,7 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
   def parseMetisResult(fileName: String) = {
 
-    println("Partitioner: Read " + fileName)
+    logger.info("Partitioner: Read " + fileName)
 
     val partResult = ArrayBuffer[Int]()
 
