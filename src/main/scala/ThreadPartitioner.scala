@@ -155,71 +155,6 @@ class PartGraph extends StatementGraph {
     cutPoints
   }
 
-  def getCutCosts(cutPoints: ArrayBuffer[NodeID]) = {
-    val cutCosts = cutPoints map {cutPoint => {
-      collectTree(cutPoint).map(calculateNodeWeight).sum
-    }}
-
-    cutCosts
-  }
-
-
-  def partition_bisection() = {
-    val cutPoints = findCutPoints()
-    println(s"Found ${cutPoints.size} cut points")
-    val cutCosts = getCutCosts(cutPoints)
-    println(s"Got all costs")
-
-    val costTuple_sorted = cutPoints.zip(cutCosts).sortBy(_._2)
-
-    // Try cut with smallest cost?
-    val cutAt = costTuple_sorted.head._1
-
-    val cutParts = idToTreeID(cutAt).toSeq
-    assert(cutParts.size == 2)
-
-    val lhs_seed = cutParts.head
-    val rhs_seed = cutParts.last
-
-//    val lhs_parts = mutable.Set[NodeID]()
-//    val rhs_parts = mutable.Set[NodeID]()
-    val lhs_parts = mutable.BitSet()
-    val rhs_parts = mutable.BitSet()
-
-    // Those seeds are tree ID
-    lhs_parts += lhs_seed
-    rhs_parts += rhs_seed
-
-
-    val cutPointTree = collectTree(cutAt)
-
-    val cutAffectedTrees = cutPointTree.toSeq.flatMap(idToTreeID).distinct
-
-    println("Collecting tree weight")
-
-    val treeSeeds = sinkNodes
-    // This weight only contains non-overlapping part of tree
-    val treePieceWeight = (trees map calculatePieceWeight).sorted(Ordering[Int].reverse)
-
-    treeSeeds.toSet.zipWithIndex.foreach{case(seed, treeID) => {
-
-      val treeWeight = treePieceWeight(treeID)
-
-      val lhs_weight = calculatePieceWeight(lhs_parts.toSeq.map(trees).fold(BitSet())(_ ++ _))
-      val rhs_weight = calculatePieceWeight(rhs_parts.toSeq.map(trees).fold(BitSet())(_ ++ _))
-
-      if (lhs_weight < rhs_weight) {
-        lhs_parts += treeID
-      } else {
-        rhs_parts += treeID
-      }
-    }}
-
-    (lhs_parts, rhs_parts)
-  }
-
-
-
 
 
 
@@ -330,7 +265,7 @@ class PartGraph extends StatementGraph {
 
         val currentWeight = idToNodeWeight(sinkId)
 
-        currentWeight + ((inNeigh(sinkId) filter validNodes) map stmtWeight).sum
+        currentWeight + ((inNeigh(sinkId) filter validNodes filter piece) map stmtWeight).sum
       }
     }
 
@@ -415,7 +350,7 @@ class PartGraph extends StatementGraph {
           case _ => throw new Exception("Unknown IR type")
         }
 
-        currentWeight ++ ((inNeigh(sinkId) filter validNodes) flatMap  stmtWeight)
+        currentWeight ++ ((inNeigh(sinkId) filter validNodes filter piece) flatMap  stmtWeight)
       }
     }
 
@@ -535,21 +470,6 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     val endTime_pieces = System.currentTimeMillis()
     val elapse_pieces = (endTime_pieces - startTime_pieces)
     logger.info(s"Done collect pieces in $elapse_pieces ms")
-
-    // Test
-//    logger.info("Testing bisection")
-//    val (lhs, rhs) = pg.partition_bisection()
-//    logger.info("Bisection complete")
-
-    val lhs_all = lhs.flatMap(pg.trees)
-    val rhs_all = rhs.flatMap(pg.trees)
-
-
-    println(s"lhs, part weight: ${pg.calculatePieceWeight(lhs_all)}")
-    println(s"lhs, part weight: ${pg.calculatePieceWeight(rhs_all)}")
-
-    println("Done")
-
 
     logger.info("Update hyper graph")
     val startTime_hg = System.currentTimeMillis()
