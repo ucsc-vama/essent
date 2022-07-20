@@ -501,18 +501,20 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
       println(s"Pid: $pid, part size: ${parts(pid).size}, part weight: ${pg.calculatePieceWeight(parts(pid))}")
     }}
 
-    println("StartJSON")
-    println("{")
-    parts.indices.foreach{pid => {
-      val trace = pg.calculatePieceWeight_Trace(parts(pid))
-      println("    {")
-      for ((k, v) <- trace) {
-        println(s"""        \"${k}\" : ${v},  """)
-      }
-      println("    },")
-    }}
-    println("}")
-    println("EndJSON")
+    // Print out weight calculation trace
+    
+//    println("StartJSON")
+//    println("{")
+//    parts.indices.foreach{pid => {
+//      val trace = pg.calculatePieceWeight_Trace(parts(pid))
+//      println("    {")
+//      for ((k, v) <- trace) {
+//        println(s"""        \"${k}\" : ${v},  """)
+//      }
+//      println("    },")
+//    }}
+//    println("}")
+//    println("EndJSON")
 
     val totalNodeCount = parts.map(_.size).sum
 
