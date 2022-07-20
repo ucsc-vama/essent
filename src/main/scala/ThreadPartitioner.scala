@@ -129,37 +129,6 @@ class PartGraph extends StatementGraph {
 
 
 
-  /*
-  * Partition
-  *
-  *
-  *
-  *
-  * */
-
-  def findCutPoints() = {
-    val cutPoints = pieces flatMap {piece => {
-      val sinkNodeList = piece.toSeq.filter{id => {(outNeigh(id).toSet intersect piece).isEmpty}}
-
-      if (sinkNodeList.size != 1) {
-        // Has multiple sink nodes. This piece cannot be a cut point
-        Seq()
-      } else {
-        val singleSinkNode = sinkNodeList.head
-        if (idToTreeID(singleSinkNode).size != 2) {
-          Seq()
-        } else Seq(singleSinkNode)
-      }
-    }}
-
-    cutPoints
-  }
-
-
-
-
-
-
 
   def calculateNodeWeight(id: NodeID): Int = {
     if (idToNodeWeight(id) != -1) {
@@ -502,7 +471,7 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     }}
 
     // Print out weight calculation trace
-    
+
 //    println("StartJSON")
 //    println("{")
 //    parts.indices.foreach{pid => {
