@@ -136,15 +136,15 @@ class PartGraph extends StatementGraph {
     }
 
     val MemReadWeight = 0
-    val MemWriteWeight = 1
+    val MemWriteWeight = 10
     val RegReadWeight = 0
-    val RegWriteWeight = 8
+    val RegWriteWeight = 10
     // IO R/W weight: ExtIO(top) and ExtModule
     val IOReadWeight = 0
     val IOWriteWeight = 0
-    val PrimOpWeight = 0
-    val MuxOpWeight = 1
-    val NodeKindWeight = 2
+    val PrimOpWeight = 1
+    val MuxOpWeight = 3
+    val NodeKindWeight = 4
 
     def exprWeight(e: Expression, is_lvalue: Boolean): Int = e match {
 
@@ -175,7 +175,7 @@ class PartGraph extends StatementGraph {
         MuxOpWeight + condWeight + ((tvalWeight + fvalWeight) )
       }
 
-      case sf: SubField => exprWeight(sf.expr, is_lvalue)
+      case sf: SubField => exprWeight(sf.expr, is_lvalue) + PrimOpWeight
 
       // SubAccess: A field in memory
       case sa: SubAccess => {
@@ -281,7 +281,7 @@ class PartGraph extends StatementGraph {
         Seq("MuxOpWeight") ++ condWeight ++ tvalWeight ++ fvalWeight
       }
 
-      case sf: SubField => exprWeight(sf.expr, is_lvalue)
+      case sf: SubField => exprWeight(sf.expr, is_lvalue) ++ Seq("PrimOpWeight")
 
       // SubAccess: A field in memory
       case sa: SubAccess => {
@@ -472,18 +472,18 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
     // Print out weight calculation trace
 
-//    println("StartJSON")
-//    println("{")
-//    parts.indices.foreach{pid => {
-//      val trace = pg.calculatePieceWeight_Trace(parts(pid))
-//      println("    {")
-//      for ((k, v) <- trace) {
-//        println(s"""        \"${k}\" : ${v},  """)
-//      }
-//      println("    },")
-//    }}
-//    println("}")
-//    println("EndJSON")
+    println("StartJSON")
+    println("{")
+    parts.indices.foreach{pid => {
+      val trace = pg.calculatePieceWeight_Trace(parts(pid))
+      println("    {")
+      for ((k, v) <- trace) {
+        println(s"""        \"${k}\" : ${v},  """)
+      }
+      println("    },")
+    }}
+    println("}")
+    println("EndJSON")
 
     val totalNodeCount = parts.map(_.size).sum
 
