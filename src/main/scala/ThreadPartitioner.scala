@@ -60,32 +60,29 @@ class PartGraph extends StatementGraph {
 
   }
 
-  val treeCache = mutable.HashMap[NodeID, BitSet]()
-
-  def collectTree(seed: NodeID): BitSet = {
-
-    idToStmt(seed) match {
-      case inv if (!validNodes.contains(seed)) => BitSet() // invalid
-      case d: DefRegister => BitSet() // Stop at register read
-      case _ => {
-        if (treeCache.contains(seed)) {
-          return treeCache(seed)
-        }
-        val ret = BitSet(seed) ++ (inNeigh(seed) flatMap {
-          collectTree(_)
-        })
-        // Save for data may be used again
-        if (outNeigh(seed).length > 1)  treeCache(seed) = ret
-        ret
-      }
-    }
-  }
-
   def initTrees(): Unit = {
+
+    val treeCache = mutable.HashMap[NodeID, BitSet]()
+
+    def collectTree(seed: NodeID): BitSet = {
+      if (!treeCache.contains(seed)) {
+        val depNodes = idToStmt(seed) match {
+          case inv if (!validNodes.contains(seed)) => BitSet() // invalid
+          case d: DefRegister => BitSet() // Stop at register read
+          case _ => BitSet(seed) ++ (inNeigh(seed) flatMap {collectTree})
+        }
+
+        if (outNeigh(seed).length > 1) {
+          treeCache(seed) = depNodes
+        }
+
+        depNodes
+      } else treeCache(seed)
+    }
+
     sinkNodes ++= validNodes.filter(outNeigh(_).isEmpty)
 
-    //    println(s"${allValidSinkNodes.size} sink nodes in total")
-    val collectedParts = sinkNodes.map{collectTree(_)}
+    val collectedParts = sinkNodes.map{collectTree}
 
     trees.clear()
     trees ++= collectedParts
