@@ -142,6 +142,8 @@ class PartGraph extends StatementGraph {
     val PrimOpWeight = 1
     val MuxOpWeight = 3
     val NodeKindWeight = 4
+    val ConnectWeight = 0
+    val DefNodeWeight = 0
 
     def exprWeight(e: Expression, is_lvalue: Boolean): Int = e match {
 
@@ -169,7 +171,7 @@ class PartGraph extends StatementGraph {
         val condWeight = exprWeight(m.cond, is_lvalue = false)
         val tvalWeight = exprWeight(m.tval, is_lvalue = false)
         val fvalWeight = exprWeight(m.fval, is_lvalue = false)
-        MuxOpWeight + condWeight + ((tvalWeight + fvalWeight) )
+        MuxOpWeight + condWeight + ((tvalWeight + fvalWeight) / 2)
       }
 
       case sf: SubField => exprWeight(sf.expr, is_lvalue) + PrimOpWeight
@@ -195,14 +197,14 @@ class PartGraph extends StatementGraph {
       case pr: Print => 0
       case EmptyStmt => 0
 
-      case mw: MemWrite => MemWriteWeight
-      case ru: RegUpdate => RegWriteWeight
+      case mw: MemWrite => MemWriteWeight + exprWeight(mw.wrEn, is_lvalue = false)
+      case ru: RegUpdate => RegWriteWeight + exprWeight(ru.expr, is_lvalue = false)
 
       case c: Connect => {
-        exprWeight(c.loc, is_lvalue = true) + exprWeight(c.expr, is_lvalue = false)
+        ConnectWeight + exprWeight(c.loc, is_lvalue = true) + exprWeight(c.expr, is_lvalue = false)
       }
 
-      case d: DefNode => exprWeight(d.value, is_lvalue = false)
+      case d: DefNode => DefNodeWeight + exprWeight(d.value, is_lvalue = false)
 
       case _ => throw new Exception("Unknown IR type")
     }
@@ -304,14 +306,14 @@ class PartGraph extends StatementGraph {
           case pr: Print => Seq()
           case EmptyStmt => Seq()
 
-          case mw: MemWrite => Seq("MemWriteWeight")
-          case ru: RegUpdate => Seq("RegWriteWeight")
+          case mw: MemWrite => Seq("MemWriteWeight") ++ exprWeight(mw.wrEn, is_lvalue = false)
+          case ru: RegUpdate => Seq("RegWriteWeight") ++ exprWeight(ru.expr, is_lvalue = false)
 
           case c: Connect => {
-            exprWeight(c.loc, is_lvalue = true) ++ exprWeight(c.expr, is_lvalue = false)
+            exprWeight(c.loc, is_lvalue = true) ++ exprWeight(c.expr, is_lvalue = false) ++ Seq("ConnectWeight")
           }
 
-          case d: DefNode => exprWeight(d.value, is_lvalue = false)
+          case d: DefNode => exprWeight(d.value, is_lvalue = false) ++ Seq("DefNodeWeight")
 
           case _ => throw new Exception("Unknown IR type")
         }
