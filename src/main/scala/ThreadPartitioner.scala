@@ -133,15 +133,15 @@ class PartGraph extends StatementGraph {
     }
 
     val MemReadWeight = 0
-    val MemWriteWeight = 10
+    val MemWriteWeight = 1
     val RegReadWeight = 0
-    val RegWriteWeight = 10
+    val RegWriteWeight = 15
     // IO R/W weight: ExtIO(top) and ExtModule
     val IOReadWeight = 0
     val IOWriteWeight = 0
     val PrimOpWeight = 1
     val MuxOpWeight = 3
-    val NodeKindWeight = 4
+    val NodeKindWeight = 3
     val ConnectWeight = 0
     val DefNodeWeight = 0
 
