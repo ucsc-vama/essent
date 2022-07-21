@@ -342,18 +342,29 @@ class PartGraph extends StatementGraph {
 
 
   def updateHyperGraph(): Unit = {
+    val pieceWeights = pieces.map(calculatePieceWeight)
+    // each node in a piece has same treeIds so just pick any one
+    val hePinCount = pieces.map{p => idToTreeID(p.head).size}
+
     // Add nodes
     for (elem <- trees.indices) {
-      val weight = calculatePieceWeight(pieces(elem))
-      hg.addNode(elem, weight)
+      val weight = pieceWeights(elem)
+      val connectPieces = (trees(elem).map(idToPieceID) - elem).toSeq
+      val connectPieceWeights = connectPieces.map {pid => {
+        val pinCount = hePinCount(pid)
+        val pieceWeight = pieceWeights(pid)
+        (pieceWeight / pinCount)
+      }}
+
+      hg.addNode(elem, weight + connectPieceWeights.sum)
     }
 
     // Add edges
     for (elem <- pieces.indices) {
       if (elem >= trees.length) {
         // For all edges
-        val edgeWeight = calculatePieceWeight(pieces(elem))
-        val edgeNodes = idToTreeID(pieces(elem).head).to[mutable.ArrayBuffer]
+        val edgeWeight = pieceWeights(elem)
+        val edgeNodes = idToTreeID(pieces(elem).head).to[ArrayBuffer]
 
         hg.addEdge(edgeNodes, edgeWeight)
       }
