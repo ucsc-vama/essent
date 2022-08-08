@@ -1,7 +1,6 @@
 package essent
 
 import java.io.{File, FileWriter, Writer}
-
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
@@ -11,8 +10,7 @@ import firrtl.ir._
 import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
-
-import logger._
+import _root_.logger._
 
 import scala.collection.mutable
 
@@ -498,12 +496,28 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
   def writeBodyInner_TP(indentLevel: Int, sg: StatementGraph, opt: OptFlags, pid: Int,
                      keepAvail: Set[String] = Set()) {
+
+    def changePrefix(st: String, from: String, to: String) = st.replace(from, to)
+
+    def emitStmt_T(s: Statement)(rn: Renamer) = s match {
+      case mw: MemWrite => {
+        // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
+        val declName = memNameToDeclName(mw.nodeName())
+        Seq(s"${getThreadDataName_Mem(pid)}.${declName}_write_en = ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)};",
+          s"${getThreadDataName_Mem(pid)}.${declName}_index = ${emitExprWrap(mw.wrAddr)(rn)}.as_single_word();",
+          s"${getThreadDataName_Mem(pid)}.${declName}_data = ${emitExpr(mw.wrData)(rn)};")
+      }
+
+      case ru: RegUpdate => Seq(s"if (update_registers) ${changePrefix(emitExpr(ru.regRef)(rn), "dat.", getThreadDataName_Reg(pid) + ".")} = ${emitExpr(ru.expr)(rn)};")
+
+      case _ => emitStmt(s)(rn)
+    }
+
     // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
     if (opt.conditionalMuxes)
       MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
 
-    def changePrefix(st: String, from: String, to: String) = st.replace(from, to)
 
 //    def stmtNeedDeferred(stmt: Statement) = {stmt match {
 //      case m: MemWrite => true
@@ -529,23 +543,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         writeLines(indentLevel, "}")
       }
       case _ => {
-        def emitStmt_T(s: Statement)(rn: Renamer) = s match {
-          case mw: MemWrite => {
-            // Seq(s"if (UNLIKELY(update_registers && ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)})) ${mw.memName}[${emitExprWrap(mw.wrAddr)(rn)}.as_single_word()] = ${emitExpr(mw.wrData)(rn)};")
-            val declName = memNameToDeclName(mw.nodeName())
-            Seq(s"${getThreadDataName_Mem(pid)}.${declName}_write_en = ${emitExprWrap(mw.wrEn)(rn)} && ${emitExprWrap(mw.wrMask)(rn)};",
-              s"${getThreadDataName_Mem(pid)}.${declName}_index = ${emitExprWrap(mw.wrAddr)(rn)}.as_single_word();",
-              s"${getThreadDataName_Mem(pid)}.${declName}_data = ${emitExpr(mw.wrData)(rn)};")
-          }
-
-//          case ru: RegUpdate => {
-//            val lhs_orig = emitExpr(ru.expr)(rn)
-//            Seq(s"${getThreadDataName_Reg(pid)}.${lhs_orig} = ${emitExpr(ru.expr)(rn)};")
-//          }
-          case ru: RegUpdate => Seq(s"if (update_registers) ${changePrefix(emitExpr(ru.regRef)(rn), "dat.", getThreadDataName_Reg(pid) + ".")} = ${emitExpr(ru.expr)(rn)};")
-
-          case _ => emitStmt(s)(rn)
-        }
+//        writeLines(indentLevel, s"// IR: ${stmt.toString}")
+//        writeLines(indentLevel, s"// Serialize: ${stmt.serialize}")
         writeLines(indentLevel, emitStmt_T(stmt)(rn))
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }

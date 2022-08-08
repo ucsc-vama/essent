@@ -6,6 +6,8 @@ import essent.Extract._
 import essent.ir._
 import firrtl.ir._
 import _root_.logger._
+import firrtl.PrimOps._
+import firrtl._
 
 import java.io.{File, FileWriter}
 import collection.mutable.ArrayBuffer
@@ -132,56 +134,140 @@ class PartGraph extends StatementGraph {
       return idToNodeWeight(id)
     }
 
-    val MemReadWeight = 0
-    val MemWriteWeight = 1
-    val RegReadWeight = 0
-    val RegWriteWeight = 15
-    // IO R/W weight: ExtIO(top) and ExtModule
-    val IOReadWeight = 0
-    val IOWriteWeight = 0
-    val PrimOpWeight = 1
-    val MuxOpWeight = 3
-    val NodeKindWeight = 3
-    val ConnectWeight = 0
-    val DefNodeWeight = 0
 
-    def exprWeight(e: Expression, is_lvalue: Boolean): Int = e match {
+    def exprWeight(e: Expression): Int = e match {
 
       case r: Reference => r.kind match {
-        case firrtl.PortKind => if (is_lvalue) IOWriteWeight else IOReadWeight
-        case firrtl.MemKind => if (is_lvalue) {
-          throw new Exception("Register write should not happen here")
-        } else MemReadWeight
-        case firrtl.RegKind => if (is_lvalue) {
-          throw new Exception("Register write should not happen here")
-        } else RegReadWeight
-        case firrtl.InstanceKind => if (is_lvalue) IOWriteWeight else IOReadWeight
+        case firrtl.PortKind => 0
+        case firrtl.MemKind => 0
+        case firrtl.RegKind => 0
+        case firrtl.InstanceKind => 0
         // Connect to other nodes will be handled as dependency, ignore here
-        case firrtl.NodeKind => NodeKindWeight
-        case _ => throw new Exception("Not supported yet")
+        case firrtl.NodeKind => 0
+        case _ => 0
       }
-      case u: UIntLiteral => 0
-      case s: SIntLiteral => 0
+      case u: UIntLiteral => {
+        val width = u.tpe match {
+          case UIntType(IntWidth(w)) => w.toInt
+        }
+        width
+      }
+      case s: SIntLiteral => {
+        val width = s.tpe match {
+          case SIntType(IntWidth(w)) => w.toInt
+        }
+        width
+      }
+
 
       case op: DoPrim => {
-        PrimOpWeight + (op.args map{exprWeight(_, is_lvalue = false)}).sum
+        val opWidth = op.args map(_.tpe match {
+          case UIntType(IntWidth(w)) => w.toInt
+          case SIntType(IntWidth(w)) => w.toInt
+          case AsyncResetType => 1
+          case tpe => throw new Exception(s"Unknown type ${tpe}")
+        })
+        val maxOpWidth = opWidth.max
+        val nWords = (maxOpWidth + 63) / 64
+
+        val opWeight = op.op match {
+          case Add | Addw | Sub | Subw => (maxOpWidth + 1) match {
+            case w if (w <= 64) => 2
+            case w if (w <= 128) => 8
+            case w if (w <= 256) => 16
+            case _ => 30
+          }
+
+          case Mul => maxOpWidth match {
+            case m if (m <= 64) => opWidth.min match {
+              case w if (w <= 8) => 1
+              case w if (w <= 16) => 9
+              case _ => 25
+            }
+            case _ => 25
+          }
+
+          // Div/Rem only supports less than 64 bits
+          case Div | Rem => 6
+
+          // Logic
+          case Eq | Geq | Gt | Leq | Lt | Neq => maxOpWidth match {
+            case w if (w <= 64) => 1
+            case w if (w <= 128) => 3
+            case _ => 5
+          }
+
+          // Shift
+          case Dshl => {
+            val outputWidth = opWidth.head + (1 << opWidth.last) - 1
+            if (outputWidth <= 64) 3 else 24
+          }
+          case Dshlw => {
+            if (maxOpWidth <= 64) 6 else nWords * 20
+          }
+          case Dshr => {
+            if (maxOpWidth <= 64) 5 else nWords * 20
+          }
+          // Shl/Shr are static
+          case Shl | Shr => 2
+
+          // Conv
+          case Pad => 1
+          case Bits => 2
+          case Cat => if (opWidth.sum <= 64) 2 else nWords * 5
+          case Head => 2
+          case Tail => 1
+
+          case AsAsyncReset => 0
+          case AsSInt | AsUInt => 1
+
+          case Cvt => 1
+          case Neg => 1
+
+          // Bitwise
+          case And | Or | Xor | Not => if (maxOpWidth <= 64) 2 else nWords * 2
+          case Andr | Orr=> nWords
+
+          case Xorr => maxOpWidth match {
+            case w if (w == 1) => 5
+            case w if (w <= 64) => 20
+            case w if (w <= 192) => nWords * 20
+            case w => nWords * 10
+          }
+
+          case _ => 2
+        }
+
+        val argLiterals = op.args.collect{case arg: UIntLiteral => arg} ++ op.args.collect{case arg: SIntLiteral => arg}
+
+        if (argLiterals.nonEmpty) 0 else opWeight + (op.args map{exprWeight}).sum
+
       }
+
+
+
 
       case m: Mux => {
-        val condWeight = exprWeight(m.cond, is_lvalue = false)
-        val tvalWeight = exprWeight(m.tval, is_lvalue = false)
-        val fvalWeight = exprWeight(m.fval, is_lvalue = false)
-        MuxOpWeight + condWeight + ((tvalWeight + fvalWeight) / 2)
+        val opWidth = m.tval.tpe match {
+          case UIntType(IntWidth(w)) => w.toInt
+          case SIntType(IntWidth(w)) => w.toInt
+          case AsyncResetType => 1
+          case tpe => throw new Exception(s"Unknown type ${tpe}")
+        }
+        // Assuming condition is either a boolean expr or a reference
+//        val condWeight = exprWeight(m.cond)
+//        val tvalWeight = exprWeight(m.tval)
+//        val fvalWeight = exprWeight(m.fval)
+//        2 + condWeight + ((tvalWeight + fvalWeight) / 2)
+        val nWords = (opWidth + 63) / 64
+        nWords * 6
       }
 
-      case sf: SubField => exprWeight(sf.expr, is_lvalue) + PrimOpWeight
+      case sf: SubField => 0
 
       // SubAccess: A field in memory
       case sa: SubAccess => {
-        if (is_lvalue) {
-          throw new Exception("A SubAccess cannot be lvalue")
-        }
-        exprWeight(sa.expr, is_lvalue = false) + exprWeight(sa.index, is_lvalue = false)
+        exprWeight(sa.index)
       }
 
       case _ => throw new Exception("Unknown expression type")
@@ -197,14 +283,35 @@ class PartGraph extends StatementGraph {
       case pr: Print => 0
       case EmptyStmt => 0
 
-      case mw: MemWrite => MemWriteWeight + exprWeight(mw.wrEn, is_lvalue = false)
-      case ru: RegUpdate => RegWriteWeight + exprWeight(ru.expr, is_lvalue = false)
-
-      case c: Connect => {
-        ConnectWeight + exprWeight(c.loc, is_lvalue = true) + exprWeight(c.expr, is_lvalue = false)
+      case mw: MemWrite => 1 + exprWeight(mw.wrEn) + exprWeight(mw.wrData)
+      case ru: RegUpdate => ru.expr.tpe match {
+        case UIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+        case SIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+        case AsyncResetType => 2
+        case _ => 0
       }
 
-      case d: DefNode => DefNodeWeight + exprWeight(d.value, is_lvalue = false)
+      case c: Connect => {
+        val valueWeight = exprWeight(c.expr)
+        val declWeight = c.loc.tpe match {
+          case UIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+          case SIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+          case AsyncResetType => 2
+          case _ => 0
+        }
+        declWeight + valueWeight
+      }
+
+      case d: DefNode => {
+        val valueWeight = exprWeight(d.value)
+        val declWeight = d.value.tpe match {
+          case UIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+          case SIntType(IntWidth(w)) => if (w <= 64) 2 else (w.toInt + 63) / 64 + 1
+          case AsyncResetType => 2
+          case _ => 0
+        }
+        valueWeight + declWeight
+      }
 
       case _ => throw new Exception("Unknown IR type")
     }
@@ -238,103 +345,7 @@ class PartGraph extends StatementGraph {
     }
 
     // Weight should be at least 1 to make KaHyPar happy
-    (pieceSinkNodes map stmtWeight).sum + 1
-  }
-
-  def calculatePieceWeight_Trace(piece: BitSet) = {
-
-
-    // TODO : is this correct?
-    val pieceSinkNodes = piece.toSeq.filter{id => {(outNeigh(id).toSet intersect piece).isEmpty}}
-
-    val visitedNodes = mutable.Set[NodeID]()
-
-
-
-    def exprWeight(e: Expression, is_lvalue: Boolean): Seq[String] = e match {
-
-      case r: Reference => r.kind match {
-        case firrtl.PortKind => if (is_lvalue) Seq("IOWriteWeight") else Seq("IOReadWeight")
-        case firrtl.MemKind => if (is_lvalue) {
-          throw new Exception("Register write should not happen here")
-        } else Seq("MemReadWeight")
-        case firrtl.RegKind => if (is_lvalue) {
-          throw new Exception("Register write should not happen here")
-        } else Seq("RegReadWeight")
-        case firrtl.InstanceKind => if (is_lvalue) Seq("IOWriteWeight") else Seq("IOReadWeight")
-        // Connect to other nodes will be handled as dependency, ignore here
-        case firrtl.NodeKind => Seq("NodeKindWeight")
-        case _ => throw new Exception("Not supported yet")
-      }
-      case u: UIntLiteral => Seq()
-      case s: SIntLiteral => Seq()
-
-      case op: DoPrim => {
-        Seq("PrimOpWeight") ++ (op.args flatMap {exprWeight(_, is_lvalue = false)})
-      }
-
-      case m: Mux => {
-        val condWeight = exprWeight(m.cond, is_lvalue = false)
-        val tvalWeight = exprWeight(m.tval, is_lvalue = false)
-        val fvalWeight = exprWeight(m.fval, is_lvalue = false)
-        Seq("MuxOpWeight") ++ condWeight ++ tvalWeight ++ fvalWeight
-      }
-
-      case sf: SubField => exprWeight(sf.expr, is_lvalue) ++ Seq("PrimOpWeight")
-
-      // SubAccess: A field in memory
-      case sa: SubAccess => {
-        if (is_lvalue) {
-          throw new Exception("A SubAccess cannot be lvalue")
-        }
-        exprWeight(sa.expr, is_lvalue = false) ++ exprWeight(sa.index, is_lvalue = false)
-      }
-
-      case _ => throw new Exception("Unknown expression type")
-    }
-
-    def stmtWeight(sinkId: NodeID): Seq[String] = {
-      if (visitedNodes.contains(sinkId)) Seq() else {
-        visitedNodes += sinkId
-
-        val currentWeight = idToStmt(sinkId) match {
-          case d: DefInstance => throw new Exception("DefInstance should not exists here")
-          case d: DefRegister => throw new Exception("DefRegister should not exists here")
-          case m: DefMemory => throw new Exception("DefMemory should not exists here")
-
-          case st: Stop => Seq()
-          case pr: Print => Seq()
-          case EmptyStmt => Seq()
-
-          case mw: MemWrite => Seq("MemWriteWeight") ++ exprWeight(mw.wrEn, is_lvalue = false)
-          case ru: RegUpdate => Seq("RegWriteWeight") ++ exprWeight(ru.expr, is_lvalue = false)
-
-          case c: Connect => {
-            exprWeight(c.loc, is_lvalue = true) ++ exprWeight(c.expr, is_lvalue = false) ++ Seq("ConnectWeight")
-          }
-
-          case d: DefNode => exprWeight(d.value, is_lvalue = false) ++ Seq("DefNodeWeight")
-
-          case _ => throw new Exception("Unknown IR type")
-        }
-
-        currentWeight ++ ((inNeigh(sinkId) filter validNodes filter piece) flatMap  stmtWeight)
-      }
-    }
-
-    // Weight should be at least 1 to make KaHyPar happy
-    val raw = pieceSinkNodes flatMap stmtWeight
-
-    val ret = mutable.HashMap[String, Int]()
-    for (e <- raw) {
-      if (ret.contains(e)) {
-        ret(e) += 1
-      } else {
-        ret(e) = 1
-      }
-    }
-
-    ret
+    (pieceSinkNodes map stmtWeight).sum + 1 + (piece.map(idToStmt).collect{case e: Stop => e}.size + piece.map(idToStmt).collect{case e: Print => e}.size) / 7
   }
 
 
@@ -342,6 +353,7 @@ class PartGraph extends StatementGraph {
 
   def updateHyperGraph(): Unit = {
     val pieceWeights = pieces.map(calculatePieceWeight)
+    // val pieceWeights = pieces.map(_.toSet.size)
     // each node in a piece has same treeIds so just pick any one
     val hePinCount = pieces.map{p => idToTreeID(p.head).size}
 
@@ -482,18 +494,18 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
 
     // Print out weight calculation trace
 
-    println("StartJSON")
-    println("{")
-    parts.indices.foreach{pid => {
-      val trace = pg.calculatePieceWeight_Trace(parts(pid))
-      println("    {")
-      for ((k, v) <- trace) {
-        println(s"""        \"${k}\" : ${v},  """)
-      }
-      println("    },")
-    }}
-    println("}")
-    println("EndJSON")
+//    println("StartJSON")
+//    println("{")
+//    parts.indices.foreach{pid => {
+//      val trace = pg.calculatePieceWeight_Trace(parts(pid))
+//      println("    {")
+//      for ((k, v) <- trace) {
+//        println(s"""        \"${k}\" : ${v},  """)
+//      }
+//      println("    },")
+//    }}
+//    println("}")
+//    println("EndJSON")
 
     val totalNodeCount = parts.map(_.size).sum
 
@@ -630,7 +642,7 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     writer write kahypar_preset
     writer.close()
 
-    val kahypar_imbalance_factor = 0.05
+    val kahypar_imbalance_factor = 0.015
     val kahypar_seed = -1
 
     val cmd = List(kahypar_path,
