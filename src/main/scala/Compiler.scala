@@ -174,6 +174,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
           writeLines(1, s"${typeStr} ${declName};")
         }}
       }}
+      writeLines(1, "// Extra padding to avoid false sharing")
+      writeLines(1, s"UInt<512> padding_${writerId};")
     }}
 
     writeLines(0, "")
