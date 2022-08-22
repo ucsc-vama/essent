@@ -488,8 +488,10 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     logger.info("Parse result")
     parseMetisResult(metis_return_file)
 
+    val part_weights = parts.map(pg.calculatePieceWeight)
+
     parts.indices.foreach{pid => {
-      println(s"Pid: $pid, part size: ${parts(pid).size}, part weight: ${pg.calculatePieceWeight(parts(pid))}")
+      println(s"Pid: $pid, part size: ${parts(pid).size}, part weight: ${part_weights(pid)}")
     }}
 
     // Print out weight calculation trace
@@ -515,12 +517,24 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     val partNodeCount = parts.reduce(_ ++ _).size
     val duplicateNodeCount = parts.map(_.size).sum - partNodeCount
 
-    println(s"Total node counts in partitions (deduplicated) is $partNodeCount")
-    println(s"Duplication cost: ${duplicateNodeCount} (${(duplicateNodeCount.toFloat / partNodeCount.toFloat) * 100}%)")
+    println(s"Total node counts (whole design) is $partNodeCount")
+    println(s"Duplication stmt cost: ${duplicateNodeCount} (${(duplicateNodeCount.toFloat / partNodeCount.toFloat) * 100}%)")
 
     val smallestSize = parts.map(_.size).min
     val largestSize = parts.map(_.size).max
-    println(s"Partition size: max: ${largestSize}, min: ${smallestSize}, avg: ${partNodeCount / parts.length}")
+    println(s"Partition size: max: ${largestSize}, min: ${smallestSize}, avg: ${(partNodeCount + duplicateNodeCount) / parts.length}")
+
+
+
+    val wholeDesignWeight = pg.calculatePieceWeight(parts.reduce(_ ++ _))
+    val duplicateWeights = part_weights.sum - wholeDesignWeight
+    println(s"Total node weight (whole design) is $wholeDesignWeight")
+    println(s"Duplication weight cost: ${duplicateWeights} (${(duplicateWeights.toFloat / wholeDesignWeight.toFloat) * 100}%)")
+
+    val lightestSize = part_weights.min
+    val heaviestSize = part_weights.max
+    println(s"Partition weight: max: ${heaviestSize}, min: ${lightestSize}, avg: ${(wholeDesignWeight + duplicateWeights) / parts.length}")
+
 
 
     val stmtsIdOrdered = TopologicalSort(pg)
