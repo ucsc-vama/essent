@@ -109,8 +109,8 @@ object Emitter {
   }
 
   def chunkLitString(litStr: String, chunkWidth:Int = 16): Seq[String] = {
-    if (litStr.size < chunkWidth) Seq(litStr)
-    else chunkLitString(litStr.dropRight(chunkWidth)) ++ Seq(litStr.takeRight(chunkWidth))
+    if (litStr.length % chunkWidth == 0) litStr.grouped(chunkWidth).toSeq
+    else Seq(litStr.take(litStr.length % chunkWidth)) ++ chunkLitString(litStr.drop(litStr.length % chunkWidth), chunkWidth)
   }
 
   // NOTE: assuming no large UIntLiteral is negative
