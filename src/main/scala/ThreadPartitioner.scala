@@ -64,14 +64,14 @@ class PartGraph extends StatementGraph {
 
   def initTrees(): Unit = {
 
-    val treeCache = mutable.HashMap[NodeID, BitSet]()
+    val treeCache = mutable.HashMap[NodeID, Set[Int]]()
 
-    def collectTree(seed: NodeID): BitSet = {
+    def collectTree(seed: NodeID): Set[Int] = {
       if (!treeCache.contains(seed)) {
         val depNodes = idToStmt(seed) match {
-          case inv if (!validNodes.contains(seed)) => BitSet() // invalid
-          case d: DefRegister => BitSet() // Stop at register read
-          case _ => BitSet(seed) ++ (inNeigh(seed) flatMap {collectTree})
+          case inv if (!validNodes.contains(seed)) => Set[Int]() // invalid
+          case d: DefRegister => Set[Int]() // Stop at register read
+          case _ => Set[Int](seed) ++ (inNeigh(seed) flatMap {collectTree})
         }
 
         if (outNeigh(seed).length > 1) {
@@ -84,7 +84,7 @@ class PartGraph extends StatementGraph {
 
     sinkNodes ++= validNodes.filter(outNeigh(_).isEmpty)
 
-    val collectedParts = sinkNodes.map{collectTree}
+    val collectedParts = (sinkNodes.map{collectTree}).map(BitSet() ++ _)
 
     trees.clear()
     trees ++= collectedParts
