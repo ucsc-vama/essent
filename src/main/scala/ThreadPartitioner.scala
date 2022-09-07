@@ -10,7 +10,7 @@ import firrtl.PrimOps._
 import firrtl._
 
 import java.io.{File, FileWriter}
-import collection.mutable.ArrayBuffer
+import collection.mutable.{ArrayBuffer, Map}
 import scala.collection.{BitSet, mutable}
 import scala.io.Source
 
@@ -443,6 +443,25 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
   val parts_write = ArrayBuffer[ArrayBuffer[Int]]()
 
 
+  def collectNodeType(dat: Map[String, Int])(s: Statement): Seq[Nothing] = {
+    s match {
+      case b: Block => {
+        b.stmts flatMap collectNodeType(dat)
+      }
+      case other => {
+        val nodeName = other.getClass.getName()
+        if (dat contains nodeName) {
+          dat(nodeName) += 1
+        } else {
+          dat(nodeName) = 1
+        }
+      }
+    }
+    Seq()
+
+  }
+
+
   def doOpt() = {
 
 
@@ -454,6 +473,20 @@ class ThreadPartitioner(pg: PartGraph, opt: OptFlags) extends LazyLogging {
     logger.info(s"Done collect trees in $elapse_tree ms")
 
     logger.info(s"Found ${pg.sinkNodes.size} sink nodes")
+
+    // Print out sink node type
+    val sinkNodeDist = collection.mutable.Map[String, Int]()
+
+    pg.sinkNodes.foreach { sinkId => {
+      collectNodeType(sinkNodeDist)(pg.idToStmt(sinkId))
+    }}
+
+    logger.info("*****Sink Node Distribution*****")
+    for ((k, v) <- sinkNodeDist) {
+      logger.info(s"$k : $v")
+    }
+    logger.info("*****End Sink Node Distribution*****")
+
 
     logger.info("Collect pieces")
     val startTime_pieces = System.currentTimeMillis()
