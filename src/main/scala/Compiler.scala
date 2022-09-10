@@ -802,7 +802,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, s"#ifndef $headerGuardName")
     writeLines(0, s"#define $headerGuardName")
     writeLines(0, "")
+    writeLines(0, "#ifdef __x86_64__")
     writeLines(0, "#include <immintrin.h>")
+    writeLines(0, "#endif")
     writeLines(0, "#include <array>")
     writeLines(0, "#include <thread>")
     writeLines(0, "#include <atomic>")
@@ -810,6 +812,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "#include <cstdlib>")
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
+
+    writeLines(0, "#ifndef __x86_64__")
+    writeLines(0, "void _mm_pause() {};")
+    writeLines(0, "#endif")
+
     writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
     if (opt.trackParts || opt.trackSigs) {
       writeLines(0, "#include <fstream>")
