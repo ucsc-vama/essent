@@ -1004,7 +1004,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
                            |    EVENT_CYCLE_DONE = 4,
                            |};
                            |
-                           |#define MAX_EVENT_ID 4
+                           |#define EVENT_CNT 5
                            |
                            |typedef struct ProfileData
                            |{
@@ -1025,7 +1025,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
                            |        // data: Thread 0, Thread 1, ...,
                            |        // Thread n: Event 0, Event 1, ...
                            |        // Event n: cycle 0, cycle 1, ...
-                           |        data = new ProfileData[NUM_THREADS * MAX_EVENT_ID * MAX_PROFILE_CYCLES];
+                           |        data = new ProfileData[NUM_THREADS * EVENT_CNT * MAX_PROFILE_CYCLES];
                            |        current_cycle = 0;
                            |
                            |        start_time = std::chrono::high_resolution_clock::now();
@@ -1038,7 +1038,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
                            |            // Do nothing if too many data
                            |            return;
                            |        }
-                           |        uint64_t location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id + int(event) * MAX_PROFILE_CYCLES + current_cycle);
+                           |        uint64_t location = sizeof(ProfileData) * (EVENT_CNT * MAX_PROFILE_CYCLES * thread_id + int(event) * MAX_PROFILE_CYCLES + current_cycle);
                            |        data[location].time_tick = get_tick();
                            |    }
                            |
@@ -1066,7 +1066,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
                            |        uint64_t start_tick = data[0].time_tick;
                            |        for (size_t thread_id = 0; thread_id < NUM_THREADS; thread_id++)
                            |        {
-                           |            uint64_t start_tick_location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id);
+                           |            uint64_t start_tick_location = sizeof(ProfileData) * (EVENT_CNT * MAX_PROFILE_CYCLES * thread_id);
                            |            start_tick = std::min(data[start_tick_location].time_tick, start_tick);
                            |        }
                            |
@@ -1077,9 +1077,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
                            |
                            |            for (size_t cycle = 0; cycle < profile_cycles; cycle++)
                            |            {
-                           |                for (size_t event_id = 0; event_id < MAX_EVENT_ID; event_id++)
+                           |                for (size_t event_id = 0; event_id < EVENT_CNT; event_id++)
                            |                {
-                           |                    uint64_t location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id + event_id * MAX_PROFILE_CYCLES + cycle);
+                           |                    uint64_t location = sizeof(ProfileData) * (EVENT_CNT * MAX_PROFILE_CYCLES * thread_id + event_id * MAX_PROFILE_CYCLES + cycle);
                            |                    uint64_t raw_tick = data[location].time_tick;
                            |                    ofs << raw_tick - start_tick << ",";
                            |                }
