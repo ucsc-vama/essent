@@ -214,7 +214,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
   // Declaring Top level Module. This function is used only by parallel version
   //----------------------------------------------------------------------------
-  def declareTopModule(m: Module, c: Circuit) {
+  def declareTopModule(m: Module, c: Circuit, profile: Boolean) {
     val topName = m.name
 
     val extModules = c.modules.collect {case e: ExtModule => e}
@@ -256,6 +256,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
     writeLines(1, s"bool sim_token;")
 
+    if (profile) {
+      writeLines(0, "")
+      writeLines(1, s"uint64_t cycle_count;")
+      writeLines(1, "EssentProfiler* profiler;")
+    }
+
     writeLines(0, "")
     for (tid <- 1 to worker_thread_count) {
       writeLines(1, s"std::thread *${gen_thread_obj_name(tid)};")
@@ -282,6 +288,12 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "")
     writeLines(2, s"sim_token = true;")
 
+    if (profile) {
+      writeLines(0, "")
+      writeLines(1, s"cycle_count = 0")
+      writeLines(1, "profiler = new EssentProfiler();")
+    }
+
     // Create worker threads
     writeLines(0, "")
     for (tid <- 1 to worker_thread_count) {
@@ -300,6 +312,11 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     for (tid <- 1 to worker_thread_count) {
       writeLines(2, s"${gen_thread_obj_name(tid)} -> join();")
     }
+
+    writeLines(0, "")
+    if (profile) {
+      writeLines(2, "profiler->save(\"profile_exec.dat\");")
+    }
     writeLines(1, "}")
 
     // Thread entry point
@@ -314,19 +331,26 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(3, "}")
       writeLines(3, s"if (sim_token == false) return;")
 
+      if (profile) writeLines(3, s"profiler->record(${tid}, EVENT_CYCLE_START);")
+
+
       // call task
       writeLines(3, s"${gen_tp_eval_name(tid)}(update_registers, verbose, done_reset);")
-
       writeLines(3, s"${gen_thread_eval_token_name(tid)}.store(false);")
+
+      if (profile) writeLines(3, s"profiler->record(${tid}, EVENT_EVAL_DONE);")
 
       writeLines(3, s"while (${gen_thread_sync_token_name(tid)}.load() == false) {")
       writeLines(4, s"_mm_pause();")
       writeLines(3, "}")
 
+
+      if (profile) writeLines(3, s"profiler->record(${tid}, EVENT_SYNC_START);")
+
       writeLines(3, s"${gen_tp_wsync_name(tid)}(update_registers);")
-
-
       writeLines(3, s"${gen_thread_sync_token_name(tid)}.store(false);")
+
+      if (profile) writeLines(3, s"profiler->record(${tid}, EVENT_SYNC_DONE);")
 
       writeLines(2, "}")
       writeLines(1, "}")
@@ -792,7 +816,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "}")
   }
 
-
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
   def execute(circuit: Circuit) {
@@ -824,7 +847,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-//    writeLines(0, "uint64_t debug_cycle_count = 0;")
+    //    writeLines(0, "uint64_t debug_cycle_count = 0;")
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
 
@@ -846,231 +869,401 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     // sg.reachableAfter(sigNameToID)
 
 
-    if (opt.parallel > 1) {
+    rn.populateFromSG(sg, extIOMap, isParallel = false)
 
-      rn.populateFromSG(sg, extIOMap, isParallel = true)
-
-      val pg = PartGraph(sg)
-
-      val tp = ThreadPartitioner(pg, opt)
-      tp.doOpt()
-
-      val part_write_stmts = tp.parts_write.map(_.map(sg.idToStmt(_)).toSeq).toSeq
-      val part_read_stmts = tp.parts_read.map(_.map(sg.idToStmt(_)).toSeq).toSeq
-      declareFlattenSubModule(circuit, part_read_stmts, part_write_stmts)
-
-      circuit.modules foreach {
-        case m: ExtModule => declareExtModule(m)
-        case _ => Unit
-      }
-
-      val topModule = findModule(topName, circuit) match {case m: Module => m}
-      declareTopModule(topModule, circuit)
-
-      if (initialOpt.writeHarness) {
-        writeLines(0, "")
-        writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
-        writeLines(2, HarnessGenerator.harnessConnections(topModule))
-        writeLines(1, "}")
-        writeLines(0, "")
-      }
-      if (containsAsserts) {
-        writeLines(1, "bool assert_triggered = false;")
-        writeLines(1, "int assert_exit_code;")
-        writeLines(0, "")
-      }
-
-
-
-
-
-      val worker_thread_count = initialOpt.parallel - 1
-
-      // data structure for each part
-      tp.parts.indices.foreach {pid => {
-        val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
-        declareThreadMemWriteData(part_write_stmts.toSeq, pid, rn)
-        writeLines(1, s"ThreadData_Mem_$pid ${getThreadDataName_Mem(pid)};")
-
-        writeLines(1, s"DesignData ${getThreadDataName_Reg(pid)};")
-      }}
-
-      // For each part
-      tp.parts.zipWithIndex.foreach {case(part, pid) => {
-        // Modify valid nodes
-        sg.validNodes --= sg.validNodes
-        sg.validNodes ++= part
-
-
-        val condPartWorker = MakeCondPart(sg, rn, extIOMap)
-
-        if (opt.useCondParts) {
-          throw new Exception("Parallel for O3 not supported yet")
-          condPartWorker.doOpt(opt.partCutoff)
-        } else {
-          if (opt.regUpdates)
-            OptElideRegUpdates(sg)
-        }
-
-//        if (containsAsserts) {
-//          writeLines(1, s"bool assert_triggered_$pid = false;")
-//          writeLines(1, s"int assert_exit_code_$pid;")
-//          writeLines(0, "")
-//        }
-
-        if (opt.useCondParts)
-          writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
-        writeLines(1, s"void ${gen_tp_eval_name(pid)}(bool update_registers, bool verbose, bool done_reset) {")
-        if ((opt.trackParts || opt.trackSigs))
-          writeLines(2, "cycle_count++;")
-        if (opt.useCondParts)
-          writeZoningBody_TP(sg, condPartWorker, opt, pid)
-        else
-          writeBodyInner_TP(2, sg, opt, pid)
-        if (containsAsserts) {
-          writeLines(2, s"if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-          writeLines(2, s"if (!done_reset) assert_triggered = false;")
-        }
-
-        writeRegResetOverrides(sg)
-        writeLines(1, "}")
-        // if (opt.trackParts || opt.trackSigs) {
-        //   writeLines(1, s"~$topName() {")
-        //   writeLines(2, "writeActToJson();")
-        //   writeLines(1, "}")
-        // }
-
-        writeLines(1, "")
-
-        // Function for sync registers to global copy
-        writeLines(1, s"void ${gen_tp_wsync_name(pid)}(bool update_registers) {")
-        val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
-
-        writeSyncBody(2, part_write_stmts.toSeq, pid, rn)
-        writeLines(1, s"}")
-
-      }}
-
+    circuit.modules foreach {
+      case m: Module => declareModule(m, topName)
+      case m: ExtModule => declareExtModule(m)
+    }
+    val topModule = findModule(topName, circuit) match {case m: Module => m}
+    if (initialOpt.writeHarness) {
       writeLines(0, "")
-
-
-      writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-      if ((opt.trackParts || opt.trackSigs)) {
-        writeLines(2, "cycle_count++;")
-      }
-
-      writeLines(2, "this->update_registers = update_registers;")
-      writeLines(2, "this->verbose = verbose;")
-      writeLines(2, "this->done_reset = done_reset;")
-
-      writeLines(0, "")
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_eval_token_name(tid)}.store(true);")
-      }
-
-      writeLines(0, "")
-      // Main thread is also an worker thread
-      writeLines(2, s"${gen_tp_eval_name(0)}(update_registers, verbose, done_reset);")
-
-      writeLines(0, "")
-
-      // Wait eval complete
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"while (${gen_thread_eval_token_name(tid)}.load() == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(2, s"};")
-      }
-
-      writeLines(0, "")
-
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"${gen_thread_sync_token_name(tid)}.store(true);")
-      }
-
-      writeLines(0, "")
-      writeLines(2, s"${gen_tp_wsync_name(0)}(update_registers);")
-
-      // Wait sync complete
-      for (tid <- 1 to worker_thread_count) {
-        writeLines(2, s"while (${gen_thread_sync_token_name(tid)}.load() == true) {")
-        writeLines(3, s"_mm_pause();")
-        writeLines(2, s"};")
-      }
-
-
-
-//      writeLines(2, "debug_cycle_count ++;")
-//      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+      writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+      writeLines(2, HarnessGenerator.harnessConnections(topModule))
       writeLines(1, "}")
+      writeLines(0, "")
+    }
+    if (containsAsserts) {
+      writeLines(1, "bool assert_triggered = false;")
+      writeLines(1, "int assert_exit_code;")
+      writeLines(0, "")
+    }
+
+    val condPartWorker = MakeCondPart(sg, rn, extIOMap)
+
+    if (opt.useCondParts) {
+      condPartWorker.doOpt(opt.partCutoff)
     } else {
-      // non parallel
+      if (opt.regUpdates)
+        OptElideRegUpdates(sg)
+    }
+    // if (opt.trackSigs)
+    //   declareSigTracking(sg, topName, opt)
+    // if (opt.trackParts)
+    //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
+    // if (opt.trackParts || opt.trackSigs)
+    //    emitJsonWriter(opt, condPartWorker.getNumParts())
+    // if (opt.partStats)
+    //   sg.dumpPartInfoToJson(opt, sigNameToID)
+    // if (opt.trackExts)
+    //   sg.dumpNodeTypeToJson(sigNameToID)
+    // sg.reachableAfter(sigNameToID)
 
-      rn.populateFromSG(sg, extIOMap, isParallel = false)
+    if (opt.useCondParts)
+      writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
+    writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
+    if (opt.trackParts || opt.trackSigs)
+      writeLines(2, "cycle_count++;")
+    if (opt.useCondParts)
+      writeZoningBody(sg, condPartWorker, opt)
+    else
+      writeBodyInner(2, sg, opt)
+    if (containsAsserts) {
+      writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+      writeLines(2, "if (!done_reset) assert_triggered = false;")
+    }
 
-      circuit.modules foreach {
-        case m: Module => declareModule(m, topName)
-        case m: ExtModule => declareExtModule(m)
-      }
-      val topModule = findModule(topName, circuit) match {case m: Module => m}
-      if (initialOpt.writeHarness) {
-        writeLines(0, "")
-        writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
-        writeLines(2, HarnessGenerator.harnessConnections(topModule))
-        writeLines(1, "}")
-        writeLines(0, "")
-      }
-      if (containsAsserts) {
-        writeLines(1, "bool assert_triggered = false;")
-        writeLines(1, "int assert_exit_code;")
-        writeLines(0, "")
-      }
+    writeRegResetOverrides(sg)
+
+    //      writeLines(2, "debug_cycle_count ++;")
+    //      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+
+    writeLines(1, "}")
+    // if (opt.trackParts || opt.trackSigs) {
+    //   writeLines(1, s"~$topName() {")
+    //   writeLines(2, "writeActToJson();")
+    //   writeLines(1, "}")
+    // }
+
+
+    writeLines(0, s"} $topName;") //closing top module dec
+    writeLines(0, "")
+    writeLines(0, s"#endif  // $headerGuardName")
+  }
+
+  // General Structure (and Compiler Boilerplate)
+  //----------------------------------------------------------------------------
+  def execute_parallel(circuit: Circuit, sg: StatementGraph, tp: ThreadPartitioner, profile: Boolean) {
+    val opt = initialOpt
+    val topName = circuit.main
+    val headerGuardName = topName.toUpperCase + "_H_"
+    writeLines(0, s"#ifndef $headerGuardName")
+    writeLines(0, s"#define $headerGuardName")
+    writeLines(0, "")
+    writeLines(0, "#ifdef __x86_64__")
+    writeLines(0, "#include <immintrin.h>")
+    writeLines(0, "#endif")
+    writeLines(0, "#include <array>")
+    writeLines(0, "#include <thread>")
+    writeLines(0, "#include <atomic>")
+    writeLines(0, "#include <cstdint>")
+    writeLines(0, "#include <cstdlib>")
+    writeLines(0, "#include <uint.h>")
+    writeLines(0, "#include <sint.h>")
+
+    if (profile) {
+      writeLines(0, "#include <chrono>")
+      writeLines(0, "#include <algorithm>")
+      writeLines(0, "#include <fstream>")
+      writeLines(0, "")
+
+      writeLines(0, s"#define MAX_PROFILE_CYCLES ${opt.profile_cycles}")
+      writeLines(0, s"#define NUM_THREADS ${opt.parallel}")
+      val profile_code = """
+                           |
+                           |
+                           |#if defined(__i386__) || defined(__x86_64__)
+                           |#define VL_GET_CPU_TICK(val) \
+                           |    { \
+                           |        uint32_t hi; \
+                           |        uint32_t lo; \
+                           |        asm volatile("rdtsc" : "=a"(lo), "=d"(hi)); \
+                           |        (val) = ((uint64_t)lo) | (((uint64_t)hi) << 32); \
+                           |    }
+                           |#elif defined(__aarch64__)
+                           |# define VL_GET_CPU_TICK(val) \
+                           |    { \
+                           |        asm volatile("isb" : : : "memory"); \
+                           |        asm volatile("mrs %[rt],CNTVCT_EL0" : [rt] "=r"(val)); \
+                           |    }
+                           |#else
+                           |#error "Unsupported platform"
+                           |#endif
+                           |
+                           |inline uint64_t get_tick() {
+                           |    uint64_t val;
+                           |    VL_GET_CPU_TICK(val);
+                           |    return val;
+                           |}
+                           |
+                           |enum ProfileEvent {
+                           |    EVENT_CYCLE_START = 0,
+                           |    EVENT_EVAL_DONE = 1,
+                           |    EVENT_SYNC_START = 2,
+                           |    EVENT_SYNC_DONE = 3,
+                           |    EVENT_CYCLE_DONE = 4,
+                           |};
+                           |
+                           |#define MAX_EVENT_ID 4
+                           |
+                           |typedef struct ProfileData
+                           |{
+                           |    uint64_t time_tick;
+                           |}ProfileData;
+                           |
+                           |
+                           |class EssentProfiler {
+                           |private:
+                           |    ProfileData * data;
+                           |    std::atomic<uint64_t> current_cycle;
+                           |
+                           |    std::chrono::high_resolution_clock::time_point start_time, end_time;
+                           |
+                           |public:
+                           |    EssentProfiler() {
+                           |        // Layout:
+                           |        // data: Thread 0, Thread 1, ...,
+                           |        // Thread n: Event 0, Event 1, ...
+                           |        // Event n: cycle 0, cycle 1, ...
+                           |        data = new ProfileData[NUM_THREADS * MAX_EVENT_ID * MAX_PROFILE_CYCLES];
+                           |        current_cycle = 0;
+                           |
+                           |        start_time = std::chrono::high_resolution_clock::now();
+                           |    }
+                           |
+                           |    void update_cycle(uint64_t cycle) {current_cycle = cycle;};
+                           |
+                           |    void record(uint32_t thread_id, ProfileEvent event) {
+                           |        if (current_cycle >= MAX_PROFILE_CYCLES) {
+                           |            // Do nothing if too many data
+                           |            return;
+                           |        }
+                           |        uint64_t location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id + int(event) * MAX_PROFILE_CYCLES + current_cycle);
+                           |        data[location].time_tick = get_tick();
+                           |    }
+                           |
+                           |    void save(const char* filename){
+                           |
+                           |        // Calculate duration
+                           |        end_time = std::chrono::high_resolution_clock::now();
+                           |        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                           |        uint64_t duration_ms = duration.count();
+                           |
+                           |
+                           |        uint64_t profile_cycles = std::min(current_cycle.load(), uint64_t(MAX_PROFILE_CYCLES));
+                           |
+                           |        std::ofstream ofs (filename, std::ofstream::out);
+                           |
+                           |        ofs << "// ESSENT Profiler log file, v0.1\n"
+                           |            << "Duration(ms): " << duration_ms << "\n"
+                           |            << "Cycles: " << current_cycle.load() << "\n"
+                           |            << "Profile cycles: " << profile_cycles << "\n"
+                           |            << "Threads: " << NUM_THREADS << "\n";
+                           |
+                           |
+                           |        ofs << "// Data layout: EVENT_CYCLE_START, EVENT_EVAL_DONE, EVENT_SYNC_START, EVENT_SYNC_DONE, EVENT_CYCLE_DONE \n";
+                           |
+                           |        uint64_t start_tick = data[0].time_tick;
+                           |        for (size_t thread_id = 0; thread_id < NUM_THREADS; thread_id++)
+                           |        {
+                           |            uint64_t start_tick_location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id);
+                           |            start_tick = std::min(data[start_tick_location].time_tick, start_tick);
+                           |        }
+                           |
+                           |
+                           |        for (size_t thread_id = 0; thread_id < NUM_THREADS; thread_id++)
+                           |        {
+                           |            ofs << "Thread " << thread_id << ":";
+                           |
+                           |            for (size_t cycle = 0; cycle < profile_cycles; cycle++)
+                           |            {
+                           |                for (size_t event_id = 0; event_id < MAX_EVENT_ID; event_id++)
+                           |                {
+                           |                    uint64_t location = sizeof(ProfileData) * (MAX_EVENT_ID * MAX_PROFILE_CYCLES * thread_id + event_id * MAX_PROFILE_CYCLES + cycle);
+                           |                    uint64_t raw_tick = data[location].time_tick;
+                           |                    ofs << raw_tick - start_tick << ",";
+                           |                }
+                           |            }
+                           |
+                           |            ofs << "\n";
+                           |        }
+                           |
+                           |        ofs.flush();
+                           |        ofs.close();
+                           |    };
+                           |};""".stripMargin
+      writeLines(0, profile_code)
+      writeLines(0, "")
+    }
+
+    writeLines(0, "#ifndef __x86_64__")
+    writeLines(0, "void _mm_pause() {};")
+    writeLines(0, "#endif")
+
+    writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
+    if (opt.trackParts || opt.trackSigs) {
+      writeLines(0, "#include <fstream>")
+      writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
+      writeLines(0, "using json::JSON;")
+      writeLines(0, "uint64_t cycle_count = 0;")
+    }
+//    writeLines(0, "uint64_t debug_cycle_count = 0;")
+
+    val containsAsserts = sg.containsStmtOfType[Stop]()
+    val extIOMap = findExternalPorts(circuit)
+
+    rn.populateFromSG(sg, extIOMap, isParallel = true)
+
+
+    val part_write_stmts = tp.parts_write.map(_.map(sg.idToStmt(_)).toSeq).toSeq
+    val part_read_stmts = tp.parts_read.map(_.map(sg.idToStmt(_)).toSeq).toSeq
+    declareFlattenSubModule(circuit, part_read_stmts, part_write_stmts)
+
+    circuit.modules foreach {
+      case m: ExtModule => declareExtModule(m)
+      case _ => Unit
+    }
+
+    val topModule = findModule(topName, circuit) match {case m: Module => m}
+    declareTopModule(topModule, circuit, profile)
+
+    if (initialOpt.writeHarness) {
+      writeLines(0, "")
+      writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+      writeLines(2, HarnessGenerator.harnessConnections(topModule))
+      writeLines(1, "}")
+      writeLines(0, "")
+    }
+    if (containsAsserts) {
+      writeLines(1, "bool assert_triggered = false;")
+      writeLines(1, "int assert_exit_code;")
+      writeLines(0, "")
+    }
+
+
+    val worker_thread_count = initialOpt.parallel - 1
+
+    // data structure for each part
+    tp.parts.indices.foreach {pid => {
+      val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
+      declareThreadMemWriteData(part_write_stmts.toSeq, pid, rn)
+      writeLines(1, s"ThreadData_Mem_$pid ${getThreadDataName_Mem(pid)};")
+
+      writeLines(1, s"DesignData ${getThreadDataName_Reg(pid)};")
+    }}
+
+    // For each part
+    tp.parts.zipWithIndex.foreach {case(part, pid) => {
+      // Modify valid nodes
+      sg.validNodes --= sg.validNodes
+      sg.validNodes ++= part
+
 
       val condPartWorker = MakeCondPart(sg, rn, extIOMap)
 
       if (opt.useCondParts) {
+        throw new Exception("Parallelization for O3 not supported yet")
         condPartWorker.doOpt(opt.partCutoff)
       } else {
         if (opt.regUpdates)
           OptElideRegUpdates(sg)
       }
-      // if (opt.trackSigs)
-      //   declareSigTracking(sg, topName, opt)
-      // if (opt.trackParts)
-      //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
-      // if (opt.trackParts || opt.trackSigs)
-      //    emitJsonWriter(opt, condPartWorker.getNumParts())
-      // if (opt.partStats)
-      //   sg.dumpPartInfoToJson(opt, sigNameToID)
-      // if (opt.trackExts)
-      //   sg.dumpNodeTypeToJson(sigNameToID)
-      // sg.reachableAfter(sigNameToID)
+
 
       if (opt.useCondParts)
         writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
-      writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-      if (opt.trackParts || opt.trackSigs)
+      writeLines(1, s"void ${gen_tp_eval_name(pid)}(bool update_registers, bool verbose, bool done_reset) {")
+      if ((opt.trackParts || opt.trackSigs))
         writeLines(2, "cycle_count++;")
       if (opt.useCondParts)
-        writeZoningBody(sg, condPartWorker, opt)
+        writeZoningBody_TP(sg, condPartWorker, opt, pid)
       else
-        writeBodyInner(2, sg, opt)
+        writeBodyInner_TP(2, sg, opt, pid)
       if (containsAsserts) {
-        writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-        writeLines(2, "if (!done_reset) assert_triggered = false;")
+        writeLines(2, s"if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+        writeLines(2, s"if (!done_reset) assert_triggered = false;")
       }
 
       writeRegResetOverrides(sg)
+      writeLines(1, "}")
+
+      writeLines(1, "")
+
+      // Function for sync registers to global copy
+      writeLines(1, s"void ${gen_tp_wsync_name(pid)}(bool update_registers) {")
+      val part_write_stmts = tp.parts_write(pid) map sg.idToStmt
+
+      writeSyncBody(2, part_write_stmts.toSeq, pid, rn)
+      writeLines(1, s"}")
+
+    }}
+
+    writeLines(0, "")
+
+
+    writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
+    if ((opt.trackParts || opt.trackSigs)) {
+      writeLines(2, "cycle_count++;")
+    }
+
+    writeLines(2, "this->update_registers = update_registers;")
+    writeLines(2, "this->verbose = verbose;")
+    writeLines(2, "this->done_reset = done_reset;")
+
+    writeLines(0, "")
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"${gen_thread_eval_token_name(tid)}.store(true);")
+    }
+
+    writeLines(0, "")
+    // Main thread is also an worker thread
+
+    if (profile) writeLines(2, "profiler->record(0, EVENT_CYCLE_START);")
+    writeLines(2, s"${gen_tp_eval_name(0)}(update_registers, verbose, done_reset);")
+    if (profile) writeLines(2, "profiler->record(0, EVENT_EVAL_DONE);")
+
+    writeLines(0, "")
+
+    // Wait eval complete
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"while (${gen_thread_eval_token_name(tid)}.load() == true) {")
+      writeLines(3, s"_mm_pause();")
+      writeLines(2, s"};")
+    }
+
+    writeLines(0, "")
+
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"${gen_thread_sync_token_name(tid)}.store(true);")
+    }
+
+    writeLines(0, "")
+    if (profile) writeLines(2, "profiler->record(0, EVENT_SYNC_START);")
+    writeLines(2, s"${gen_tp_wsync_name(0)}(update_registers);")
+    if (profile) writeLines(2, "profiler->record(0, EVENT_SYNC_DONE);")
+
+    // Wait sync complete
+    for (tid <- 1 to worker_thread_count) {
+      writeLines(2, s"while (${gen_thread_sync_token_name(tid)}.load() == true) {")
+      writeLines(3, s"_mm_pause();")
+      writeLines(2, s"};")
+    }
+
+    if (profile) {
+      writeLines(2, "cycle_count++;")
+
+      for (tid <- 0 to worker_thread_count) {
+        writeLines(2, s"profiler->record(${tid}, EVENT_CYCLE_DONE);")
+      }
+
+      writeLines(0, "")
+      writeLines(2, "profiler->update_cycle(cycle_count);")
+    }
 
 //      writeLines(2, "debug_cycle_count ++;")
 //      writeLines(2, "if (debug_cycle_count % 10000 == 0) std::cout << debug_cycle_count << std::endl;")
+    writeLines(1, "}")
 
-      writeLines(1, "}")
-      // if (opt.trackParts || opt.trackSigs) {
-      //   writeLines(1, s"~$topName() {")
-      //   writeLines(2, "writeActToJson();")
-      //   writeLines(1, "}")
-      // }
-    }
 
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
@@ -1112,9 +1305,32 @@ class EssentCompiler(opt: OptFlags) {
       debugWriter.write(resultState.circuit.serialize)
       debugWriter.close()
     }
-    val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
-    val emitter = new EssentEmitter(opt, dutWriter)
-    emitter.execute(resultState.circuit)
-    dutWriter.close()
+
+    if (opt.parallel > 1) {
+
+      //    writeLines(0, "uint64_t debug_cycle_count = 0;")
+      val sg = StatementGraph(resultState.circuit, opt.removeFlatConnects)
+//      logger.info(sg.makeStatsString)
+      val pg = PartGraph(sg)
+      val tp = ThreadPartitioner(pg, opt)
+      tp.doOpt()
+
+      val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
+      val emitter = new EssentEmitter(opt, dutWriter)
+      emitter.execute_parallel(resultState.circuit, sg, tp, profile = false)
+      dutWriter.close()
+
+      if (opt.profile_cycles != 0) {
+        val dutWriter = new FileWriter(new File(opt.outputDir, s"${topName}_prof.h"))
+        val emitter = new EssentEmitter(opt, dutWriter)
+        emitter.execute_parallel(resultState.circuit, sg, tp, profile = true)
+        dutWriter.close()
+      }
+    } else {
+      val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
+      val emitter = new EssentEmitter(opt, dutWriter)
+      emitter.execute(resultState.circuit)
+      dutWriter.close()
+    }
   }
 }

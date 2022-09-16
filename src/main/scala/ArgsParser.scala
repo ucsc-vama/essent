@@ -19,6 +19,7 @@ case class OptFlags(
     partStats: Boolean = false,
     partCutoff: Int = 8,
     parallel: Int = 1,
+    profile_cycles: Int = 0,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
@@ -111,6 +112,11 @@ class ArgsParser {
       parallel = x
 //      regUpdates = false
     ))
+
+    opt[Int]("prof-exec").action( (x, c) => c.copy(
+      profile_cycles = x
+      //      regUpdates = false
+    )).text("emit extra code for profiling")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())
