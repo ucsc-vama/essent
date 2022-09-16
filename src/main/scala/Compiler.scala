@@ -290,7 +290,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 
     if (profile) {
       writeLines(0, "")
-      writeLines(1, s"cycle_count = 0")
+      writeLines(1, s"cycle_count = 0;")
       writeLines(1, "profiler = new EssentProfiler();")
     }
 
