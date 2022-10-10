@@ -250,11 +250,14 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val worker_thread_count = initialOpt.parallel - 1
 
     for (tid <- 1 to worker_thread_count) {
+      writeLines(1, s"UInt<512> _padding_${tid * 2};")
       writeLines(1, s"std::atomic<bool> ${gen_thread_eval_token_name(tid)};")
+      writeLines(1, s"UInt<512> _padding_${tid * 2 + 1};")
       writeLines(1, s"std::atomic<bool> ${gen_thread_sync_token_name(tid)};")
     }
     writeLines(0, "")
     writeLines(1, s"bool sim_token;")
+    writeLines(1, s"UInt<512> _padding_last;")
 
     if (profile) {
       writeLines(0, "")
