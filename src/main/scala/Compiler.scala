@@ -256,6 +256,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, s"std::atomic<bool> ${gen_thread_sync_token_name(tid)};")
     }
     writeLines(0, "")
+    writeLines(1, s"UInt<512> _padding_sim_token;")
     writeLines(1, s"bool sim_token;")
     writeLines(1, s"UInt<512> _padding_last;")
 
