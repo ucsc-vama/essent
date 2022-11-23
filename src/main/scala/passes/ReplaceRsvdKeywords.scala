@@ -38,7 +38,6 @@ object ReplaceRsvdKeywords extends Pass {
 
   private def analyzeExpression(e: Expression): Expression = e match {
     case r: Reference => r.copy(name = maybeRename(r.name))
-    case r: WRef => r.copy(name = maybeRename(r.name))
     case m: Mux => m.mapExpr(analyzeExpression)
     case s: SubField => s.copy(name = maybeRename(s.name)).mapExpr(analyzeExpression)
     case d: DoPrim => d.mapExpr(analyzeExpression)
