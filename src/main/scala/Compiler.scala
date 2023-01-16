@@ -4,6 +4,7 @@ import java.io.{File, FileWriter, Writer}
 
 import essent.Emitter._
 import essent.Extract._
+import essent.EssentVcd
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -328,11 +329,16 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
     writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
-    if (opt.trackParts || opt.trackSigs) {
+    if (opt.trackParts || opt.trackSigs || opt.vcdOn) {
       writeLines(0, "#include <fstream>")
       writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
+    }
+    val vcd = EssentVcd(circuit,opt,writer,rn)
+
+    if(opt.vcdOn) {
+      writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
@@ -369,6 +375,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
       writeLines(0, "")
     }
+    if (opt.vcdOn)  { vcd.declareoldvalues_all(circuit) }
     if (containsAsserts) {
       writeLines(1, "bool assert_triggered = false;")
       writeLines(1, "int assert_exit_code;")
@@ -387,14 +394,19 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
-
     writeRegResetOverrides(sg)
+    writeLines(0, "")
+    if(opt.vcdOn) { vcd.initialize_compare_assign_old_values(circuit) }
+    writeLines(2, "")
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
     //   writeLines(1, s"~$topName() {")
     //   writeLines(2, "writeActToJson();")
     //   writeLines(1, "}")
     // }
+    writeLines(0, "")
+    if(opt.vcdOn) { vcd.genWaveHeader() }
+    writeLines(0, "")
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
@@ -424,7 +436,8 @@ class EssentCompiler(opt: OptFlags) {
     if (opt.writeHarness) {
       val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
-      HarnessGenerator.topFile(topName, harnessWriter)
+      if (opt.vcdOn) { HarnessGenerator.topFile(topName, harnessWriter," | dut.genWaveHeader();") }
+      else { HarnessGenerator.topFile(topName, harnessWriter, "")}
       harnessWriter.close()
     }
     val firrtlCompiler = new transforms.Compiler(readyForEssent)

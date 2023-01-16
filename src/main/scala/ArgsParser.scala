@@ -18,6 +18,7 @@ case class OptFlags(
     trackExts: Boolean = false,
     partStats: Boolean = false,
     partCutoff: Int = 8,
+    vcdOn: Boolean = false,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
@@ -105,6 +106,11 @@ class ArgsParser {
     opt[Int]("part-cutoff").action( (x, c) => c.copy(
         partCutoff = x)
     ).text("parameter used for partitioning")
+
+    opt[Unit]("vcd-on").action( (_, c) => c.copy(
+        removeFlatConnects = false,
+        vcdOn = true)
+    ).text("parameter used for vcd generation")
   }
 
   def getConfig(args: Seq[String]): Option[OptFlags] = parser.parse(args, OptFlags())
