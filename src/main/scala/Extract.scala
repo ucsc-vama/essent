@@ -122,16 +122,6 @@ object Extract extends LazyLogging {
     }
   }
 
-  def findStmtName(stmt: Statement): Seq[String] = stmt match {
-    case cm: CondMux => (cm.tWay ++ cm.fWay) flatMap findStmtName
-    case cp: CondPart => cp.memberStmts flatMap findStmtName
-    case mw: MemWrite => Seq()
-    case _ => findResultName(stmt) match {
-      case Some(name) => Seq((name))
-      case None => Seq()
-    }
-  }
-
   def findDependencesExpr(e: Expression): Seq[String] = {
     val result = e match {
       case w: WRef => Seq(w.name)

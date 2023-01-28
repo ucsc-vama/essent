@@ -107,6 +107,24 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }
       case _ => {
         writeLines(indentLevel, emitStmt(stmt))
+        if (opt.vcdOn) {
+          stmt match {
+          case mw: MemWrite =>
+          case _ => 
+            val resultName = findResultName(stmt)
+            resultName match {
+              case Some(name) =>
+              val cleanName = name.replace('.','$')
+              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+                if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+                  writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
+                  writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
+              }
+              }
+            case None =>
+            }
+          }
+        }
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
@@ -181,10 +199,13 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
+        writeLines(2, "// declaring cacheOldOutputs debug")
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
+        writeLines(2, "// before calling writeBodyInner")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
+        writeLines(2, " // After calling writeBodyInner")
         writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
@@ -196,6 +217,9 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         }}
         writeLines(2, memWriteTriggers)
         writeLines(2, regUpdates flatMap emitStmt)
+
+        // comparison for vcd here with all the variables declared here and the old variables declared outside 
+
         writeLines(1, "}")
       }
       case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
@@ -384,19 +408,21 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackParts || opt.trackSigs)
+    if(opt.vcdOn) { vcd.initialize_old_values(circuit) }
+    if ((opt.trackParts || opt.trackSigs) && !opt.vcdOn)
       writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
+    if(opt.vcdOn) { vcd.compare_old_values(circuit) }
     if (containsAsserts) {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
     writeRegResetOverrides(sg)
     writeLines(0, "")
-    if(opt.vcdOn) { vcd.initialize_compare_assign_old_values(circuit) }
+    if(opt.vcdOn) { vcd.assign_old_values(circuit) }
     writeLines(2, "")
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
