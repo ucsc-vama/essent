@@ -71,24 +71,23 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     }
   }
 
-  def declareoldvalues(m: Module, topName: String) {
+  def declareOldValues(m: Module, topName: String) {
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
       val typeStr = genCppType(d.tpe)
-      val regname = d.name
-      val regoldname = s"${regname}_old"
+      val regoldname = rn.vcdOldValue(d.name)
       Seq(s"$typeStr $regoldname;")
     }}
     val memDecs = memories map {m: DefMemory => {
-      s"${genCppType(m.dataType)} ${m.name}_old[${m.depth}];"
+      s"${genCppType(m.dataType)} ${rn.vcdOldValue(m.name)}[${m.depth}];"
     }}
     val modName = m.name
     val ports_old = m.ports flatMap { p =>
       p.tpe match {
-        case ClockType => Seq(genCppType(UIntType(IntWidth(1))) + " " + p.name + "_old" +";")
+        case ClockType => Seq()
         case _ =>
-          val ports_name = s"${p.name}_old"
+          val ports_name = rn.vcdOldValue(p.name) 
           val type_port = genCppType(p.tpe)
           Seq(s"$type_port $ports_name;")
       }
@@ -105,18 +104,18 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
       val regname = d.name
-      val regoldname = s"${regname}_old"
+      val regoldname = rn.vcdOldValue(regname)
       Seq(s"""if((cycle_count == 0) || ($regname != $regoldname)) {outfile << $regname.to_bin_str(); outfile << "!$regname" << "\\n";}""")
     }}
     val memDecs = memories map {m: DefMemory => {
-      s"""if((cycle_count == 0) || (${m.name}[${m.depth}] != ${m.name}_old[${m.depth}])) { outfile << ${m.name}[${m.depth}].to_bin_str(); outfile << "!${m.name}[${m.depth}]" << "\\n";}"""
+      s"""if((cycle_count == 0) || (${m.name}[${m.depth}] != ${rn.vcdOldValue(m.name)}[${m.depth}])) { outfile << ${m.name}[${m.depth}].to_bin_str(); outfile << "!${m.name}[${m.depth}]" << "\\n";}"""
     }}
     val modName = m.name
     val ports_old = m.ports flatMap { p =>
       p.tpe match {
-        case ClockType => Seq(s"""if((cycle_count == 0) || (${p.name} != ${p.name}_old)) {outfile << ${p.name}.to_bin_str(); outfile << "!clock" << "\\n";}""")
+        case ClockType => Seq()
         case _ =>
-          val ports_name = s"${p.name}_old"
+          val ports_name = rn.vcdOldValue(p.name) 
           Seq(s"""if((cycle_count == 0) || (${p.name} != $ports_name)) {outfile << ${p.name}.to_bin_str(); outfile << "!${p.name}" << "\\n";}""")
       }}
     if(modName == topName) {
@@ -126,17 +125,17 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     }
   }
 
-  def assignOldValues(m: Module, topName: String) {
+  def assignOldValue(m: Module, topName: String) {
 
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
       val regname = d.name
-      val regoldname = s"${regname}_old"
+      val regoldname = rn.vcdOldValue(regname) 
       Seq(s"$regoldname = $regname;")
     }}
     val memDecs = memories map {m: DefMemory => {
-      s"${m.name}_old[${m.depth}] = ${m.name}[${m.depth}];"
+      s"${rn.vcdOldValue(m.name)}[${m.depth}] = ${m.name}[${m.depth}];"
     }}
     val modName = m.name
     val ports_old = m.ports flatMap { p =>
@@ -146,9 +145,9 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
       }
       else {
         p.tpe match {
-          case ClockType => Seq(s"${p.name}_old = ${p.name};")
+          case ClockType => Seq()
           case _ =>
-            val ports_name = s"${p.name}_old"
+            val ports_name = rn.vcdOldValue(p.name)
             Seq(s"$ports_name = ${p.name};")
         }}}
     if(modName == topName) {
@@ -160,7 +159,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
   }
 
   //function for vcd multiple hierarchy
-  def hier_scope(allNamesAndTypes: Seq[(String, Type)],splitted: Seq[Seq[String]], indentlevel: Int, iden_code_hier: String) {
+  def hierScope(allNamesAndTypes: Seq[(String, Type)],splitted: Seq[Seq[String]], indentlevel: Int, iden_code_hier: String) {
 
     // This groups returns a Map( key -> Seq[Seq[String]]
     val grouped = splitted groupBy {_.head }
@@ -173,7 +172,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
           val iden_code = iden_code_hier + key
           allNamesAndTypes map {
             case (name , tpe ) =>
-              val new_name = name.replace(".","$")
+              val new_name = rn.removeDots(name)
               if(new_name == iden_code) {
                 val width = bitWidth(tpe)
                 writeLines(indentlevel,s"""outfile << "$$var wire $width !${iden_code} $key $$end" << "\\n";""")
@@ -183,16 +182,16 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
       else {
         writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
         val iden_code_hier_new = iden_code_hier + key + "$"
-        hier_scope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
+        hierScope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
         writeLines(indentlevel,s""" outfile << "$$upscope $$end" << "\\n";""")
       }
     }
     }
   }
 
-  def declareoldvalues_all(circuit: Circuit): Unit = {
+  def declareOldvaluesAll(circuit: Circuit): Unit = {
     circuit.modules foreach {
-      case m: Module => declareoldvalues(m, topName)
+      case m: Module => declareOldValues(m, topName)
       case m: ExtModule => Seq()
     }
     allNamesAndTypes map {
@@ -200,13 +199,13 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
         if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
           val new_name = name.replace('.','$')
           if(!new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")) {
-            writeLines(1, s"""${genCppType(tpe)} ${new_name}_old;""")
+            writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
           }
         }
     }
   }
 
-  def initialize_old_values(circuit: Circuit): Unit = {
+  def initializeOldValues(circuit: Circuit): Unit = {
     writeLines(1, "if(cycle_count == 0) {")
     writeLines(3, s"""outfile << \"$$dumpvars\" << "\\n" ;""")
     writeLines(1, " } ")
@@ -216,8 +215,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     writeLines(1, " } ")
     }
 
-
-  def compare_old_values(circuit: Circuit): Unit = {
+  def compareOldValues(circuit: Circuit): Unit = {
     circuit.modules foreach {
       case m: Module => compareOldNewSignal(m, topName)
       case m: ExtModule => Seq()
@@ -231,33 +229,11 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     writeLines(2, "")
   }
 
-
-
-  def assign_old_values(circuit: Circuit): Unit = {
+  def assignOldValues(circuit: Circuit): Unit = {
     circuit.modules foreach {
-      case m: Module => assignOldValues(m, topName)
+      case m: Module => assignOldValue(m, topName)
       case m: ExtModule => Seq()
     }
-  }
-
-  def comp_partevals(stmt: Statement, indentLevel: Int) {
-     stmt match {
-       case mw: MemWrite =>
-       case _ => {
-        val resultName = findResultName(stmt)
-        resultName match {
-          case Some(name) =>
-          val cleanName = name.replace('.','$')
-           if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-             if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
-                 writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
-            }
-          }
-          case None =>
-        }
-    }
-  }
   }
 
   def genWaveHeader(): Unit = {
@@ -276,7 +252,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     val name = sg.stmtsOrdered flatMap findResultName
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
-    hier_scope(allNamesAndTypes, splitted,2,iden_code_hier)
+    hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
     writeLines(2, s"""outfile << \"$$upscope $$end \" << "\\n";""")
     writeLines(2, s"""outfile << \"$$enddefinitions $$end\" << "\\n";""")
     writeLines(0, "")

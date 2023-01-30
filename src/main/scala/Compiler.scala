@@ -114,7 +114,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
             val resultName = findResultName(stmt)
             resultName match {
               case Some(name) =>
-              val cleanName = name.replace('.','$')
+              val cleanName = rn.removeDots(name)
               if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                 if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
                   writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
@@ -214,8 +214,6 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         }}
         writeLines(2, memWriteTriggers)
         writeLines(2, regUpdates flatMap emitStmt)
-
-        // comparison for vcd here with all the variables declared here and the old variables declared outside 
 
         writeLines(1, "}")
       }
@@ -396,7 +394,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
       writeLines(0, "")
     }
-    if (opt.withVCD)  { vcd.declareoldvalues_all(circuit) }
+    if (opt.withVCD)  { vcd.declareOldvaluesAll(circuit) }
     if (containsAsserts) {
       writeLines(1, "bool assert_triggered = false;")
       writeLines(1, "int assert_exit_code;")
@@ -405,21 +403,21 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if(opt.withVCD) { vcd.initialize_old_values(circuit) }
+    if(opt.withVCD) { vcd.initializeOldValues(circuit) }
     if ((opt.trackParts || opt.trackSigs) && !opt.withVCD)
       writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
-    if(opt.withVCD) { vcd.compare_old_values(circuit) }
+    if(opt.withVCD) { vcd.compareOldValues(circuit) }
     if (containsAsserts) {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
     writeRegResetOverrides(sg)
     writeLines(0, "")
-    if(opt.withVCD) { vcd.assign_old_values(circuit) }
+    if(opt.withVCD) { vcd.assignOldValues(circuit) }
     writeLines(2, "")
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
