@@ -197,7 +197,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     allNamesAndTypes map {
       case(name, tpe) =>
         if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-          val new_name = name.replace('.','$')
+          val new_name = rn.removeDots(name)
           if(!new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")) {
             writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
           }
