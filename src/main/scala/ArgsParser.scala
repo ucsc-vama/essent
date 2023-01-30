@@ -18,7 +18,7 @@ case class OptFlags(
     trackExts: Boolean = false,
     partStats: Boolean = false,
     partCutoff: Int = 8,
-    vcdOn: Boolean = true,
+    withVCD: Boolean = false,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
@@ -107,9 +107,9 @@ class ArgsParser {
         partCutoff = x)
     ).text("parameter used for partitioning")
 
-    opt[Unit]("vcd-on").action( (_, c) => c.copy(
+    opt[Unit]("withVCD").abbr("withVCD").action( (_, c) => c.copy(
         removeFlatConnects = false,
-        vcdOn = true)
+        withVCD = true)
     ).text("parameter used for vcd generation")
   }
 

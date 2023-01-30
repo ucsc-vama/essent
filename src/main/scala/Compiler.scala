@@ -4,7 +4,7 @@ import java.io.{File, FileWriter, Writer}
 
 import essent.Emitter._
 import essent.Extract._
-import essent.EssentVcd
+import essent.Vcd._
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -107,7 +107,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }
       case _ => {
         writeLines(indentLevel, emitStmt(stmt))
-        if (opt.vcdOn) {
+        if (opt.withVCD) {
           stmt match {
           case mw: MemWrite =>
           case _ => 
@@ -199,13 +199,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
-        writeLines(2, "// declaring cacheOldOutputs debug")
         writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
-        writeLines(2, "// before calling writeBodyInner")
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
-        writeLines(2, " // After calling writeBodyInner")
         writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
@@ -353,15 +350,15 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
     writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
-    if (opt.trackParts || opt.trackSigs || opt.vcdOn) {
+    if (opt.trackParts || opt.trackSigs || opt.withVCD) {
       writeLines(0, "#include <fstream>")
       writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val vcd = EssentVcd(circuit,opt,writer,rn)
+    val vcd = Vcd(circuit,opt,writer,rn)
 
-    if(opt.vcdOn) {
+    if(opt.withVCD) {
       writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
@@ -399,7 +396,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
       writeLines(0, "")
     }
-    if (opt.vcdOn)  { vcd.declareoldvalues_all(circuit) }
+    if (opt.withVCD)  { vcd.declareoldvalues_all(circuit) }
     if (containsAsserts) {
       writeLines(1, "bool assert_triggered = false;")
       writeLines(1, "int assert_exit_code;")
@@ -408,21 +405,21 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if(opt.vcdOn) { vcd.initialize_old_values(circuit) }
-    if ((opt.trackParts || opt.trackSigs) && !opt.vcdOn)
+    if(opt.withVCD) { vcd.initialize_old_values(circuit) }
+    if ((opt.trackParts || opt.trackSigs) && !opt.withVCD)
       writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
-    if(opt.vcdOn) { vcd.compare_old_values(circuit) }
+    if(opt.withVCD) { vcd.compare_old_values(circuit) }
     if (containsAsserts) {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
     writeRegResetOverrides(sg)
     writeLines(0, "")
-    if(opt.vcdOn) { vcd.assign_old_values(circuit) }
+    if(opt.withVCD) { vcd.assign_old_values(circuit) }
     writeLines(2, "")
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
@@ -431,7 +428,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     //   writeLines(1, "}")
     // }
     writeLines(0, "")
-    if(opt.vcdOn) { vcd.genWaveHeader() }
+    if(opt.withVCD) { vcd.genWaveHeader() }
     writeLines(0, "")
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
@@ -462,7 +459,7 @@ class EssentCompiler(opt: OptFlags) {
     if (opt.writeHarness) {
       val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
-      if (opt.vcdOn) { HarnessGenerator.topFile(topName, harnessWriter," | dut.genWaveHeader();") }
+      if (opt.withVCD) { HarnessGenerator.topFile(topName, harnessWriter," |  dut.genWaveHeader();") }
       else { HarnessGenerator.topFile(topName, harnessWriter, "")}
       harnessWriter.close()
     }

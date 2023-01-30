@@ -12,7 +12,7 @@ import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 
-case class EssentVcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
+case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
   val tabs = "  "
   var iden_code_hier = ""
   val opt = initopt
@@ -183,7 +183,7 @@ case class EssentVcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Re
       else {
         writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
         val iden_code_hier_new = iden_code_hier + key + "$"
-        hier_scope(allNamesAndTypes,next_non_empty_values,indentlevel+1,iden_code_hier_new)
+        hier_scope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
         writeLines(indentlevel,s""" outfile << "$$upscope $$end" << "\\n";""")
       }
     }
