@@ -59,7 +59,7 @@ object HarnessGenerator {
     (reorderPorts(signalNames) map connectSignal("")) ++ mapConnects
   }
 
-  def topFile(circuitName: String, writer: Writer) = {
+  def topFile(circuitName: String, writer: Writer , vcdHeader: String) = {
     val baseStr = s"""|#include <iostream>
                       |
                       |#include "comm_wrapper.h"
@@ -70,7 +70,8 @@ object HarnessGenerator {
                       |  CommWrapper<$circuitName> comm(dut);
                       |  comm.init_channels();
                       |  comm.init_sim_data();
-                      |  dut.connect_harness(&comm);
+                      |  dut.connect_harness(&comm); 
+                      $vcdHeader
                       |  while (!comm.done()) {
                       |    comm.tick();
                       |  }

@@ -106,6 +106,24 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       }
       case _ => {
         writeLines(indentLevel, emitStmt(stmt))
+        if (opt.withVCD) {
+          stmt match {
+          case mw: MemWrite =>
+          case _ => 
+            val resultName = findResultName(stmt)
+            resultName match {
+              case Some(name) =>
+              val cleanName = rn.removeDots(name)
+              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+                if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+                  writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
+                  writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
+              }
+              }
+            case None =>
+            }
+          }
+        }
         if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
       }
     }}
@@ -195,6 +213,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         }}
         writeLines(2, memWriteTriggers)
         writeLines(2, regUpdates flatMap emitStmt)
+
         writeLines(1, "}")
       }
       case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
@@ -328,11 +347,16 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     writeLines(0, "#include <uint.h>")
     writeLines(0, "#include <sint.h>")
     writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
-    if (opt.trackParts || opt.trackSigs) {
+    if (opt.trackParts || opt.trackSigs || opt.withVCD) {
       writeLines(0, "#include <fstream>")
       writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
+    }
+    val vcd = new Vcd(circuit,opt,writer,rn)
+
+    if(opt.withVCD) {
+      writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
@@ -369,6 +393,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(1, "}")
       writeLines(0, "")
     }
+    if (opt.withVCD)  { vcd.declareOldvaluesAll(circuit) }
     if (containsAsserts) {
       writeLines(1, "bool assert_triggered = false;")
       writeLines(1, "int assert_exit_code;")
@@ -377,24 +402,31 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if (opt.trackParts || opt.trackSigs)
+    if(opt.withVCD) { vcd.initializeOldValues(circuit) }
+    if ((opt.trackParts || opt.trackSigs) && !opt.withVCD)
       writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
+    if(opt.withVCD) { vcd.compareOldValues(circuit) }
     if (containsAsserts) {
       writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
-
     writeRegResetOverrides(sg)
+    writeLines(0, "")
+    if(opt.withVCD) { vcd.assignOldValues(circuit) }
+    writeLines(2, "")
     writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
     //   writeLines(1, s"~$topName() {")
     //   writeLines(2, "writeActToJson();")
     //   writeLines(1, "}")
     // }
+    writeLines(0, "")
+    if(opt.withVCD) { vcd.genWaveHeader() }
+    writeLines(0, "")
     writeLines(0, s"} $topName;") //closing top module dec
     writeLines(0, "")
     writeLines(0, s"#endif  // $headerGuardName")
@@ -424,7 +456,8 @@ class EssentCompiler(opt: OptFlags) {
     if (opt.writeHarness) {
       val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
-      HarnessGenerator.topFile(topName, harnessWriter)
+      if (opt.withVCD) { HarnessGenerator.topFile(topName, harnessWriter," |  dut.genWaveHeader();") }
+      else { HarnessGenerator.topFile(topName, harnessWriter, "")}
       harnessWriter.close()
     }
     val firrtlCompiler = new transforms.Compiler(readyForEssent)

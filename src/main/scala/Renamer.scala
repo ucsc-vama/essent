@@ -76,6 +76,8 @@ class Renamer {
   def decLocal(name: String) = nameToMeta(name).decType == Local
 
   def emit(canonicalName: String): String = nameToEmitName(canonicalName)
+  
+  def vcdOldValue(sig_name: String) = sig_name + "_old" 
 }
 
 // object Renamer {
