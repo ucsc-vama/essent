@@ -73,6 +73,18 @@ Examples
 We provide examples showing how essent can be integrated in [Rocket Chip](https://github.com/ucsc-vama/essent-rocket-demo) and [other projects](https://github.com/ucsc-vama/essent-chisel-gallery).
 
 
+Contributors
+--------------------------------------------------------------------------------
+The ESSENT project, including supporting infrastructure beyond this repo, has benefited from contributions by:
++ Scott Beamer
++ Priyanka Dutta
++ Thomas Nijssen
++ Krishna Pandian
++ Jinsung Park
++ Haoyuan Wang
++ Kyle Zhang
+
+
 Publications
 --------------------------------------------------------------------------------
 
