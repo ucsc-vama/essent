@@ -4,7 +4,6 @@ import java.io.{File, FileWriter, Writer}
 
 import essent.Emitter._
 import essent.Extract._
-import essent.Vcd._
 import essent.ir._
 import essent.Util._
 import firrtl._
@@ -354,7 +353,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       writeLines(0, "using json::JSON;")
       writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val vcd = Vcd(circuit,opt,writer,rn)
+    val vcd = new Vcd(circuit,opt,writer,rn)
 
     if(opt.withVCD) {
       writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")

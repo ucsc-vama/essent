@@ -12,7 +12,7 @@ import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 
-case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
+class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
   val tabs = "  "
   var iden_code_hier = ""
   val opt = initopt
