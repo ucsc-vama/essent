@@ -183,7 +183,7 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
         writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
         val iden_code_hier_new = iden_code_hier + key + "$"
         hierScope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
-        writeLines(indentlevel,s""" outfile << "$$upscope $$end" << "\\n";""")
+        writeLines(indentlevel,""" outfile << "$upscope $end" << "\\n";""")
       }
     }
     }
@@ -207,11 +207,11 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
 
   def initializeOldValues(circuit: Circuit): Unit = {
     writeLines(1, "if(cycle_count == 0) {")
-    writeLines(3, s"""outfile << \"$$dumpvars\" << "\\n" ;""")
+    writeLines(3, """outfile << "$dumpvars" << "\\n" ;""")
     writeLines(1, " } ")
     writeLines(1, "else { ")
-    writeLines(2, s"""outfile << \"#\" << cycle_count*10 << "\\n";""")
-    writeLines(2, s""" outfile << "1" << "!clock" << "\\n";""")
+    writeLines(2, """outfile << "#" << cycle_count*10 << "\\n";""")
+    writeLines(2, """ outfile << "1" << "!clock" << "\\n";""")
     writeLines(1, " } ")
     }
 
@@ -221,10 +221,10 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
       case m: ExtModule => Seq()
     }
     writeLines(1, "if(cycle_count == 0) {")
-    writeLines(3, s"""outfile << \"$$end\" << "\\n";""")
+    writeLines(3, """outfile << "$end" << "\\n";""")
     writeLines(1, " } ")
-    writeLines(2, s"""outfile << \"#\" << (cycle_count*10 + 5) << "\\n";""")
-    writeLines(2, s""" outfile << "0" << "!clock" << "\\n";""")
+    writeLines(2, """outfile << "#" << (cycle_count*10 + 5) << "\\n";""")
+    writeLines(2, """ outfile << "0" << "!clock" << "\\n";""")
     writeLines(2, "cycle_count++;")
     writeLines(2, "")
   }
@@ -237,13 +237,13 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
   }
 
   def genWaveHeader(): Unit = {
-    writeLines(1, s"void genWaveHeader() {")
+    writeLines(1, "void genWaveHeader() {")
     writeLines(0, "")
-    writeLines(2, s"time_t timetoday;")
-    writeLines(2, s"time (&timetoday);")
-    writeLines(2, s"""outfile << \"$$version Essent version 1 $$end\" << "\\n";""")
-    writeLines(2, s"""outfile << \"$$date \" << asctime(localtime(&timetoday)) << \" $$end\" << "\\n";""")
-    writeLines(2, s"""outfile << \"$$timescale 1ns $$end\" << "\\n";""")
+    writeLines(2, "time_t timetoday;")
+    writeLines(2, "time (&timetoday);")
+    writeLines(2, """outfile << "$version Essent version 1 $end" << "\\n";""")
+    writeLines(2, """outfile << "$date " << asctime(localtime(&timetoday)) << " $end" << "\\n";""")
+    writeLines(2, """outfile << "$timescale 1ns $end" << "\\n";""")
     writeLines(2, s"""outfile << "$$scope module " << "$topName" << " $$end" << "\\n";""")
     circuit.modules foreach {
       case m: Module => displayNameIdentifierSize(m, topName)
@@ -253,8 +253,8 @@ case class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer)
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
     hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
-    writeLines(2, s"""outfile << \"$$upscope $$end \" << "\\n";""")
-    writeLines(2, s"""outfile << \"$$enddefinitions $$end\" << "\\n";""")
+    writeLines(2, """outfile << "$upscope $end " << "\\n";""")
+    writeLines(2, """outfile << "$enddefinitions $end" << "\\n";""")
     writeLines(0, "")
     writeLines(1, "}")
     writeLines(0, "")
