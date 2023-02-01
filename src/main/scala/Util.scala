@@ -1,6 +1,8 @@
 package essent
 
 import collection.mutable.{ArrayBuffer, HashMap}
+import java.io.Writer
+
 
 object Util {
   // Given an array, returns a map of value to all indices that had that value (CAM-like)
@@ -26,5 +28,18 @@ object Util {
 
   def sortHashMapValues[K](hm: HashMap[K,Seq[Int]]) {
     hm.keys foreach { k => hm(k) = hm(k).sorted }
+  }
+
+  // Extends the Writer to have the writeLines method below to indent and auto-terminate strings
+  implicit class IndentWriter(writer: Writer) {
+    val indent = "  "
+
+    def writeLines(indentLevel: Int, lines: String): Unit = {
+      writeLines(indentLevel, Seq(lines))
+    }
+
+    def writeLines(indentLevel: Int, lines: Seq[String]): Unit = {
+      lines foreach { s => writer.write(indent * indentLevel + s + "\n") }
+    }
   }
 }

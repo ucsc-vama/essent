@@ -12,21 +12,13 @@ import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 
-class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
-  val tabs = "  "
+class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   var iden_code_hier = ""
   val opt = initopt
   val topName = circuit.main
   val sg = StatementGraph(circuit, opt.removeFlatConnects)
   val allNamesAndTypes = sg.stmtsOrdered flatMap findStmtNameAndType
 
-  def writeLines(indentLevel: Int, lines: String) {
-    writeLines(indentLevel, Seq(lines))
-  }
-
-  def writeLines(indentLevel: Int, lines: Seq[String]) {
-    lines foreach { s => writer write tabs*indentLevel + s + "\n" }
-  }
 
   def displayNameIdentifierSize(m: Module, topName: String) {
 
@@ -54,14 +46,14 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
       }}
 
     if(m.name == topName) {
-      writeLines(2, register_name_identifier)
-      writeLines(2, ports_name_identifier)
+      w.writeLines(2, register_name_identifier)
+      w.writeLines(2, ports_name_identifier)
       if(memories.size != 0) {
         while(depth < mem_depth) {
           memories map { m: DefMemory => {
             val width = bitWidth(m.dataType)
             val identifier_code = " !" + m.name + "[" + depth + "]"
-            writeLines(2,s"""outfile << "$$var wire "<< " $width " << "$identifier_code " << " ${m.name}[${depth}] " << " $$end" << "\\n";""")
+            w.writeLines(2,s"""outfile << "$$var wire "<< " $width " << "$identifier_code " << " ${m.name}[${depth}] " << " $$end" << "\\n";""")
             depth = depth + 1
             mem_depth = m.depth
           }
@@ -93,9 +85,9 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
       }
     }
     if(modName == topName) {
-      writeLines(1, registerDecs)
-      writeLines(1, memDecs)
-      writeLines(1, ports_old)
+      w.writeLines(1, registerDecs)
+      w.writeLines(1, memDecs)
+      w.writeLines(1, ports_old)
     }
   }
 
@@ -119,9 +111,9 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
           Seq(s"""if((cycle_count == 0) || (${p.name} != $ports_name)) {outfile << ${p.name}.to_bin_str(); outfile << "!${p.name}" << "\\n";}""")
       }}
     if(modName == topName) {
-      writeLines(2, registerDecs)
-      writeLines(2, memDecs)
-      writeLines(2, ports_old)
+      w.writeLines(2, registerDecs)
+      w.writeLines(2, memDecs)
+      w.writeLines(2, ports_old)
     }
   }
 
@@ -151,10 +143,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
             Seq(s"$ports_name = ${p.name};")
         }}}
     if(modName == topName) {
-      writeLines(2, "//Assigning old values ")
-      writeLines(2, registerDecs)
-      writeLines(2, memDecs)
-      writeLines(2, ports_old)
+      w.writeLines(2, "//Assigning old values ")
+      w.writeLines(2, registerDecs)
+      w.writeLines(2, memDecs)
+      w.writeLines(2, ports_old)
     }
   }
 
@@ -175,15 +167,15 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
               val new_name = rn.removeDots(name)
               if(new_name == iden_code) {
                 val width = bitWidth(tpe)
-                writeLines(indentlevel,s"""outfile << "$$var wire $width !${iden_code} $key $$end" << "\\n";""")
+                w.writeLines(indentlevel,s"""outfile << "$$var wire $width !${iden_code} $key $$end" << "\\n";""")
               }}
         }
         }}
       else {
-        writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
+        w.writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
         val iden_code_hier_new = iden_code_hier + key + "$"
         hierScope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
-        writeLines(indentlevel,""" outfile << "$upscope $end" << "\\n";""")
+        w.writeLines(indentlevel,""" outfile << "$upscope $end" << "\\n";""")
       }
     }
     }
@@ -199,20 +191,20 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
         if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
           val new_name = rn.removeDots(name)
           if(!new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")) {
-            writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
+            w.writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
           }
         }
     }
   }
 
   def initializeOldValues(circuit: Circuit): Unit = {
-    writeLines(1, "if(cycle_count == 0) {")
-    writeLines(3, """outfile << "$dumpvars" << "\\n" ;""")
-    writeLines(1, " } ")
-    writeLines(1, "else { ")
-    writeLines(2, """outfile << "#" << cycle_count*10 << "\\n";""")
-    writeLines(2, """ outfile << "1" << "!clock" << "\\n";""")
-    writeLines(1, " } ")
+    w.writeLines(1, "if(cycle_count == 0) {")
+    w.writeLines(3, """outfile << "$dumpvars" << "\\n" ;""")
+    w.writeLines(1, " } ")
+    w.writeLines(1, "else { ")
+    w.writeLines(2, """outfile << "#" << cycle_count*10 << "\\n";""")
+    w.writeLines(2, """ outfile << "1" << "!clock" << "\\n";""")
+    w.writeLines(1, " } ")
     }
 
   def compareOldValues(circuit: Circuit): Unit = {
@@ -220,13 +212,13 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
       case m: Module => compareOldNewSignal(m, topName)
       case m: ExtModule => Seq()
     }
-    writeLines(1, "if(cycle_count == 0) {")
-    writeLines(3, """outfile << "$end" << "\\n";""")
-    writeLines(1, " } ")
-    writeLines(2, """outfile << "#" << (cycle_count*10 + 5) << "\\n";""")
-    writeLines(2, """ outfile << "0" << "!clock" << "\\n";""")
-    writeLines(2, "cycle_count++;")
-    writeLines(2, "")
+    w.writeLines(1, "if(cycle_count == 0) {")
+    w.writeLines(3, """outfile << "$end" << "\\n";""")
+    w.writeLines(1, " } ")
+    w.writeLines(2, """outfile << "#" << (cycle_count*10 + 5) << "\\n";""")
+    w.writeLines(2, """ outfile << "0" << "!clock" << "\\n";""")
+    w.writeLines(2, "cycle_count++;")
+    w.writeLines(2, "")
   }
 
   def assignOldValues(circuit: Circuit): Unit = {
@@ -237,14 +229,14 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
   }
 
   def genWaveHeader(): Unit = {
-    writeLines(1, "void genWaveHeader() {")
-    writeLines(0, "")
-    writeLines(2, "time_t timetoday;")
-    writeLines(2, "time (&timetoday);")
-    writeLines(2, """outfile << "$version Essent version 1 $end" << "\\n";""")
-    writeLines(2, """outfile << "$date " << asctime(localtime(&timetoday)) << " $end" << "\\n";""")
-    writeLines(2, """outfile << "$timescale 1ns $end" << "\\n";""")
-    writeLines(2, s"""outfile << "$$scope module " << "$topName" << " $$end" << "\\n";""")
+    w.writeLines(1, "void genWaveHeader() {")
+    w.writeLines(0, "")
+    w.writeLines(2, "time_t timetoday;")
+    w.writeLines(2, "time (&timetoday);")
+    w.writeLines(2, """outfile << "$version Essent version 1 $end" << "\\n";""")
+    w.writeLines(2, """outfile << "$date " << asctime(localtime(&timetoday)) << " $end" << "\\n";""")
+    w.writeLines(2, """outfile << "$timescale 1ns $end" << "\\n";""")
+    w.writeLines(2, s"""outfile << "$$scope module " << "$topName" << " $$end" << "\\n";""")
     circuit.modules foreach {
       case m: Module => displayNameIdentifierSize(m, topName)
       case m: ExtModule => Seq()
@@ -253,10 +245,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, writer: Writer, rn: Renamer) {
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
     hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
-    writeLines(2, """outfile << "$upscope $end " << "\\n";""")
-    writeLines(2, """outfile << "$enddefinitions $end" << "\\n";""")
-    writeLines(0, "")
-    writeLines(1, "}")
-    writeLines(0, "")
+    w.writeLines(2, """outfile << "$upscope $end " << "\\n";""")
+    w.writeLines(2, """outfile << "$enddefinitions $end" << "\\n";""")
+    w.writeLines(0, "")
+    w.writeLines(1, "}")
+    w.writeLines(0, "")
   }
 }

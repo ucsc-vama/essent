@@ -15,26 +15,14 @@ import firrtl.stage.transforms
 import logger._
 
 
-class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
-  val tabs = "  "
+class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
   val flagVarName = "PARTflags"
   val actVarName = "ACTcounts"
   val sigTrackName = "SIGcounts"
   val sigActName = "SIGact"
   val sigExtName = "SIGext"
   var sigNameToID = Map[String,Int]()
-
   implicit val rn = new Renamer
-
-  // Writing To File
-  //----------------------------------------------------------------------------
-  def writeLines(indentLevel: Int, lines: String) {
-    writeLines(indentLevel, Seq(lines))
-  }
-
-  def writeLines(indentLevel: Int, lines: Seq[String]) {
-    lines foreach { s => writer write tabs*indentLevel + s + "\n" }
-  }
 
 
   // Declaring Modules
@@ -56,30 +44,30 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
       s"$module $instanceName;"
     }}
     val modName = m.name
-    writeLines(0, "")
-    writeLines(0, s"typedef struct $modName {")
-    writeLines(1, registerDecs)
-    writeLines(1, memDecs)
-    writeLines(1, m.ports flatMap emitPort(modName == topName))
-    writeLines(1, moduleDecs)
-    writeLines(0, "")
-    writeLines(1, s"$modName() {")
-    writeLines(2, initializeVals(modName == topName)(m, registers, memories))
-    writeLines(1, "}")
+    w.writeLines(0, "")
+    w.writeLines(0, s"typedef struct $modName {")
+    w.writeLines(1, registerDecs)
+    w.writeLines(1, memDecs)
+    w.writeLines(1, m.ports flatMap emitPort(modName == topName))
+    w.writeLines(1, moduleDecs)
+    w.writeLines(0, "")
+    w.writeLines(1, s"$modName() {")
+    w.writeLines(2, initializeVals(modName == topName)(m, registers, memories))
+    w.writeLines(1, "}")
     if (modName == topName) {
-      writeLines(0, "")
-      // writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
+      w.writeLines(0, "")
+      // w.writeLines(1, s"void connect_harness(CommWrapper<struct $modName> *comm);")
     } else {
-      writeLines(0, s"} $modName;")
+      w.writeLines(0, s"} $modName;")
     }
   }
 
   def declareExtModule(m: ExtModule) {
     val modName = m.name
-    writeLines(0, "")
-    writeLines(0, s"typedef struct $modName {")
-    writeLines(1, m.ports flatMap emitPort(true))
-    writeLines(0, s"} $modName;")
+    w.writeLines(0, "")
+    w.writeLines(0, s"typedef struct $modName {")
+    w.writeLines(1, m.ports flatMap emitPort(true))
+    w.writeLines(0, s"} $modName;")
   }
 
 
@@ -88,24 +76,24 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, opt: OptFlags,
                      keepAvail: Set[String] = Set()) {
-    // ng.stmtsOrdered foreach { stmt => writeLines(indentLevel, emitStmt(stmt)) }
+    // ng.stmtsOrdered foreach { stmt => w.writeLines(indentLevel, emitStmt(stmt)) }
     if (opt.conditionalMuxes)
       MakeCondMux(sg, rn, keepAvail)
     val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
-          writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
+          w.writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
-        writeLines(indentLevel, s"if (UNLIKELY($muxCond)) {")
+        w.writeLines(indentLevel, s"if (UNLIKELY($muxCond)) {")
         writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), noMoreMuxOpts)
-        writeLines(indentLevel, "} else {")
+        w.writeLines(indentLevel, "} else {")
         writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
-        writeLines(indentLevel, "}")
+        w.writeLines(indentLevel, "}")
       }
       case _ => {
-        writeLines(indentLevel, emitStmt(stmt))
+        w.writeLines(indentLevel, emitStmt(stmt))
         if (opt.withVCD) {
           stmt match {
           case mw: MemWrite =>
@@ -116,8 +104,8 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
               val cleanName = rn.removeDots(name)
               if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                 if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                  writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
-                  writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
+                  w.writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
+                  w.writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
               }
               }
             case None =>
@@ -142,10 +130,10 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
 //      }
 //    }
 //    if (overridesToWrite.nonEmpty) {
-//      writeLines(2, "if (update_registers) {")
+//      w.writeLines(2, "if (update_registers) {")
 //      // FUTURE: will overrides need triggers if partitioned?
-//      writeLines(3, overridesToWrite)
-//      writeLines(2, "}")
+//      w.writeLines(3, overridesToWrite)
+//      w.writeLines(2, "}")
 //    }
   }
 
@@ -174,104 +162,104 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     // predeclare part outputs
     val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
-    writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
+    w.writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
     val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)};"
     }
-    writeLines(1, extIOCacheDecs)
-    writeLines(1, s"std::array<bool,${condPartWorker.getNumParts()}> $flagVarName;")
+    w.writeLines(1, extIOCacheDecs)
+    w.writeLines(1, s"std::array<bool,${condPartWorker.getNumParts()}> $flagVarName;")
     // FUTURE: worry about namespace collisions with user variables
-    writeLines(1, s"bool sim_cached = false;")
-    writeLines(1, s"bool regs_set = false;")
-    writeLines(1, s"bool update_registers;")
-    writeLines(1, s"bool done_reset;")
-    writeLines(1, s"bool verbose;")
-    writeLines(0, "")
+    w.writeLines(1, s"bool sim_cached = false;")
+    w.writeLines(1, s"bool regs_set = false;")
+    w.writeLines(1, s"bool update_registers;")
+    w.writeLines(1, s"bool done_reset;")
+    w.writeLines(1, s"bool verbose;")
+    w.writeLines(0, "")
     sg.stmtsOrdered foreach { stmt => stmt match {
       case cp: CondPart => {
-        writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
+        w.writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         if (!cp.alwaysActive)
-          writeLines(2, s"$flagVarName[${cp.id}] = false;")
+          w.writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
-          writeLines(2, s"$actVarName[${cp.id}]++;")
+          w.writeLines(2, s"$actVarName[${cp.id}]++;")
 
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
         }}
-        writeLines(2, cacheOldOutputs)
+        w.writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
         writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
-        writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+        w.writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
-        writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
+        w.writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
         // triggers for MemWrites
         val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
         val memWriteTriggers = memWritesInPart flatMap { mw => {
           val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
           genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
         }}
-        writeLines(2, memWriteTriggers)
-        writeLines(2, regUpdates flatMap emitStmt)
+        w.writeLines(2, memWriteTriggers)
+        w.writeLines(2, regUpdates flatMap emitStmt)
 
-        writeLines(1, "}")
+        w.writeLines(1, "}")
       }
       case _ => throw new Exception(s"Statement at top-level is not a CondPart (${stmt.serialize})")
     }}
-    writeLines(0, "")
+    w.writeLines(0, "")
   }
 
   def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
-    writeLines(2, "if (reset || !done_reset) {")
-    writeLines(3, "sim_cached = false;")
-    writeLines(3, "regs_set = false;")
-    writeLines(2, "}")
-    writeLines(2, "if (!sim_cached) {")
-    writeLines(3, s"$flagVarName.fill(true);")
-    writeLines(2, "}")
-    writeLines(2, "sim_cached = regs_set;")
-    writeLines(2, "this->update_registers = update_registers;")
-    writeLines(2, "this->done_reset = done_reset;")
-    writeLines(2, "this->verbose = verbose;")
+    w.writeLines(2, "if (reset || !done_reset) {")
+    w.writeLines(3, "sim_cached = false;")
+    w.writeLines(3, "regs_set = false;")
+    w.writeLines(2, "}")
+    w.writeLines(2, "if (!sim_cached) {")
+    w.writeLines(3, s"$flagVarName.fill(true);")
+    w.writeLines(2, "}")
+    w.writeLines(2, "sim_cached = regs_set;")
+    w.writeLines(2, "this->update_registers = update_registers;")
+    w.writeLines(2, "this->done_reset = done_reset;")
+    w.writeLines(2, "this->verbose = verbose;")
     val outputConsumers = condPartWorker.getPartInputMap()
     val externalPartInputNames = condPartWorker.getExternalPartInputNames()
     // do activity detection on other inputs (external IOs and resets)
-    writeLines(2, genAllTriggers(externalPartInputNames, outputConsumers, condPartWorker.cacheSuffix))
+    w.writeLines(2, genAllTriggers(externalPartInputNames, outputConsumers, condPartWorker.cacheSuffix))
     // cache old versions
     val extIOCaches = externalPartInputNames map {
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
-    writeLines(2, extIOCaches.toSeq)
+    w.writeLines(2, extIOCaches.toSeq)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case cp: CondPart => {
         if (!cp.alwaysActive)
-          writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${genEvalFuncName(cp.id)}();")
+          w.writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${genEvalFuncName(cp.id)}();")
         else
-          writeLines(2, s"${genEvalFuncName(cp.id)}();")
+          w.writeLines(2, s"${genEvalFuncName(cp.id)}();")
       }
-      case _ => writeLines(2, emitStmt(stmt))
+      case _ => w.writeLines(2, emitStmt(stmt))
     }}
-    // writeLines(2,  "#ifdef ALL_ON")
-    // writeLines(2, s"$flagVarName.fill(true);" )
-    // writeLines(2,  "#endif")
-    writeLines(2, "regs_set = true;")
+    // w.writeLines(2,  "#ifdef ALL_ON")
+    // w.writeLines(2, s"$flagVarName.fill(true);" )
+    // w.writeLines(2,  "#endif")
+    w.writeLines(2, "regs_set = true;")
   }
 
 
   def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
     val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
-    writeLines(0, "")
-    writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
+    w.writeLines(0, "")
+    w.writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
     if (opt.trackExts) {
-      writeLines(0, s"std::array<bool,${sigNameToID.size}> $sigActName{};")
-      writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigExtName{};")
+      w.writeLines(0, s"std::array<bool,${sigNameToID.size}> $sigActName{};")
+      w.writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigExtName{};")
     }
-    writeLines(0, "namespace old {")
-    writeLines(1, allNamesAndTypes map {
+    w.writeLines(0, "namespace old {")
+    w.writeLines(1, allNamesAndTypes map {
       case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')};"
     })
-    writeLines(0, "}")
+    w.writeLines(0, "}")
   }
 
   def emitSigTracker(stmt: Statement, indentLevel: Int, opt: OptFlags) {
@@ -282,17 +270,17 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
         resultName match {
           case Some(name) => {
             val cleanName = name.replace('.','$')
-            writeLines(indentLevel, s"$sigTrackName[${sigNameToID(name)}] += $name != old::$cleanName ? 1 : 0;")
+            w.writeLines(indentLevel, s"$sigTrackName[${sigNameToID(name)}] += $name != old::$cleanName ? 1 : 0;")
             if (opt.trackExts) {
-              writeLines(indentLevel, s"$sigActName[${sigNameToID(name)}] = $name != old::$cleanName;")
+              w.writeLines(indentLevel, s"$sigActName[${sigNameToID(name)}] = $name != old::$cleanName;")
               val depNames = findDependencesStmt(stmt).head.deps
               val trackedDepNames = depNames filter sigNameToID.contains
               val depTrackers = trackedDepNames map {name => s"$sigActName[${sigNameToID(name)}]"}
               val anyDepActive = depTrackers.mkString(" || ")
               if (anyDepActive.nonEmpty)
-                writeLines(indentLevel, s"$sigExtName[${sigNameToID(name)}] += !$sigActName[${sigNameToID(name)}] && ($anyDepActive) ? 1 : 0;")
+                w.writeLines(indentLevel, s"$sigExtName[${sigNameToID(name)}] += !$sigActName[${sigNameToID(name)}] && ($anyDepActive) ? 1 : 0;")
             }
-            writeLines(indentLevel, s"old::$cleanName = $name;")
+            w.writeLines(indentLevel, s"old::$cleanName = $name;")
           }
           case None =>
         }
@@ -301,34 +289,34 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
   }
 
   def emitJsonWriter(opt: OptFlags, numParts: Int) {
-    writeLines(0, "void writeActToJson() {")
-    writeLines(1, "std::fstream file(\"activities.json\", std::ios::out | std::ios::binary);")
-    writeLines(1, "JSON all_data;")
+    w.writeLines(0, "void writeActToJson() {")
+    w.writeLines(1, "std::fstream file(\"activities.json\", std::ios::out | std::ios::binary);")
+    w.writeLines(1, "JSON all_data;")
     if (opt.trackSigs) {
-      writeLines(1, "JSON sig_acts;")
-      writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
-      writeLines(2, s"""sig_acts[i] = JSON({"id", i, "acts", $sigTrackName[i]});""")
-      writeLines(1, "}")
-      writeLines(1, "all_data[\"signal-activities\"] = sig_acts;")
+      w.writeLines(1, "JSON sig_acts;")
+      w.writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
+      w.writeLines(2, s"""sig_acts[i] = JSON({"id", i, "acts", $sigTrackName[i]});""")
+      w.writeLines(1, "}")
+      w.writeLines(1, "all_data[\"signal-activities\"] = sig_acts;")
     }
     if (opt.trackParts) {
-      writeLines(1, "JSON part_acts;")
-      writeLines(1, s"for (int i=0; i<$numParts; i++) {")
-      writeLines(2, s"""part_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
-      writeLines(1, "}")
-      writeLines(1, "all_data[\"part-activities\"] = part_acts;")
+      w.writeLines(1, "JSON part_acts;")
+      w.writeLines(1, s"for (int i=0; i<$numParts; i++) {")
+      w.writeLines(2, s"""part_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
+      w.writeLines(1, "}")
+      w.writeLines(1, "all_data[\"part-activities\"] = part_acts;")
     }
     if (opt.trackExts) {
-      writeLines(1, "JSON sig_exts;")
-      writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
-      writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
-      writeLines(1, "}")
-      writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
+      w.writeLines(1, "JSON sig_exts;")
+      w.writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
+      w.writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
+      w.writeLines(1, "}")
+      w.writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
     }
-    writeLines(1, "all_data[\"cycles\"] = cycle_count;")
-    writeLines(1, "file << all_data << std::endl;")
-    writeLines(1, "file.close();")
-    writeLines(0, "}")
+    w.writeLines(1, "all_data[\"cycles\"] = cycle_count;")
+    w.writeLines(1, "file << all_data << std::endl;")
+    w.writeLines(1, "file.close();")
+    w.writeLines(0, "}")
   }
 
 
@@ -338,25 +326,25 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     val opt = initialOpt
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
-    writeLines(0, s"#ifndef $headerGuardName")
-    writeLines(0, s"#define $headerGuardName")
-    writeLines(0, "")
-    writeLines(0, "#include <array>")
-    writeLines(0, "#include <cstdint>")
-    writeLines(0, "#include <cstdlib>")
-    writeLines(0, "#include <uint.h>")
-    writeLines(0, "#include <sint.h>")
-    writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
+    w.writeLines(0, s"#ifndef $headerGuardName")
+    w.writeLines(0, s"#define $headerGuardName")
+    w.writeLines(0, "")
+    w.writeLines(0, "#include <array>")
+    w.writeLines(0, "#include <cstdint>")
+    w.writeLines(0, "#include <cstdlib>")
+    w.writeLines(0, "#include <uint.h>")
+    w.writeLines(0, "#include <sint.h>")
+    w.writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
     if (opt.trackParts || opt.trackSigs || opt.withVCD) {
-      writeLines(0, "#include <fstream>")
-      writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
-      writeLines(0, "using json::JSON;")
-      writeLines(0, "uint64_t cycle_count = 0;")
+      w.writeLines(0, "#include <fstream>")
+      w.writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
+      w.writeLines(0, "using json::JSON;")
+      w.writeLines(0, "uint64_t cycle_count = 0;")
     }
-    val vcd = new Vcd(circuit,opt,writer,rn)
+    val vcd = new Vcd(circuit,opt,w,rn)
 
     if(opt.withVCD) {
-      writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
+      w.writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
@@ -373,7 +361,7 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     // if (opt.trackSigs)
     //   declareSigTracking(sg, topName, opt)
     // if (opt.trackParts)
-    //   writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
+    //   w.writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
     // if (opt.trackParts || opt.trackSigs)
    //    emitJsonWriter(opt, condPartWorker.getNumParts())
     // if (opt.partStats)
@@ -387,49 +375,49 @@ class EssentEmitter(initialOpt: OptFlags, writer: Writer) extends LazyLogging {
     }
     val topModule = findModule(topName, circuit) match {case m: Module => m}
     if (initialOpt.writeHarness) {
-      writeLines(0, "")
-      writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
-      writeLines(2, HarnessGenerator.harnessConnections(topModule))
-      writeLines(1, "}")
-      writeLines(0, "")
+      w.writeLines(0, "")
+      w.writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
+      w.writeLines(2, HarnessGenerator.harnessConnections(topModule))
+      w.writeLines(1, "}")
+      w.writeLines(0, "")
     }
     if (opt.withVCD)  { vcd.declareOldvaluesAll(circuit) }
     if (containsAsserts) {
-      writeLines(1, "bool assert_triggered = false;")
-      writeLines(1, "int assert_exit_code;")
-      writeLines(0, "")
+      w.writeLines(1, "bool assert_triggered = false;")
+      w.writeLines(1, "int assert_exit_code;")
+      w.writeLines(0, "")
     }
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
-    writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
+    w.writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if(opt.withVCD) { vcd.initializeOldValues(circuit) }
     if ((opt.trackParts || opt.trackSigs) && !opt.withVCD)
-      writeLines(2, "cycle_count++;")
+      w.writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
     if(opt.withVCD) { vcd.compareOldValues(circuit) }
     if (containsAsserts) {
-      writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
-      writeLines(2, "if (!done_reset) assert_triggered = false;")
+      w.writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
+      w.writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
     writeRegResetOverrides(sg)
-    writeLines(0, "")
+    w.writeLines(0, "")
     if(opt.withVCD) { vcd.assignOldValues(circuit) }
-    writeLines(2, "")
-    writeLines(1, "}")
+    w.writeLines(2, "")
+    w.writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
-    //   writeLines(1, s"~$topName() {")
-    //   writeLines(2, "writeActToJson();")
-    //   writeLines(1, "}")
+    //   w.writeLines(1, s"~$topName() {")
+    //   w.writeLines(2, "writeActToJson();")
+    //   w.writeLines(1, "}")
     // }
-    writeLines(0, "")
+    w.writeLines(0, "")
     if(opt.withVCD) { vcd.genWaveHeader() }
-    writeLines(0, "")
-    writeLines(0, s"} $topName;") //closing top module dec
-    writeLines(0, "")
-    writeLines(0, s"#endif  // $headerGuardName")
+    w.writeLines(0, "")
+    w.writeLines(0, s"} $topName;") //closing top module dec
+    w.writeLines(0, "")
+    w.writeLines(0, s"#endif  // $headerGuardName")
   }
 }
 
