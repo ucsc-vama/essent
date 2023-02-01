@@ -97,10 +97,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val registerDecs = registers flatMap {d: DefRegister => {
       val regname = d.name
       val regoldname = rn.vcdOldValue(regname)
-      Seq(s"""if((cycle_count == 0) || ($regname != $regoldname)) {outfile << $regname.to_bin_str(); outfile << "!$regname" << "\\n";}""")
+      Seq(s"""if((vcd_cycle_count == 0) || ($regname != $regoldname)) {outfile << $regname.to_bin_str(); outfile << "!$regname" << "\\n";}""")
     }}
     val memDecs = memories map {m: DefMemory => {
-      s"""if((cycle_count == 0) || (${m.name}[${m.depth}] != ${rn.vcdOldValue(m.name)}[${m.depth}])) { outfile << ${m.name}[${m.depth}].to_bin_str(); outfile << "!${m.name}[${m.depth}]" << "\\n";}"""
+      s"""if((vcd_cycle_count == 0) || (${m.name}[${m.depth}] != ${rn.vcdOldValue(m.name)}[${m.depth}])) { outfile << ${m.name}[${m.depth}].to_bin_str(); outfile << "!${m.name}[${m.depth}]" << "\\n";}"""
     }}
     val modName = m.name
     val ports_old = m.ports flatMap { p =>
@@ -108,7 +108,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
         case ClockType => Seq()
         case _ =>
           val ports_name = rn.vcdOldValue(p.name) 
-          Seq(s"""if((cycle_count == 0) || (${p.name} != $ports_name)) {outfile << ${p.name}.to_bin_str(); outfile << "!${p.name}" << "\\n";}""")
+          Seq(s"""if((vcd_cycle_count == 0) || (${p.name} != $ports_name)) {outfile << ${p.name}.to_bin_str(); outfile << "!${p.name}" << "\\n";}""")
       }}
     if(modName == topName) {
       w.writeLines(2, registerDecs)
@@ -198,11 +198,11 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   }
 
   def initializeOldValues(circuit: Circuit): Unit = {
-    w.writeLines(1, "if(cycle_count == 0) {")
+    w.writeLines(1, "if(vcd_cycle_count == 0) {")
     w.writeLines(3, """outfile << "$dumpvars" << "\\n" ;""")
     w.writeLines(1, " } ")
     w.writeLines(1, "else { ")
-    w.writeLines(2, """outfile << "#" << cycle_count*10 << "\\n";""")
+    w.writeLines(2, """outfile << "#" << vcd_cycle_count*10 << "\\n";""")
     w.writeLines(2, """ outfile << "1" << "!clock" << "\\n";""")
     w.writeLines(1, " } ")
     }
@@ -212,12 +212,12 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       case m: Module => compareOldNewSignal(m, topName)
       case m: ExtModule => Seq()
     }
-    w.writeLines(1, "if(cycle_count == 0) {")
+    w.writeLines(1, "if(vcd_cycle_count == 0) {")
     w.writeLines(3, """outfile << "$end" << "\\n";""")
     w.writeLines(1, " } ")
-    w.writeLines(2, """outfile << "#" << (cycle_count*10 + 5) << "\\n";""")
+    w.writeLines(2, """outfile << "#" << (vcd_cycle_count*10 + 5) << "\\n";""")
     w.writeLines(2, """ outfile << "0" << "!clock" << "\\n";""")
-    w.writeLines(2, "cycle_count++;")
+    w.writeLines(2, "vcd_cycle_count++;")
     w.writeLines(2, "")
   }
 

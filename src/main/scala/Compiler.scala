@@ -104,7 +104,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
               val cleanName = rn.removeDots(name)
               if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                 if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                  w.writeLines(indentLevel, s"""if( (cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
+                  w.writeLines(indentLevel, s"""if( (vcd_cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
                   w.writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
               }
               }
@@ -344,7 +344,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     val vcd = new Vcd(circuit,opt,w,rn)
 
     if(opt.withVCD) {
-      w.writeLines(1, s"""std::ofstream outfile ("dump_$topName.vcd");""")
+      w.writeLines(0, "uint64_t vcd_cycle_count = 0;")
+      w.writeLines(0, s"""std::ofstream outfile ("dump_$topName.vcd");""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
@@ -391,7 +392,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     w.writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if(opt.withVCD) { vcd.initializeOldValues(circuit) }
-    if ((opt.trackParts || opt.trackSigs) && !opt.withVCD)
+    if (opt.trackParts || opt.trackSigs)
       w.writeLines(2, "cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
