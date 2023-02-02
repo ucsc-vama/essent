@@ -17,13 +17,8 @@ import logger._
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
   val flagVarName = "PARTflags"
-  val actVarName = "ACTcounts"
-  val sigTrackName = "SIGcounts"
-  val sigActName = "SIGact"
-  val sigExtName = "SIGext"
-  var sigNameToID = Map[String,Int]()
   implicit val rn = new Renamer
-
+  val actTrac = new ActivityTracker(w, initialOpt)
 
   // Declaring Modules
   //----------------------------------------------------------------------------
@@ -112,7 +107,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
             }
           }
         }
-        if (opt.trackSigs) emitSigTracker(stmt, indentLevel, opt)
+        if (opt.trackSigs) actTrac.emitSigTracker(stmt, indentLevel)
       }
     }}
   }
@@ -181,7 +176,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
         if (!cp.alwaysActive)
           w.writeLines(2, s"$flagVarName[${cp.id}] = false;")
         if (opt.trackParts)
-          w.writeLines(2, s"$actVarName[${cp.id}]++;")
+          w.writeLines(2, s"${actTrac.actVarName}[${cp.id}]++;")
 
         val cacheOldOutputs = cp.outputsToDeclare.toSeq map {
           case (name, tpe) => { s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)} = ${rn.emit(name)};"
@@ -246,80 +241,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
   }
 
 
-  def declareSigTracking(sg: StatementGraph, topName: String, opt: OptFlags) {
-    val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange) flatMap findStmtNameAndType
-    sigNameToID = (allNamesAndTypes map { _._1 }).zipWithIndex.toMap
-    w.writeLines(0, "")
-    w.writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigTrackName{};")
-    if (opt.trackExts) {
-      w.writeLines(0, s"std::array<bool,${sigNameToID.size}> $sigActName{};")
-      w.writeLines(0, s"std::array<uint64_t,${sigNameToID.size}> $sigExtName{};")
-    }
-    w.writeLines(0, "namespace old {")
-    w.writeLines(1, allNamesAndTypes map {
-      case (name, tpe) => s"${genCppType(tpe)} ${name.replace('.','$')};"
-    })
-    w.writeLines(0, "}")
-  }
-
-  def emitSigTracker(stmt: Statement, indentLevel: Int, opt: OptFlags) {
-    stmt match {
-      case mw: MemWrite =>
-      case _ => {
-        val resultName = findResultName(stmt)
-        resultName match {
-          case Some(name) => {
-            val cleanName = name.replace('.','$')
-            w.writeLines(indentLevel, s"$sigTrackName[${sigNameToID(name)}] += $name != old::$cleanName ? 1 : 0;")
-            if (opt.trackExts) {
-              w.writeLines(indentLevel, s"$sigActName[${sigNameToID(name)}] = $name != old::$cleanName;")
-              val depNames = findDependencesStmt(stmt).head.deps
-              val trackedDepNames = depNames filter sigNameToID.contains
-              val depTrackers = trackedDepNames map {name => s"$sigActName[${sigNameToID(name)}]"}
-              val anyDepActive = depTrackers.mkString(" || ")
-              if (anyDepActive.nonEmpty)
-                w.writeLines(indentLevel, s"$sigExtName[${sigNameToID(name)}] += !$sigActName[${sigNameToID(name)}] && ($anyDepActive) ? 1 : 0;")
-            }
-            w.writeLines(indentLevel, s"old::$cleanName = $name;")
-          }
-          case None =>
-        }
-      }
-    }
-  }
-
-  def emitJsonWriter(opt: OptFlags, numParts: Int) {
-    w.writeLines(0, "void writeActToJson() {")
-    w.writeLines(1, "std::fstream file(\"activities.json\", std::ios::out | std::ios::binary);")
-    w.writeLines(1, "JSON all_data;")
-    if (opt.trackSigs) {
-      w.writeLines(1, "JSON sig_acts;")
-      w.writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
-      w.writeLines(2, s"""sig_acts[i] = JSON({"id", i, "acts", $sigTrackName[i]});""")
-      w.writeLines(1, "}")
-      w.writeLines(1, "all_data[\"signal-activities\"] = sig_acts;")
-    }
-    if (opt.trackParts) {
-      w.writeLines(1, "JSON part_acts;")
-      w.writeLines(1, s"for (int i=0; i<$numParts; i++) {")
-      w.writeLines(2, s"""part_acts[i] = JSON({"id", i, "acts", $actVarName[i]});""")
-      w.writeLines(1, "}")
-      w.writeLines(1, "all_data[\"part-activities\"] = part_acts;")
-    }
-    if (opt.trackExts) {
-      w.writeLines(1, "JSON sig_exts;")
-      w.writeLines(1, s"for (int i=0; i<${sigNameToID.size}; i++) {")
-      w.writeLines(2, s"""sig_exts[i] = JSON({"id", i, "exts", $sigExtName[i]});""")
-      w.writeLines(1, "}")
-      w.writeLines(1, "all_data[\"sig-extinguishes\"] = sig_exts;")
-    }
-    w.writeLines(1, "all_data[\"cycles\"] = cycle_count;")
-    w.writeLines(1, "file << all_data << std::endl;")
-    w.writeLines(1, "file.close();")
-    w.writeLines(0, "}")
-  }
-
-
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
   def execute(circuit: Circuit) {
@@ -337,9 +258,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     w.writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
     if (opt.trackParts || opt.trackSigs || opt.withVCD) {
       w.writeLines(0, "#include <fstream>")
-      w.writeLines(0, "#include \"../SimpleJSON/json.hpp\"")
-      w.writeLines(0, "using json::JSON;")
-      w.writeLines(0, "uint64_t cycle_count = 0;")
     }
     val vcd = new Vcd(circuit,opt,w,rn)
 
@@ -359,17 +277,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
     }
-    // if (opt.trackSigs)
-    //   declareSigTracking(sg, topName, opt)
-    // if (opt.trackParts)
-    //   w.writeLines(1, s"std::array<uint64_t,${sg.getNumParts()}> $actVarName{};")
-    // if (opt.trackParts || opt.trackSigs)
-   //    emitJsonWriter(opt, condPartWorker.getNumParts())
-    // if (opt.partStats)
-    //   sg.dumpPartInfoToJson(opt, sigNameToID)
-    // if (opt.trackExts)
-    //   sg.dumpNodeTypeToJson(sigNameToID)
-    // sg.reachableAfter(sigNameToID)
+    if (opt.trackParts || opt.trackSigs || opt.trackExts)
+      actTrac.declareTop(sg, topName, condPartWorker)
+
     circuit.modules foreach {
       case m: Module => declareModule(m, topName)
       case m: ExtModule => declareExtModule(m)
@@ -393,7 +303,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     w.writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
     if(opt.withVCD) { vcd.initializeOldValues(circuit) }
     if (opt.trackParts || opt.trackSigs)
-      w.writeLines(2, "cycle_count++;")
+      w.writeLines(2, "act_cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
