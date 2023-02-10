@@ -99,8 +99,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
               val cleanName = rn.removeDots(name)
               if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                 if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                  w.writeLines(indentLevel, s"""if( (vcd_cycle_count == 0) || ($cleanName != ${cleanName}_old)) { outfile << $cleanName.to_bin_str(); outfile << "!$cleanName" << "\\n";} """)
-                  w.writeLines(indentLevel, s""" ${cleanName}_old = $cleanName;""")
+                  w.writeLines(indentLevel, s"""if( (vcd_cycle_count == 0) || ($cleanName != ${rn.vcdOldValue(cleanName)})) { fprintf(outfile,"%s",$cleanName.to_bin_str().c_str()); fprintf(outfile,"%s","!$cleanName\\n");} """)
+                  w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
               }
               }
             case None =>
