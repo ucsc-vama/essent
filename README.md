@@ -5,6 +5,16 @@ This is a beta of essent, a high-performance RTL simulator generator. Essent ope
 
 Without optimization, essent will generate a simulator that is a very literal translation of the firrtl design. Essent flattens the design, and typically represents each firrtl statement with a single line of C++. Most signals are ephemeral and are locally scoped, which gives the compiler the maximum flexibility to optimize them. Signals that must persist between cycles, such as state elements (registers or memories) or external IOs, are declared in structs which match the module hierarchy. Some optimizations require additional signals to persist between cycles, and these variables are declared effectively globally. Long chains of simple connect statements (no other modifications to signals) will be compressed down to just the chain endpoints. Without optimization, each register has two variables associated with it, and they represent the current value and the next value of the register (two-phase update).
 
+RepCut
+--------------------------------------------------------------------------------
+
+This branch contains implementation of RepCut, parallel version of Essent. For more details please refer to this paper:
+
+**RepCut: Superlinear Parallel RTL Simulation with Replication-Aided Partitioning**
+Haoyuan Wang and Scott Beamer
+_ASPLOS, Vancouver, BC, Canada, 2023_
+DOI: 10.1145/3582016.3582034
+
 
 Running essent
 --------------------------------------------------------------------------------
