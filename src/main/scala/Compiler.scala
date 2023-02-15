@@ -263,7 +263,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
 
     if(opt.withVCD) {
       w.writeLines(0, "uint64_t vcd_cycle_count = 0;")
-      w.writeLines(0, s"""std::ofstream outfile ("dump_$topName.vcd");""")
+      w.writeLines(1,s"""FILE *outfile;""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
