@@ -15,11 +15,11 @@ import firrtl.stage.transforms
 import logger._
 
 
-class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
+class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
   val flagVarName = "PARTflags"
   implicit val rn = new Renamer
   val actTrac = new ActivityTracker(w, initialOpt)
-
+  val vcd = if (initialOpt.withVCD) Some(new Vcd(circuit,initialOpt,w,rn)) else None
   // Declaring Modules
   //----------------------------------------------------------------------------
   def declareModule(m: Module, topName: String) {
@@ -89,24 +89,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
       }
       case _ => {
         w.writeLines(indentLevel, emitStmt(stmt))
-        if (opt.withVCD) {
-          stmt match {
-          case mw: MemWrite =>
-          case _ => 
-            val resultName = findResultName(stmt)
-            resultName match {
-              case Some(name) =>
-              val cleanName = rn.removeDots(name)
-              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-                if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                  w.writeLines(indentLevel, s"""if( (vcd_cycle_count == 0) || ($cleanName != ${rn.vcdOldValue(cleanName)})) { fprintf(outfile,"%s",$cleanName.to_bin_str().c_str()); fprintf(outfile,"%s","!$cleanName\\n");} """)
-                  w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
-              }
-              }
-            case None =>
-            }
-          }
-        }
+        if (opt.withVCD)  vcd.get.compSmallEval(stmt, indentLevel)
         if (opt.trackSigs) actTrac.emitSigTracker(stmt, indentLevel)
       }
     }}
@@ -259,7 +242,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     if (opt.trackParts || opt.trackSigs || opt.withVCD) {
       w.writeLines(0, "#include <fstream>")
     }
-    val vcd = new Vcd(circuit,opt,w,rn)
 
     if(opt.withVCD) {
       w.writeLines(0, "uint64_t vcd_cycle_count = 0;")
@@ -292,7 +274,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
       w.writeLines(1, "}")
       w.writeLines(0, "")
     }
-    if (opt.withVCD)  { vcd.declareOldvaluesAll(circuit) }
+    if (opt.withVCD)  { vcd.get.declareOldvaluesAll(circuit) }
     if (containsAsserts) {
       w.writeLines(1, "bool assert_triggered = false;")
       w.writeLines(1, "int assert_exit_code;")
@@ -301,21 +283,21 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     if (opt.useCondParts)
       writeZoningPredecs(sg, condPartWorker, circuit.main, extIOMap, opt)
     w.writeLines(1, s"void eval(bool update_registers, bool verbose, bool done_reset) {")
-    if(opt.withVCD) { vcd.initializeOldValues(circuit) }
+    if(opt.withVCD) { vcd.get.initializeOldValues(circuit) }
     if (opt.trackParts || opt.trackSigs)
       w.writeLines(2, "act_cycle_count++;")
     if (opt.useCondParts)
       writeZoningBody(sg, condPartWorker, opt)
     else
       writeBodyInner(2, sg, opt)
-    if(opt.withVCD) { vcd.compareOldValues(circuit) }
+    if(opt.withVCD) { vcd.get.compareOldValues(circuit) }
     if (containsAsserts) {
       w.writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       w.writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
     writeRegResetOverrides(sg)
     w.writeLines(0, "")
-    if(opt.withVCD) { vcd.assignOldValues(circuit) }
+    if(opt.withVCD) { vcd.get.assignOldValues(circuit) }
     w.writeLines(2, "")
     w.writeLines(1, "}")
     // if (opt.trackParts || opt.trackSigs) {
@@ -324,7 +306,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer) extends LazyLogging {
     //   w.writeLines(1, "}")
     // }
     w.writeLines(0, "")
-    if(opt.withVCD) { vcd.genWaveHeader() }
+    if(opt.withVCD) { vcd.get.genWaveHeader() }
     w.writeLines(0, "")
     w.writeLines(0, s"} $topName;") //closing top module dec
     w.writeLines(0, "")
@@ -367,7 +349,7 @@ class EssentCompiler(opt: OptFlags) {
       debugWriter.close()
     }
     val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
-    val emitter = new EssentEmitter(opt, dutWriter)
+    val emitter = new EssentEmitter(opt, dutWriter,resultState.circuit)
     emitter.execute(resultState.circuit)
     dutWriter.close()
   }

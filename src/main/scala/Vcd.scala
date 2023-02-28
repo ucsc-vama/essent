@@ -258,6 +258,25 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   def compSig(sn: String,on: String): String = {
       s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s",$sn.to_bin_str().c_str()); fprintf(outfile,"%s","!$sn\\n");}"""
   }
+
+  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
+    stmt match {
+      case mw: MemWrite =>
+      case _ =>
+        val resultName = findResultName(stmt)
+        resultName match {
+          case Some(name) =>
+              val cleanName = rn.removeDots(name)
+              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+              if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+              compSig(cleanName,rn.vcdOldValue(cleanName))
+              }
+              }
+          case None =>
+        }
+
+    }
+  }
 }
 
 
