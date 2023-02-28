@@ -270,6 +270,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
               if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
               if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
               compSig(cleanName,rn.vcdOldValue(cleanName))
+              w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
               }
               }
           case None =>
