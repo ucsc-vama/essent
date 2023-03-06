@@ -19,7 +19,6 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   val sg = StatementGraph(circuit, opt.removeFlatConnects)
   val allNamesAndTypes = sg.stmtsOrdered flatMap findStmtNameAndType
 
-
   def displayNameIdentifierSize(m: Module, topName: String) {
 
     val registers = findInstancesOf[DefRegister](m.body)
@@ -30,30 +29,30 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       val width = bitWidth(d.tpe)
       val width_l = bitWidth(d.tpe) - 1
       val identifier_code = " !" + d.name
-      if(width_l > 0) Seq(s"""outfile << "$$var wire $width $identifier_code ${d.name} [$width_l:0] $$end" << "\\n";""")
-      else Seq(s"""outfile << "$$var wire  $width $identifier_code ${d.name} $$end" << "\\n";""")
+      if(width_l > 0) Seq(s""" "%s","$$var wire $width $identifier_code ${d.name} [$width_l:0] $$end\\n");""")
+      else Seq(s""" "%s","$$var wire  $width $identifier_code ${d.name} $$end\n");""")
     }}
 
     val ports_name_identifier = m.ports flatMap { p =>
       p.tpe match {
-        case ClockType => Seq(s"""outfile << "$$var wire "<< " 1 " << " !clock" << " ${p.name} " << " $$end" << "\\n";""")
+        case ClockType => Seq(s""" "%s","$$var wire 1  !clock ${p.name}  $$end\\n");""")
         case _ =>
           val width = bitWidth(p.tpe)
           val width_l = bitWidth(p.tpe) - 1
           val identifier_code = " !" + p.name
-          if(width_l > 0) Seq(s"""outfile << "$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end" << "\\n";""")
-          else Seq(s"""outfile << "$$var wire $width $identifier_code ${p.name} $$end" << "\\n";""")
+          if(width_l > 0) Seq(s""" "%s","$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end\\n");""")
+          else Seq(s""" "%s","$$var wire $width $identifier_code ${p.name} $$end\\n");""")
       }}
 
     if(m.name == topName) {
-      w.writeLines(2, register_name_identifier)
-      w.writeLines(2, ports_name_identifier)
+      register_name_identifier.foreach(writeFprintf(_))
+      ports_name_identifier.foreach(writeFprintf(_))
       if(memories.size != 0) {
         while(depth < mem_depth) {
           memories map { m: DefMemory => {
             val width = bitWidth(m.dataType)
             val identifier_code = " !" + m.name + "[" + depth + "]"
-            w.writeLines(2,s"""outfile << "$$var wire "<< " $width " << "$identifier_code " << " ${m.name}[${depth}] " << " $$end" << "\\n";""")
+            writeFprintf(s""" "%s","$$var wire $width $identifier_code ${m.name}[${depth}] $$end\\n");""")
             depth = depth + 1
             mem_depth = m.depth
           }
@@ -95,20 +94,19 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
-      val regname = d.name
-      val regoldname = rn.vcdOldValue(regname)
-      Seq(s"""if((vcd_cycle_count == 0) || ($regname != $regoldname)) {outfile << $regname.to_bin_str(); outfile << "!$regname" << "\\n";}""")
+      val temp_string = compSig(d.name,rn.vcdOldValue(d.name))
+      Seq(temp_string)
     }}
     val memDecs = memories map {m: DefMemory => {
-      s"""if((vcd_cycle_count == 0) || (${m.name}[${m.depth}] != ${rn.vcdOldValue(m.name)}[${m.depth}])) { outfile << ${m.name}[${m.depth}].to_bin_str(); outfile << "!${m.name}[${m.depth}]" << "\\n";}"""
+      compSig(s"""${m.name}[${m.depth}]""",s"""${rn.vcdOldValue(m.name)}[${m.depth}]""")
     }}
     val modName = m.name
     val ports_old = m.ports flatMap { p =>
       p.tpe match {
         case ClockType => Seq()
         case _ =>
-          val ports_name = rn.vcdOldValue(p.name) 
-          Seq(s"""if((vcd_cycle_count == 0) || (${p.name} != $ports_name)) {outfile << ${p.name}.to_bin_str(); outfile << "!${p.name}" << "\\n";}""")
+      val temp_string = compSig(p.name,rn.vcdOldValue(p.name))
+      Seq(temp_string)
       }}
     if(modName == topName) {
       w.writeLines(2, registerDecs)
@@ -167,15 +165,15 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
               val new_name = rn.removeDots(name)
               if(new_name == iden_code) {
                 val width = bitWidth(tpe)
-                w.writeLines(indentlevel,s"""outfile << "$$var wire $width !${iden_code} $key $$end" << "\\n";""")
+                writeFprintf(s""" "%s","$$var wire $width !${iden_code} $key $$end\\n");""")
               }}
         }
         }}
       else {
-        w.writeLines(indentlevel, s""" outfile << "$$scope module $key $$end" << "\\n";""")
+        writeFprintf(s""" "%s","$$scope module $key $$end\\n");""")
         val iden_code_hier_new = iden_code_hier + key + "$"
         hierScope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
-        w.writeLines(indentlevel,""" outfile << "$upscope $end" << "\\n";""")
+        writeFprintf(""" "%s","$upscope $end\n");""")
       }
     }
     }
@@ -199,11 +197,11 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
 
   def initializeOldValues(circuit: Circuit): Unit = {
     w.writeLines(1, "if(vcd_cycle_count == 0) {")
-    w.writeLines(3, """outfile << "$dumpvars" << "\\n" ;""")
+    writeFprintf(""" "%s","$dumpvars\n");""")
     w.writeLines(1, " } ")
     w.writeLines(1, "else { ")
-    w.writeLines(2, """outfile << "#" << vcd_cycle_count*10 << "\\n";""")
-    w.writeLines(2, """ outfile << "1" << "!clock" << "\\n";""")
+    writeFprintf(""" "%s%s%s","#",std::to_string(vcd_cycle_count*10).c_str(),"\n");""")
+    writeFprintf(""" "%s","1!clock\n");""")
     w.writeLines(1, " } ")
     }
 
@@ -213,10 +211,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       case m: ExtModule => Seq()
     }
     w.writeLines(1, "if(vcd_cycle_count == 0) {")
-    w.writeLines(3, """outfile << "$end" << "\\n";""")
+    writeFprintf(""" "%s","$end\n");""")
     w.writeLines(1, " } ")
-    w.writeLines(2, """outfile << "#" << (vcd_cycle_count*10 + 5) << "\\n";""")
-    w.writeLines(2, """ outfile << "0" << "!clock" << "\\n";""")
+    writeFprintf(""" "%s%s%s","#",std::to_string(vcd_cycle_count*10 + 5).c_str(),"\n");""")
+    writeFprintf(""" "%s","0!clock\n");""")
     w.writeLines(2, "vcd_cycle_count++;")
     w.writeLines(2, "")
   }
@@ -231,12 +229,13 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   def genWaveHeader(): Unit = {
     w.writeLines(1, "void genWaveHeader() {")
     w.writeLines(0, "")
+    w.writeLines(1,s"""outfile = fopen("dump_$topName.vcd","w+");""") 
     w.writeLines(2, "time_t timetoday;")
     w.writeLines(2, "time (&timetoday);")
-    w.writeLines(2, """outfile << "$version Essent version 1 $end" << "\\n";""")
-    w.writeLines(2, """outfile << "$date " << asctime(localtime(&timetoday)) << " $end" << "\\n";""")
-    w.writeLines(2, """outfile << "$timescale 1ns $end" << "\\n";""")
-    w.writeLines(2, s"""outfile << "$$scope module " << "$topName" << " $$end" << "\\n";""")
+    writeFprintf(""" "%s","$version Essent version 1 $end\n");""")
+    writeFprintf(""" "%s%s%s","$date ",asctime(localtime(&timetoday))," $end\n");""")
+    writeFprintf(""" "%s","$timescale 1ns $end\n");""")
+    writeFprintf(s""" "%s","$$scope module $topName $$end\\n");""")
     circuit.modules foreach {
       case m: Module => displayNameIdentifierSize(m, topName)
       case m: ExtModule => Seq()
@@ -245,10 +244,41 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
     hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
-    w.writeLines(2, """outfile << "$upscope $end " << "\\n";""")
-    w.writeLines(2, """outfile << "$enddefinitions $end" << "\\n";""")
+    writeFprintf(""" "%s","$upscope $end\n");""")
+    writeFprintf(""" "%s","$enddefinitions $end\n");""")
     w.writeLines(0, "")
     w.writeLines(1, "}")
     w.writeLines(0, "")
   }
+
+  def writeFprintf(s: String) {
+  w.writeLines(2,s"""fprintf(outfile,$s""")
+  }
+
+  def compSig(sn: String,on: String): String = {
+      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s",$sn.to_bin_str().c_str()); fprintf(outfile,"%s","!$sn\\n");}"""
+  }
+
+  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
+    stmt match {
+      case mw: MemWrite =>
+      case _ =>
+        val resultName = findResultName(stmt)
+        resultName match {
+          case Some(name) =>
+              val cleanName = rn.removeDots(name)
+              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+              if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+              compSig(cleanName,rn.vcdOldValue(cleanName))
+              w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
+              }
+              }
+          case None =>
+        }
+
+    }
+  }
 }
+
+
+
