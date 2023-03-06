@@ -11,6 +11,7 @@ import firrtl.ir._
 import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
+import collection.mutable.HashMap
 
 class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   var iden_code_hier = ""
@@ -18,6 +19,8 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   val topName = circuit.main
   val sg = StatementGraph(circuit, opt.removeFlatConnects)
   val allNamesAndTypes = sg.stmtsOrdered flatMap findStmtNameAndType
+  var hashMap =  HashMap[String,String]() 
+  var last_used_index = BigInt(1)
 
   def displayNameIdentifierSize(m: Module, topName: String) {
 
@@ -28,7 +31,9 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val register_name_identifier = registers flatMap {d: DefRegister => {
       val width = bitWidth(d.tpe)
       val width_l = bitWidth(d.tpe) - 1
-      val identifier_code = " !" + d.name
+      val identifier_code = genIdenCode(last_used_index)
+      last_used_index = last_used_index + 1
+      hashMap(d.name) = identifier_code
       if(width_l > 0) Seq(s""" "%s","$$var wire $width $identifier_code ${d.name} [$width_l:0] $$end\\n");""")
       else Seq(s""" "%s","$$var wire  $width $identifier_code ${d.name} $$end\n");""")
     }}
@@ -39,7 +44,9 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
         case _ =>
           val width = bitWidth(p.tpe)
           val width_l = bitWidth(p.tpe) - 1
-          val identifier_code = " !" + p.name
+          val identifier_code = genIdenCode(last_used_index)
+          last_used_index = last_used_index + 1
+          hashMap(p.name) = identifier_code
           if(width_l > 0) Seq(s""" "%s","$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end\\n");""")
           else Seq(s""" "%s","$$var wire $width $identifier_code ${p.name} $$end\\n");""")
       }}
@@ -48,10 +55,13 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       register_name_identifier.foreach(writeFprintf(_))
       ports_name_identifier.foreach(writeFprintf(_))
       if(memories.size != 0) {
-        while(depth < mem_depth) {
+        while(depth <= mem_depth) {
           memories map { m: DefMemory => {
             val width = bitWidth(m.dataType)
-            val identifier_code = " !" + m.name + "[" + depth + "]"
+            val mem_name = m.name + "[" + depth + "]"
+            val identifier_code = genIdenCode(last_used_index)
+            last_used_index = last_used_index + 1
+            hashMap(mem_name) = identifier_code
             writeFprintf(s""" "%s","$$var wire $width $identifier_code ${m.name}[${depth}] $$end\\n");""")
             depth = depth + 1
             mem_depth = m.depth
@@ -97,10 +107,6 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       val temp_string = compSig(d.name,rn.vcdOldValue(d.name))
       Seq(temp_string)
     }}
-    val memDecs = memories map {m: DefMemory => {
-      compSig(s"""${m.name}[${m.depth}]""",s"""${rn.vcdOldValue(m.name)}[${m.depth}]""")
-    }}
-    val modName = m.name
     val ports_old = m.ports flatMap { p =>
       p.tpe match {
         case ClockType => Seq()
@@ -108,10 +114,14 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       val temp_string = compSig(p.name,rn.vcdOldValue(p.name))
       Seq(temp_string)
       }}
+    val modName = m.name
     if(modName == topName) {
-      w.writeLines(2, registerDecs)
-      w.writeLines(2, memDecs)
-      w.writeLines(2, ports_old)
+    val memDecs = memories map {m: DefMemory => {
+      compSig(s"""${m.name}[${m.depth}]""",s"""${rn.vcdOldValue(m.name)}[${m.depth}]""")
+    }}
+    w.writeLines(2, registerDecs)
+    w.writeLines(2, memDecs)
+    w.writeLines(2, ports_old)
     }
   }
 
@@ -164,8 +174,9 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
             case (name , tpe ) =>
               val new_name = rn.removeDots(name)
               if(new_name == iden_code) {
+                val ident_code = hashMap(new_name)
                 val width = bitWidth(tpe)
-                writeFprintf(s""" "%s","$$var wire $width !${iden_code} $key $$end\\n");""")
+                writeFprintf(s""" "%s","$$var wire $width ${ident_code} $key $$end\\n");""")
               }}
         }
         }}
@@ -241,8 +252,24 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       case m: ExtModule => Seq()
     }
     val name = sg.stmtsOrdered flatMap findResultName
+    val debug_name = name map { n => if ( !n.contains(".")) n else ""}
+      var up_index = last_used_index
+    debug_name.zipWithIndex map { case(sn, index ) => {
+      val iden_code = genIdenCode(index + last_used_index)
+      val sig_name = rn.removeDots(sn)
+      if ( !hashMap.contains(sig_name)) {
+      hashMap(sig_name) = iden_code
+      up_index = index + last_used_index}
+    }}
+    last_used_index = up_index 
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
+    non_und_name.zipWithIndex map { case(sn , index ) => {
+          val sig_name = rn.removeDots(sn)
+          val iden_code = genIdenCode(index + last_used_index)
+          hashMap(sig_name) = iden_code
+        }
+        }
     hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
     writeFprintf(""" "%s","$upscope $end\n");""")
     writeFprintf(""" "%s","$enddefinitions $end\n");""")
@@ -256,29 +283,44 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   }
 
   def compSig(sn: String,on: String): String = {
-      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s",$sn.to_bin_str().c_str()); fprintf(outfile,"%s","!$sn\\n");}"""
+      val iden_code = hashMap(sn)
+      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s",$sn.to_bin_str().c_str()); fprintf(outfile,"%s","$iden_code\\n");}"""
   }
 
-  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
-    stmt match {
-      case mw: MemWrite =>
-      case _ =>
-        val resultName = findResultName(stmt)
-        resultName match {
-          case Some(name) =>
-              val cleanName = rn.removeDots(name)
-              if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-              if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-              compSig(cleanName,rn.vcdOldValue(cleanName))
-              w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
-              }
-              }
-          case None =>
+  def genIdenCode(i: BigInt): String = {
+     var iden_code = ""
+     var v = i
+     while (v != 0) {
+       v = v - 1;
+       val eq_char = ((v%94) + 33).toChar
+       if((eq_char == '\"') || (eq_char == '\\') || (eq_char == '?'))
+         iden_code = iden_code + "\\" + eq_char
+       else 
+         iden_code = iden_code + eq_char
+       v = v/94;
         }
-
-    }
+      iden_code
   }
+
+   def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
+       stmt match {
+         case mw: MemWrite =>
+         case _ =>
+           val resultName = findResultName(stmt)
+            resultName match {
+              case Some(name) =>
+                 val cleanName = rn.removeDots(name)
+                  if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+                    if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+                      compSig(cleanName,rn.vcdOldValue(cleanName))
+                       w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
+                    }
+                  }
+              case None =>
+            }
+       }
+
+   }
+  
 }
-
-
 

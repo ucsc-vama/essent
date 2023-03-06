@@ -275,6 +275,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(0, "")
     }
     if (opt.withVCD)  { vcd.get.declareOldvaluesAll(circuit) }
+    if(opt.withVCD) { vcd.get.genWaveHeader() }
     if (containsAsserts) {
       w.writeLines(1, "bool assert_triggered = false;")
       w.writeLines(1, "int assert_exit_code;")
@@ -306,7 +307,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     //   w.writeLines(1, "}")
     // }
     w.writeLines(0, "")
-    if(opt.withVCD) { vcd.get.genWaveHeader() }
     w.writeLines(0, "")
     w.writeLines(0, s"} $topName;") //closing top module dec
     w.writeLines(0, "")
