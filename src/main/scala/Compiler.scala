@@ -91,24 +91,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}
   }
 
-  def writeRegResetOverrides(sg: StatementGraph) {
+  def checkRegResetSafety(sg: StatementGraph) {
     val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     assert(updatesWithResets.isEmpty)
-//    val resetGroups = updatesWithResets.groupBy(r => emitExpr(r.reset))
-//    val overridesToWrite = resetGroups.toSeq flatMap {
-//      case (resetName, regDefs) => {
-//        val body = regDefs map {
-//          r => s"$tabs${rn.emit(r.name)} = ${emitExpr(r.init)};"
-//        }
-//        Seq(s"if ($resetName) {") ++ body ++ Seq("}")
-//      }
-//    }
-//    if (overridesToWrite.nonEmpty) {
-//      w.writeLines(2, "if (update_registers) {")
-//      // FUTURE: will overrides need triggers if partitioned?
-//      w.writeLines(3, overridesToWrite)
-//      w.writeLines(2, "}")
-//    }
   }
 
 
@@ -260,6 +245,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
     }
+    checkRegResetSafety(sg)
     if (opt.trackParts || opt.trackSigs || opt.trackExts)
       actTrac.declareTop(sg, topName, condPartWorker)
 
@@ -297,7 +283,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(2, "if (done_reset && update_registers && assert_triggered) exit(assert_exit_code);")
       w.writeLines(2, "if (!done_reset) assert_triggered = false;")
     }
-    writeRegResetOverrides(sg)
     w.writeLines(0, "")
     if(opt.withVCD) { vcd.get.assignOldValues(circuit) }
     w.writeLines(2, "")
