@@ -71,10 +71,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, opt: OptFlags,
                      keepAvail: Set[String] = Set()) {
-    // ng.stmtsOrdered foreach { stmt => w.writeLines(indentLevel, emitStmt(stmt)) }
-    if (opt.conditionalMuxes)
-      MakeCondMux(sg, rn, keepAvail)
-    val noMoreMuxOpts = opt.copy(conditionalMuxes = false)
     sg.stmtsOrdered foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
@@ -82,9 +78,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         val muxCondRaw = emitExpr(cm.mux.cond)
         val muxCond = if (muxCondRaw == "reset") s"UNLIKELY($muxCondRaw)" else muxCondRaw
         w.writeLines(indentLevel, s"if (UNLIKELY($muxCond)) {")
-        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.tWay), opt)
         w.writeLines(indentLevel, "} else {")
-        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), noMoreMuxOpts)
+        writeBodyInner(indentLevel + 1, StatementGraph(cm.fWay), opt)
         w.writeLines(indentLevel, "}")
       }
       case _ => {
@@ -167,7 +163,10 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         w.writeLines(2, cacheOldOutputs)
         val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
         val keepAvail = (cp.outputsToDeclare map { _._1 }).toSet
-        writeBodyInner(2, StatementGraph(noRegUpdates), opt, keepAvail)
+        val bodySG = StatementGraph(noRegUpdates)
+        if (opt.conditionalMuxes)
+          MakeCondMux(bodySG, rn, keepAvail)
+        writeBodyInner(2, bodySG, opt, keepAvail)
         w.writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
         val regUpdateNamesInPart = regUpdates flatMap findResultName
         w.writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
@@ -256,6 +255,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     if (opt.useCondParts) {
       condPartWorker.doOpt(opt.partCutoff)
     } else {
+      if (opt.conditionalMuxes)
+        MakeCondMux(sg, rn, Set())
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
     }
