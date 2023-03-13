@@ -18,6 +18,7 @@ Essent is written in Scala, which runs on the JVM. To run essent, it's easiest t
 + `O2` - Muxes are represented with `if/else` blocks instead of ternary statements `?`. As many signals as possible are pulled into the if or else blocks. If both the if and else blocks will be trivially one statement, the optimization will not be performed.
 + `O3` - Attempts to exploit low activity factors by reusing results from the previous cycle. The design will be partitioned, and each partition will get its own eval function. If none of the inputs to a partition change, its outputs will be reused. These partitions can include state elements.
 
+
 Example invocations:
 
     $ ./essent --help
@@ -55,7 +56,6 @@ int main() {
 }
 ```
 
-
 Compiling everything
 --------------------------------------------------------------------------------
 
@@ -66,6 +66,38 @@ An example compile command:
     $ g++ -O3 -std=c++11 -I./firrtl-sig design-harness.cc -o simulator
 
 On macOS, when using clang, we also found `-fno-slp-vectorize` to improve compile time for large designs, and `-fbracket-depth=1024` allows it to handle designs with deeply nested muxes.
+
+Running with waveform
+--------------------------------------------------------------------------------
+To generate waveform with ESSENT you can choose either format , VCD or FST and then you can view using gtkwave waveform viewer.
+
+Install gtkwave by entering the following commands in the terminal:
+
+sudo apt update
+sudo apt install gtkwave
+
+Compile: 
++ `withVCD` - This flag enabled generates waveform in VCD format , which can be viewed using gtkwave; disabled by default 
++ `withFST` - This flag enabled generates waveform in FST format , which can be viewed using gtkwave; disabled by default
+
+Example invocations:
+    $ ./essent -O3 -withVCD my_design.fir
+    
+Requitered update in Harness file:
+
+Before we start the simulation , we need to add the below to the testbench file, which generates the header part of the VCD or FST. 
+  top->genWaveHeader();
+   
+Running:
+We do not need any extra argument to run with VCD , it is same as running essent without VCD.
+
+with FST:
+Please install vcd2fst before we run with FST.
+Instead of going into generating FST from scratch, we are using vcd2fst tool to convert our VCD related data into streams and compress parallely to generate 
+in a form of FST format, which is 135x smaller than VCD file. 
+
+clang++ -O3 -std=c++11 -fno-slp-vectorize -fbracket-depth=1024 -Iriscv/include -I../firrtl-sig emulator.cc -o emulator_fst -Lriscv/lib -Wl,-rpath,riscv/lib -lfesvr -lpthread
+./emulator_fst dhrystone.riscv | **vcd2fst -p -v /dev/stdin -f** dump_mydesign.fst"
 
 
 Examples
