@@ -19,6 +19,7 @@ case class OptFlags(
     partStats: Boolean = false,
     partCutoff: Int = 8,
     withVCD: Boolean = false,
+    withFST: Boolean = false,
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
@@ -110,6 +111,12 @@ class ArgsParser {
     opt[Unit]("withVCD").abbr("withVCD").action( (_, c) => c.copy(
         removeFlatConnects = false,
         withVCD = true)
+    ).text("parameter used for vcd generation")
+
+    opt[Unit]("withFST").abbr("withFST").action( (_, c) => c.copy(
+        removeFlatConnects = false,
+        withVCD = true,
+        withFST = true)
     ).text("parameter used for vcd generation")
   }
 
