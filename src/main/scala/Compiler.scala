@@ -240,10 +240,10 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     if (opt.useCondParts) {
       condPartWorker.doOpt(opt.partCutoff)
     } else {
-      if (opt.conditionalMuxes)
-        MakeCondMux(sg, rn, Set())
       if (opt.regUpdates)
         OptElideRegUpdates(sg)
+      if (opt.conditionalMuxes)
+        MakeCondMux(sg, rn, Set())
     }
     checkRegResetSafety(sg)
     if (opt.trackParts || opt.trackSigs || opt.trackExts)
