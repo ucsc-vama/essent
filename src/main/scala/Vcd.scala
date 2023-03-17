@@ -240,7 +240,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   def genWaveHeader(): Unit = {
     w.writeLines(1, "void genWaveHeader() {")
     w.writeLines(0, "")
-    w.writeLines(1,s"""outfile = fopen("dump_$topName.vcd","w+");""") 
+    if(opt.withFST) 
+      w.writeLines(1,s"""outfile = fopen("/dev/stdout","w+");""") 
+    else 
+      w.writeLines(1,s"""outfile = fopen("dump_$topName.vcd","w+");""") 
     w.writeLines(2, "time_t timetoday;")
     w.writeLines(2, "time (&timetoday);")
     writeFprintf(""" "%s","$version Essent version 1 $end\n");""")
@@ -312,7 +315,8 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
                  val cleanName = rn.removeDots(name)
                   if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                     if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                      compSig(cleanName,rn.vcdOldValue(cleanName))
+                      val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))
+                      w.writeLines(indentLevel, temp_str)
                        w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
                     }
                   }
