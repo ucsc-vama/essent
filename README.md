@@ -15,6 +15,10 @@ Haoyuan Wang and Scott Beamer
 _ASPLOS, Vancouver, BC, Canada, 2023_
 DOI: 10.1145/3582016.3582034
 
+Apart from commandline options listed in next section, RepCut add 1 extra option for parallel simulation:
+
++ `parallel <N>` - Generates parallel simulator that uses `<N>` threads. This option is only available with `O0`
++ `prof-exec <C>` - Also generate simulator that save profile information for `<C>` cycles. The profile data will be saved as `profile_exec.dat`
 
 Running essent
 --------------------------------------------------------------------------------
