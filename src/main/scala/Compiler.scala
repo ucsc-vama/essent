@@ -230,6 +230,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     if(opt.withVCD) {
       w.writeLines(0, "uint64_t vcd_cycle_count = 0;")
       w.writeLines(1,s"""FILE *outfile;""")
+      // TODO: size this buffer based on widest signal present in the design
+      w.writeLines(1,s"""char VCD_BUF[2000];""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
     logger.info(sg.makeStatsString)
