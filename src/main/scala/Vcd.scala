@@ -287,7 +287,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
 
   def compSig(sn: String,on: String): String = {
       val iden_code = hashMap(sn)
-      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s%s\\n",$sn.to_bin_str(VCD_BUF), "$iden_code");}"""
+      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s%s\\n",$sn.write_char_buf(VCD_BUF), "$iden_code");}"""
   }
 
   def genIdenCode(i: BigInt): String = {
