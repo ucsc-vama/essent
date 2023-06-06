@@ -285,9 +285,18 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   w.writeLines(2,s"""fprintf(outfile,$s""")
   }
 
+  def sanitizeIdenCode(idenCode: String): String = {
+    idenCode flatMap {
+      case '%' => "%%"
+      case '\\' => "\\\\"
+      case '"' => "\\\""
+      case c => c.toString
+    }
+  }
+
   def compSig(sn: String,on: String): String = {
-      val iden_code = hashMap(sn)
-      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s%s\\n",$sn.write_char_buf(VCD_BUF), "$iden_code");}"""
+      val iden_code = sanitizeIdenCode(hashMap(sn))
+      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s$iden_code\\n",$sn.write_char_buf(VCD_BUF));}"""
   }
 
   def genIdenCode(i: BigInt): String = {
