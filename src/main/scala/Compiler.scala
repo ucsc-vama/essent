@@ -1,7 +1,6 @@
 package essent
 
 import java.io.{File, FileWriter, Writer}
-
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
@@ -11,8 +10,8 @@ import firrtl.ir._
 import firrtl.options.Dependency
 import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
-
-import logger._
+import firrtl.transforms.DedupedResult
+import _root_.logger._
 
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
@@ -334,6 +333,24 @@ class EssentCompiler(opt: OptFlags) {
       debugWriter.write(resultState.circuit.serialize)
       debugWriter.close()
     }
+
+    // Dump out dedup table
+    resultState.annotations foreach {
+      case d: DedupedResult => {
+        d.duplicate match {
+          case Some(isMod: firrtl.annotations.InstanceTarget) => {
+            println(s"FIRRTL Dedup: ${d.original.module} -> ${isMod.ofModule}")
+          }
+
+          case _ => {
+            println(s"FIRRTL Dedup: ${d.original.module} is not de-duplicated")
+          }
+        }
+
+      }
+    }
+
+
     val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
     val emitter = new EssentEmitter(opt, dutWriter,resultState.circuit)
     emitter.execute(resultState.circuit)
