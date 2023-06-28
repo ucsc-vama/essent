@@ -23,7 +23,6 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   var last_used_index = BigInt(1)
 
   def displayNameIdentifierSize(m: Module, topName: String) {
-
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     var depth = 0
@@ -49,7 +48,8 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
           hashMap(p.name) = identifier_code
           if(width_l > 0) Seq(s""""$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end\\n"""")
           else Seq(s""""$$var wire $width $identifier_code ${p.name} $$end\\n"""")
-      }}
+      }
+    }
 
     if(m.name == topName) {
       register_name_identifier.foreach(writeFprintf(_))
@@ -65,8 +65,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
             writeFprintf(s""""$$var wire $width $identifier_code ${m.name}[${depth}] $$end\\n"""")
             depth = depth + 1
             mem_depth = m.depth
-          }
-          }
+          }}
         }
       }
     }
@@ -186,8 +185,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
         hierScope(allNamesAndTypes,next_non_empty_values,indentlevel,iden_code_hier_new)
         writeFprintf(""""$upscope $end\n"""")
       }
-    }
-    }
+    }}
   }
 
   def declareOldvaluesAll(circuit: Circuit): Unit = {
@@ -214,7 +212,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     writeFprintf(""" "#%s\n", std::to_string(vcd_cycle_count*10).c_str()""")
     writeFprintf(""""1!clock\n"""")
     w.writeLines(1, " } ")
-    }
+  }
 
   def compareOldValues(circuit: Circuit): Unit = {
     circuit.modules foreach {
@@ -256,7 +254,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     }
     val name = sg.stmtsOrdered flatMap findResultName
     val debug_name = name map { n => if ( !n.contains(".")) n else ""}
-      var up_index = last_used_index
+    var up_index = last_used_index
     debug_name.zipWithIndex map { case(sn, index ) => {
       val iden_code = genIdenCode(index + last_used_index)
       val sig_name = rn.removeDots(sn)
@@ -268,11 +266,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
     non_und_name.zipWithIndex map { case(sn , index ) => {
-          val sig_name = rn.removeDots(sn)
-          val iden_code = genIdenCode(index + last_used_index)
-          hashMap(sig_name) = iden_code
-        }
-        }
+      val sig_name = rn.removeDots(sn)
+      val iden_code = genIdenCode(index + last_used_index)
+      hashMap(sig_name) = iden_code
+    }}
     hierScope(allNamesAndTypes, splitted,2,iden_code_hier)
     writeFprintf(""""$upscope $end\n"""")
     writeFprintf(""""$enddefinitions $end\n"""")
@@ -282,7 +279,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   }
 
   def writeFprintf(s: String) {
-  w.writeLines(2,s"fprintf(outfile,$s);")
+    w.writeLines(2,s"fprintf(outfile,$s);")
   }
 
   def sanitizeIdenCode(idenCode: String): String = {
@@ -295,7 +292,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   }
 
   def compSig(sn: String,on: String): String = {
-      s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s${hashMap(sn)}\\n",$sn.write_char_buf(VCD_BUF));}"""
+    s"""if((vcd_cycle_count == 0) || ($sn != $on)) {fprintf(outfile,"%s${hashMap(sn)}\\n",$sn.write_char_buf(VCD_BUF));}"""
   }
 
   def genIdenCode(i: BigInt): String = {
@@ -313,26 +310,24 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
      sanitizeIdenCode(iden_code)
   }
 
-   def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
-       stmt match {
-         case mw: MemWrite =>
-         case _ =>
-           val resultName = findResultName(stmt)
-            resultName match {
-              case Some(name) =>
-                 val cleanName = rn.removeDots(name)
-                  if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-                    if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                      val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))
-                      w.writeLines(indentLevel, temp_str)
-                       w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
-                    }
-                  }
-              case None =>
+  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
+    stmt match {
+      case mw: MemWrite =>
+      case _ =>
+        val resultName = findResultName(stmt)
+        resultName match {
+          case Some(name) =>
+            val cleanName = rn.removeDots(name)
+            if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
+              if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
+                val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))
+                w.writeLines(indentLevel, temp_str)
+                w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
+              }
             }
-       }
-
-   }
-  
+          case None =>
+        }
+    }
+  }
 }
 
