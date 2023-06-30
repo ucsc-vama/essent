@@ -139,6 +139,11 @@ object Extract extends LazyLogging {
     result.distinct
   }
 
+  def longestCommonPrefix(s: String, t: String, out: String = ""): String = {
+    if (s == "" || t == "" || s(0) != t(0)) out
+    else longestCommonPrefix(s.substring(1), t.substring(1), out + s(0))
+  }
+
   def findDependencesStmt(s: Statement): Seq[HyperedgeDep] = s match {
     case b: Block => b.stmts flatMap findDependencesStmt
     case d: DefNode => Seq(HyperedgeDep(d.name, findDependencesExpr(d.value), s))
@@ -147,15 +152,19 @@ object Extract extends LazyLogging {
     case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
       Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
+
     case p: Print =>
       val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
-      val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
-      // FUTURE: more efficient unique name (perhaps line number?)
+      val depsCommonPrefix = deps.reduce((a, b) => longestCommonPrefix(a, b))
+      val depsWithoutPrefix = deps.map{s => s.substring(depsCommonPrefix.length)}
+      val uniqueName = depsCommonPrefix + "$$" + depsWithoutPrefix.mkString("$") + Util.tidyString(p.string.serialize) + "PRINTF"
       Seq(HyperedgeDep(uniqueName, deps.distinct, p))
     case st: Stop =>
       val deps = findDependencesExpr(st.en)
-      val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
-      // FUTURE: more unique name (perhaps line number?)
+      //      val uniqueName = "STOP" + emitExpr(st.clk) + deps.mkString("$") + st.ret
+      val depsCommonPrefix = deps.reduce((a, b) => longestCommonPrefix(a, b))
+      val depsWithoutPrefix = deps.map{s => s.substring(depsCommonPrefix.length)}
+      val uniqueName = depsCommonPrefix + "$$" + depsWithoutPrefix.mkString("$") + "STOP"
       Seq(HyperedgeDep(uniqueName, deps, st))
     case r: DefRegister => Seq(HyperedgeDep(r.name, Seq(), r))
     case w: DefWire => Seq()
