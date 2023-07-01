@@ -17,6 +17,7 @@ case class OptFlags(
     trackParts: Boolean = false,
     trackExts: Boolean = false,
     partStats: Boolean = false,
+    dedup: Boolean = false,
     partCutoff: Int = 8,
     withVCD: Boolean = false,
     withFST: Boolean = false,
@@ -56,6 +57,7 @@ class ArgsParser {
         removeFlatConnects = true,
         regUpdates = true,
         conditionalMuxes = true,
+        dedup = true,
         useCondParts=true)
     ).text("enable all optimizations (default)")
 
