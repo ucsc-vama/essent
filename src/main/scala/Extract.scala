@@ -3,11 +3,13 @@ package essent
 import essent.Graph.NodeID
 import essent.Emitter._
 import essent.ir._
-
 import firrtl._
 import firrtl.ir._
+import firrtl.transforms.DedupedResult
 import logger.LazyLogging
 
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 
@@ -152,7 +154,6 @@ object Extract extends LazyLogging {
     case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
       Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
-
     case p: Print =>
       val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
       val depsCommonPrefix = deps.reduce((a, b) => longestCommonPrefix(a, b))
@@ -244,4 +245,96 @@ object Extract extends LazyLogging {
     val chainRenames = findChainRenames(StatementGraph(straightConnects))
     otherStmts map replaceNamesStmt(chainRenames)
   }
+
+
+  def findExtModuleInstances(allModuleInstances: Seq[(String, String)],circuit: Circuit) = {
+    val extModInsts = allModuleInstances.flatMap{
+      case (modName, instanceName) => findModule(modName, circuit) match {
+        case m: Module => Seq()
+        case em: ExtModule => Seq((modName, instanceName))
+      }
+    }
+    extModInsts
+  }
+
+  def findModuleDedupTable(annotations: AnnotationSeq) = {
+    val moduleDedupTable = mutable.HashMap[String, String]()
+    annotations map {
+      case d: DedupedResult => {
+        d.duplicate match {
+          case Some(isMod: firrtl.annotations.InstanceTarget) => {
+            val originalMod = d.original.module
+            val newMod = isMod.ofModule
+            moduleDedupTable(originalMod) = newMod
+          }
+
+          case _ => Nil
+        }
+      }
+    }
+    moduleDedupTable
+  }
+
+  def countStatements(stmt: Statement, circuit: Circuit): Int = stmt match {
+    case b: Block => b.stmts.map(countStatements(_, circuit)).sum
+    case i: WDefInstance => {
+      println("Shouldn't reach here")
+      findModule(i.module, circuit) match {
+        case m: Module => countStatements(m.body, circuit)
+        case _ => 0 // ExtModules are ignored
+      }
+    }
+    case EmptyStmt => 0
+    case i: IsInvalid => 0
+    case s: Stop => 0
+    case _ => 1
+  }
+
+  def extractInstanceName(canonicalName: String) = {
+    if (canonicalName.contains('.')) {
+      val lastIndex = canonicalName.lastIndexOf('.')
+      canonicalName.substring(0, lastIndex + 1)
+    } else ""
+  }
+
+  def extractInstanceNodesTable(sg: StatementGraph) = {
+    // Nodes that exclusively belongs to this instance
+    val instExclusiveNodesTable = mutable.HashMap[String, ArrayBuffer[NodeID]]()
+    // Nodes that belongs to this instance and all its sub instances
+    val instInclusiveNodesTable = mutable.HashMap[String, ArrayBuffer[NodeID]]()
+
+    sg.nameToID.foreach {case (name, nid) => {
+      val instName = extractInstanceName(name)
+      // *** Note: It's possible that an instance name does not corresponding to any modules in circuit
+      // For example, [cmem] is used in Chisel-generated FIRRTL (poorly documented)
+      //   to express combinational read memory (read latency = 0)
+      if (!instExclusiveNodesTable.contains(instName)) {
+        instExclusiveNodesTable(instName) = new ArrayBuffer[NodeID]()
+      }
+      instExclusiveNodesTable(instName) += nid
+    }}
+
+    // build inclusive nodes table
+    instExclusiveNodesTable.foreach{case (instName, ids) => {
+      val ancestorInsts = instName.split('.').map(_ + '.').scanLeft("")(_+_)
+      ancestorInsts.foreach{ancestorInstName => {
+        if (!instInclusiveNodesTable.contains(ancestorInstName)) {
+          instInclusiveNodesTable(ancestorInstName) = new ArrayBuffer[NodeID]()
+        }
+        assert(instInclusiveNodesTable.contains(ancestorInstName))
+        if (ancestorInstName != instName) {
+          // Don't do duplicated job
+          instInclusiveNodesTable(ancestorInstName) ++= ids
+        }
+      }}
+    }}
+
+    // DEBUG: Double check, no duplicated nodes. This can be turned off later
+    instInclusiveNodesTable.foreach{case (instName, ids) => {
+      assert(ids.size == ids.distinct.size)
+    }}
+    (instExclusiveNodesTable, instInclusiveNodesTable)
+  }
+
+
 }

@@ -13,6 +13,8 @@ import firrtl.stage.transforms
 import firrtl.transforms.DedupedResult
 import _root_.logger._
 
+import scala.collection.mutable
+
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
   val flagVarName = "PARTflags"
@@ -209,7 +211,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
-  def execute(circuit: Circuit) {
+  def execute(circuit: Circuit, annotations: AnnotationSeq) {
     val opt = initialOpt
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
@@ -236,6 +238,27 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
+
+
+    if (opt.dedup) {
+      // dedup table provided by FIRRTL
+      val moduleDedupTable = findModuleDedupTable(annotations)
+//      moduleDedupTable.toSeq.foreach{ case (modFrom, modTo) => {
+//        logger.info(s"Module ${modFrom} is a copy of module ${modTo}")
+//      }}
+
+      // Module name and corresponding instance name
+      val modInsts = findAllModuleInstances(circuit)
+//      modInsts.foreach{case (modName, instName) => {
+//        logger.info(s"Mod [${modName}], instance name [${instName}]")
+//      }}
+      val extModInsts = findExtModuleInstances(modInsts, circuit)
+
+      // Instance size table
+      val (instExclusiveNodesTable, instInclusiveNodesTable) = extractInstanceNodesTable(sg)
+
+    }
+
     if (opt.useCondParts) {
       condPartWorker.doOpt(opt.partCutoff)
     } else {
@@ -334,26 +357,10 @@ class EssentCompiler(opt: OptFlags) {
       debugWriter.close()
     }
 
-    // Dump out dedup table
-    resultState.annotations foreach {
-      case d: DedupedResult => {
-        d.duplicate match {
-          case Some(isMod: firrtl.annotations.InstanceTarget) => {
-            println(s"FIRRTL Dedup: ${d.original.module} -> ${isMod.ofModule}")
-          }
-
-          case _ => {
-            println(s"FIRRTL Dedup: ${d.original.module} is not de-duplicated")
-          }
-        }
-
-      }
-    }
-
 
     val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
     val emitter = new EssentEmitter(opt, dutWriter,resultState.circuit)
-    emitter.execute(resultState.circuit)
+    emitter.execute(resultState.circuit, resultState.annotations)
     dutWriter.close()
   }
 }
