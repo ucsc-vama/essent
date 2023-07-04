@@ -297,11 +297,17 @@ object Extract extends LazyLogging {
     } else ""
   }
 
-  def extractInstanceNodesTable(sg: StatementGraph) = {
+  def extractInstanceNodesTable(sg: StatementGraph, internalInstNames: Seq[String]) = {
     // Nodes that exclusively belongs to this instance
     val instExclusiveNodesTable = mutable.HashMap[String, ArrayBuffer[NodeID]]()
     // Nodes that belongs to this instance and all its sub instances
     val instInclusiveNodesTable = mutable.HashMap[String, ArrayBuffer[NodeID]]()
+
+    // Initialize. Some instance may be empty (no real nodes), create placeholder for them.
+    internalInstNames.foreach{ instName => {
+      instExclusiveNodesTable(instName) = new ArrayBuffer[NodeID]()
+      instInclusiveNodesTable(instName) = new ArrayBuffer[NodeID]()
+    }}
 
     sg.nameToID.foreach {case (name, nid) => {
       val instName = extractInstanceName(name)

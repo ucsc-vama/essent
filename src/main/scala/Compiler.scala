@@ -240,26 +240,100 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     rn.populateFromSG(sg, extIOMap)
 
 
-    if (opt.dedup) {
+    if (opt.useCondParts) {
+      assert(opt.dedup)
+      // Dedup + VCD not supported yet
+      assert(!opt.withVCD)
+
+      // Start timer
+      val startTime = System.currentTimeMillis()
+
       // dedup table provided by FIRRTL
       val moduleDedupTable = findModuleDedupTable(annotations)
-//      moduleDedupTable.toSeq.foreach{ case (modFrom, modTo) => {
-//        logger.info(s"Module ${modFrom} is a copy of module ${modTo}")
-//      }}
 
       // Module name and corresponding instance name
       val modInsts = findAllModuleInstances(circuit)
-//      modInsts.foreach{case (modName, instName) => {
-//        logger.info(s"Mod [${modName}], instance name [${instName}]")
-//      }}
       val extModInsts = findExtModuleInstances(modInsts, circuit)
 
-      // Instance size table
-      val (instExclusiveNodesTable, instInclusiveNodesTable) = extractInstanceNodesTable(sg)
+      // Module names for all, extmodule and internal module
+      val allModNames = modInsts.map(_._1).distinct
+      val extModNames = extModInsts.map(_._1).distinct
+      val internalModNames = allModNames.filterNot(extModNames.contains)
 
-    }
+      // Module name -> instances map
+      val allModInstanceTable = modInsts.groupBy(_._1).map{case(modName, insts) => modName -> insts.map(_._2)}
+      val extModInstanceTable = allModInstanceTable.filter{case (modName, _) => extModNames.contains(modName)}
+      val internalModInstanceTable = allModInstanceTable.filterNot{case (modName, _) => extModNames.contains(modName)}
 
-    if (opt.useCondParts) {
+      // List of instances
+      val allInstNames = modInsts.map(_._2)
+      val extInstNames = extModInsts.map(_._2)
+      val internalInstNames = internalModNames.flatMap(allModInstanceTable)
+
+
+      // DEBUG: Correctness check. FIRRTL dedup result should also available directly from circuit.
+      //       This code is used to check correctness of FIRRTL dedup.
+      moduleDedupTable.foreach{case (modFrom, modTo) => {
+        assert(allModNames.contains(modTo))
+        if (modFrom != modTo) {
+          // Duplicate modules
+          assert(!allModNames.contains(modFrom))
+        }
+      }}
+
+      // Instance size table (in number of IR nodes)
+      val (instExclusiveNodesTable, instInclusiveNodesTable) = extractInstanceNodesTable(sg, internalInstNames)
+
+      // DEBUG: Ensure instances of a same module has same amount of nodes
+      internalModInstanceTable.foreach{case (modName, insts) => {
+        val firstInstanceSize = instInclusiveNodesTable(insts.head).length
+        insts.foreach{instName => {
+          assert(instInclusiveNodesTable(instName).length == firstInstanceSize)
+        }}
+      }}
+
+      // Find module size (include sub-modules) for every internal module.
+      // Simply pick the size of first instance. Every instance of same module should have same size
+      val internalModIRSize = internalModInstanceTable.map{case (modName, insts) => {
+        modName -> (instInclusiveNodesTable(insts.head).length)
+      }}
+
+      // Determine which mod/insts to dedup
+      // Note: Currently only dedup 1 mod
+      // 1. Find out num of instances of each module
+      val modInstanceCount = internalModInstanceTable.map{ case (modName, insts) => modName -> insts.size}
+      // 2. Find out reduction of [#IR nodes] as dedup benefits
+      val modDedupBenefits = modInstanceCount.map{ case(modName, nInst) => modName -> ((nInst - 1) * internalModIRSize(modName))}
+      // 3. Sort
+      val modDedupBenefitsSorted = modDedupBenefits.toSeq.sortBy(_._2)(Ordering[Int].reverse)
+
+      // Report benefits
+      logger.info("=" * 50)
+      logger.info("Module Name, Num of Instances, Dedup Benefits")
+      for (i <- 0 to Seq(5, modDedupBenefitsSorted.size).min) {
+        val modName = modDedupBenefitsSorted(i)._1
+        val modDedupBenefit = modDedupBenefitsSorted(i)._2
+        logger.info(s"${modName}, ${modInstanceCount(modName)}, ${modDedupBenefit}")
+      }
+      logger.info("=" * 50)
+
+      // Choose which module to deduplicate (most benefit)
+      val dedupMod = modDedupBenefitsSorted.head._1
+      val dedupInstances = allModInstanceTable(dedupMod)
+
+      val dedupBenefit = modDedupBenefitsSorted.head._2
+      val originalIRSize = instInclusiveNodesTable("").size // Root instance is always named as ""
+      logger.info(s"Deduplicate module [${dedupMod}], benefit (num IR nodes) ${dedupBenefit} (-${dedupBenefit.toFloat * 100 / originalIRSize}%)")
+      logger.info(s"Original design has ${originalIRSize} IR nodes")
+      logger.info(s"Dedup instances: ${dedupInstances}")
+
+
+      val stopTime = System.currentTimeMillis()
+      logger.info(s"Took ${stopTime - startTime} ms to find proper dedup module")
+
+
+      println("Breakpoint here")
+
       condPartWorker.doOpt(opt.partCutoff)
     } else {
       if (opt.regUpdates)
