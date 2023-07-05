@@ -115,14 +115,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }}
 
 
-    // 2. Partition remaining graph
+    // 2. Propagate partitioning from main instance to other dedup instances
     ap = AcyclicPart(ap.mg, excludedIDs.toSet)
     // Align remaining dedup instances with main instance
     val alignTables = dedupRemainingInstances.map{otherInstName => {
       val table = alignInstance(dedupMainInstanceName, dedupMainInstanceNodes, otherInstName, sg)
       otherInstName -> table
     }}.toMap
-    // Propagate partition for main instance to other instances
+    // Propagate partition
     dedupRemainingInstances.foreach{otherInstName => {
       val mergesToConsider = dedupMainInstancePartitions.map{case (_, group) => {
         group.map(alignTables(otherInstName))
