@@ -5,6 +5,7 @@ import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 import essent.Util._
+import essent.DedupWorker._
 import firrtl._
 import firrtl.ir._
 import firrtl.options.Dependency
@@ -248,62 +249,15 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       // Start timer
       val startTime = System.currentTimeMillis()
 
-      // dedup table provided by FIRRTL
-      val moduleDedupTable = findModuleDedupTable(annotations)
-
-      // Module name and corresponding instance name
-      val modInsts = findAllModuleInstances(circuit)
-      val extModInsts = findExtModuleInstances(modInsts, circuit)
-
-      // Module names for all, extmodule and internal module
-      val allModNames = modInsts.map(_._1).distinct
-      val extModNames = extModInsts.map(_._1).distinct
-      val internalModNames = allModNames.filterNot(extModNames.contains)
-
-      // Module name -> instances map
-      val allModInstanceTable = modInsts.groupBy(_._1).map{case(modName, insts) => modName -> insts.map(_._2)}
-      val extModInstanceTable = allModInstanceTable.filter{case (modName, _) => extModNames.contains(modName)}
-      val internalModInstanceTable = allModInstanceTable.filterNot{case (modName, _) => extModNames.contains(modName)}
-
-      // List of instances
-      val allInstNames = modInsts.map(_._2)
-      val extInstNames = extModInsts.map(_._2)
-      val internalInstNames = internalModNames.flatMap(allModInstanceTable)
-
-
-      // DEBUG: Correctness check. FIRRTL dedup result should also available directly from circuit.
-      //       This code is used to check correctness of FIRRTL dedup.
-      moduleDedupTable.foreach{case (modFrom, modTo) => {
-        assert(allModNames.contains(modTo))
-        if (modFrom != modTo) {
-          // Duplicate modules
-          assert(!allModNames.contains(modFrom))
-        }
-      }}
-
-      // Instance size table (in number of IR nodes)
-      val (instExclusiveNodesTable, instInclusiveNodesTable) = extractInstanceNodesTable(sg, internalInstNames)
-
-      // DEBUG: Ensure instances of a same module has same amount of nodes
-      internalModInstanceTable.foreach{case (modName, insts) => {
-        val firstInstanceSize = instInclusiveNodesTable(insts.head).length
-        insts.foreach{instName => {
-          assert(instInclusiveNodesTable(instName).length == firstInstanceSize)
-        }}
-      }}
-
-      // Find module size (include sub-modules) for every internal module.
-      // Simply pick the size of first instance. Every instance of same module should have same size
-      val internalModIRSize = internalModInstanceTable.map{case (modName, insts) => {
-        modName -> (instInclusiveNodesTable(insts.head).length)
-      }}
+      // Parse module and instance information
+      val modInstInfo = new ModuleInstanceInfo(circuit, annotations, sg)
 
       // Determine which mod/insts to dedup
       // Note: Currently only dedup 1 mod
       // 1. Find out num of instances of each module
-      val modInstanceCount = internalModInstanceTable.map{ case (modName, insts) => modName -> insts.size}
+      val modInstanceCount = modInstInfo.internalModInstanceTable.map{ case (modName, insts) => modName -> insts.size}
       // 2. Find out reduction of [#IR nodes] as dedup benefits
-      val modDedupBenefits = modInstanceCount.map{ case(modName, nInst) => modName -> ((nInst - 1) * internalModIRSize(modName))}
+      val modDedupBenefits = modInstanceCount.map{ case(modName, nInst) => modName -> ((nInst - 1) * modInstInfo.internalModIRSize(modName))}
       // 3. Sort
       val modDedupBenefitsSorted = modDedupBenefits.toSeq.sortBy(_._2)(Ordering[Int].reverse)
 
@@ -319,10 +273,10 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
       // Choose which module to deduplicate (most benefit)
       val dedupMod = modDedupBenefitsSorted.head._1
-      val dedupInstances = allModInstanceTable(dedupMod)
+      val dedupInstances = modInstInfo.allModInstanceTable(dedupMod)
 
       val dedupBenefit = modDedupBenefitsSorted.head._2
-      val originalIRSize = instInclusiveNodesTable("").size // Root instance is always named as ""
+      val originalIRSize = modInstInfo.instInclusiveNodesTable("").size // Root instance is always named as ""
       logger.info(s"Deduplicate module [${dedupMod}], benefit (num IR nodes) ${dedupBenefit} (-${dedupBenefit.toFloat * 100 / originalIRSize}%)")
       logger.info(s"Original design has ${originalIRSize} IR nodes")
       logger.info(s"Dedup instances: ${dedupInstances}")
@@ -332,9 +286,15 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       logger.info(s"Took ${stopTime - startTime} ms to find proper dedup module")
 
 
-      println("Breakpoint here")
 
-      condPartWorker.doOpt(opt.partCutoff)
+      if (dedupInstances.size <= 1) {
+        println("Input circuit contains no duplicated modules!")
+        condPartWorker.doOpt((opt.partCutoff))
+      } else {
+        condPartWorker.doOptForDedup(opt.partCutoff, dedupInstances, modInstInfo)
+
+      }
+
     } else {
       if (opt.regUpdates)
         OptElideRegUpdates(sg)

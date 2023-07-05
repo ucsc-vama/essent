@@ -3,11 +3,12 @@ package essent
 import essent.Graph.NodeID
 import essent.Extract._
 import essent.ir._
-
 import firrtl.ir._
-import logger._
+import _root_.logger._
+import essent.DedupWorker.alignInstance
 
 import collection.mutable.ArrayBuffer
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 
@@ -80,6 +81,81 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
     logger.info(partitioningQualityStats())
+  }
+
+  def doOptForDedup(smallPartCutoff: Int, dedupInstances: Seq[String], modInstInfo: ModuleInstanceInfo) {
+
+    val dedupMainInstanceName = dedupInstances.head
+    val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName)
+    val dedupRemainingInstances = dedupInstances.filter(_ != dedupMainInstanceName)
+
+    val dedupMainInstancePartitions = mutable.HashMap[NodeID, Seq[NodeID]]()
+
+    val excludedIDs = ArrayBuffer[Int]()
+    clumpByStmtType[Print]() foreach { excludedIDs += _ }
+    excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+
+    // 1. Only partition nodes for main dedup instqance
+    val excludeIDsForDedup1 = excludedIDs.clone() ++ sg.nodeRange().filterNot(dedupMainInstanceNodes.contains)
+    var ap = AcyclicPart(sg, excludeIDsForDedup1.toSet)
+    ap.partition(smallPartCutoff)
+
+    // Collect partition result
+    ap.mg.mergeIDToMembers.foreach{case (mergeId, members) => {
+      val groupInDedupInst = members.map(dedupMainInstanceNodes.contains).reduce(_&_)
+      if (groupInDedupInst){
+        dedupMainInstancePartitions(mergeId) = members
+      }
+    }}
+
+    // Table that stores corresponding mergeIDs
+    val dedupMergeIdMap = mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]()
+    dedupMainInstancePartitions.foreach{case (mergeId, _) => {
+      dedupMergeIdMap(mergeId) = new ArrayBuffer[NodeID]()
+    }}
+
+
+    // 2. Partition remaining graph
+    ap = AcyclicPart(ap.mg, excludedIDs.toSet)
+    // Align remaining dedup instances with main instance
+    val alignTables = dedupRemainingInstances.map{otherInstName => {
+      val table = alignInstance(dedupMainInstanceName, dedupMainInstanceNodes, otherInstName, sg)
+      otherInstName -> table
+    }}.toMap
+    // Propagate partition for main instance to other instances
+    dedupRemainingInstances.foreach{otherInstName => {
+      val mergesToConsider = dedupMainInstancePartitions.map{case (_, group) => {
+        group.map(alignTables(otherInstName))
+      }}.toSeq
+      ap.perfomMergesIfPossible(mergesToConsider)
+
+      // Save successful partitions
+      dedupMainInstancePartitions.foreach{case (mainInstMergeId, members) => {
+        val correspondingNodeId = alignTables(otherInstName)(members.head)
+        val correspondingMergeId = ap.mg.idToMergeID(correspondingNodeId)
+        dedupMergeIdMap(mainInstMergeId) += correspondingMergeId
+      }}
+
+    }}
+
+
+    // 3. Unmerge?
+
+    // Unsuccessful propagation: Partitions that doesn't apply to all dedup instances
+    // Those partitions should work, but might be good to unmerge them to create larger partitions
+    val unsuccesfulMergeIds = dedupMergeIdMap.values.filter(_.size < dedupInstances.size - 1).flatten.toSeq
+
+
+    // Note: Optional: unmerge partitions that doesn't apply to all dedup instances
+    val unmerge = true
+
+
+    // 4. Apply original AP algorithm on remaining part of graph
+    ap.partition(smallPartCutoff)
+
+    convertIntoCPStmts(ap, excludedIDs.toSet)
+    logger.info(partitioningQualityStats())
+
   }
 
   def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }
