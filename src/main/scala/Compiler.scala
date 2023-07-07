@@ -291,6 +291,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         println("Input circuit contains no duplicated modules!")
         condPartWorker.doOpt((opt.partCutoff))
       } else {
+        logger.info("Start working on dedup optimization")
         condPartWorker.doOptForDedup(opt.partCutoff, dedupInstances, modInstInfo)
 
       }

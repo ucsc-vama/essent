@@ -48,6 +48,12 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       val alwaysActive = excludedIDs.contains(id)
       val cpStmt = CondPart(topoOrder, alwaysActive, idToInputNames(id),
                                 idToMemberStmts(id), outputsToDeclare.toMap)
+      val isAcyclic = sg.mergeIsAcyclic(idToMemberIDs(id).toSet)
+      if (!isAcyclic) {
+        println(s"Cycle detected, topoOrder ${topoOrder}, mergeId ${id}")
+        println(s"Merge ${idToMemberIDs(id).size} nodes")
+      }
+      assert(isAcyclic)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
       namesToDeclare foreach { name => {
         rn.mutateDecTypeIfLocal(name, PartOut) }
@@ -86,74 +92,192 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
   def doOptForDedup(smallPartCutoff: Int, dedupInstances: Seq[String], modInstInfo: ModuleInstanceInfo) {
 
     val dedupMainInstanceName = dedupInstances.head
-    val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName)
+    val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName).toSet
     val dedupRemainingInstances = dedupInstances.filter(_ != dedupMainInstanceName)
 
-    val dedupMainInstancePartitions = mutable.HashMap[NodeID, Seq[NodeID]]()
+    // Table that stores corresponding mergeIDs
+    val dedupMergeIdMap = mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]()
+
 
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
 
     // 1. Only partition nodes for main dedup instqance
+    var startTime = System.currentTimeMillis()
+    logger.info("Start initial partitioning for main dedup module")
     val excludeIDsForDedup1 = excludedIDs.clone() ++ sg.nodeRange().filterNot(dedupMainInstanceNodes.contains)
     var ap = AcyclicPart(sg, excludeIDsForDedup1.toSet)
     ap.partition(smallPartCutoff)
 
+    var stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms for initial partitioning")
+
+    // Check merge graph size
+    var max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
+    logger.info(s"After initial partition, max partition size is ${max_partition_size}")
+
+
+    startTime = System.currentTimeMillis()
     // Collect partition result
+    // Note: Only record members, as after multiple merge (AcyclicPart), mergeId may not be head of group
+    val dedupMainInstancePartitionMembers = ArrayBuffer[Seq[NodeID]]()
+
     ap.mg.mergeIDToMembers.foreach{case (mergeId, members) => {
-      val groupInDedupInst = members.map(dedupMainInstanceNodes.contains).reduce(_&_)
-      if (groupInDedupInst){
-        dedupMainInstancePartitions(mergeId) = members
+      // For all merges (more than 1 members), they should within main dedup inst
+      //   as limited by excludeIDsForDedup1
+      if (members.size > 1) {
+        // Only save internal partitions (no outside connection)
+        val groupHasOutsideConnection = members.flatMap{nid => {
+          (sg.inNeigh(nid) ++ sg.outNeigh(nid)).map{!dedupMainInstanceNodes.contains(_)}
+        }}.reduce(_|_)
+        if ((!groupHasOutsideConnection)){
+          dedupMainInstancePartitionMembers += members
+        }
       }
     }}
 
-    // Table that stores corresponding mergeIDs
-    val dedupMergeIdMap = mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]()
-    dedupMainInstancePartitions.foreach{case (mergeId, _) => {
-      dedupMergeIdMap(mergeId) = new ArrayBuffer[NodeID]()
+
+
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms for collecting initial partition result")
+
+    // 2. Plan for partitioning propagation from main instance to other dedup instances
+    // Only cares partitions that are internal to main instance
+
+    // Align remaining dedup instances with main instance
+    val alignTables = dedupRemainingInstances.map{otherInstName => {
+      val table = alignInstance(dedupMainInstanceName, dedupMainInstanceNodes.toSeq, otherInstName, sg)
+      otherInstName -> table
+    }}.toMap
+
+    // Propagation plan
+    val dedupPropagationPlan = dedupRemainingInstances.map{otherInstName => {
+      val otherInstMerges = dedupMainInstancePartitionMembers.map{group => {
+        group.map(alignTables(otherInstName))
+      }}.toSeq
+      otherInstName -> otherInstMerges
+    }}.toMap
+
+
+
+    // 4. Recover dedup instances
+    ap = AcyclicPart(sg, excludedIDs.toSet)
+    // Recover main inst
+    val completedMerges = ap.perfomMergesIfPossible(dedupMainInstancePartitionMembers)
+    // Assert: every group in main instance are merged
+    assert(dedupMainInstancePartitionMembers.size == completedMerges.size)
+
+    // Get mergeids
+    val dedupMainInstancePartitions = mutable.HashMap[NodeID, Seq[NodeID]]()
+    dedupMainInstancePartitionMembers.foreach{members => {
+      val headMember = members.head
+      val mergeId = ap.mg.idToMergeID(headMember)
+
+      // Just curious. This doesn't need to be true
+      assert(mergeId == headMember)
+
+      dedupMainInstancePartitions(mergeId) = members
+    }}
+
+    // Init
+    dedupMainInstancePartitions.keys.foreach{mid => {
+      dedupMergeIdMap(mid) = new ArrayBuffer[NodeID]()
     }}
 
 
-    // 2. Propagate partitioning from main instance to other dedup instances
-    ap = AcyclicPart(ap.mg, excludedIDs.toSet)
-    // Align remaining dedup instances with main instance
-    val alignTables = dedupRemainingInstances.map{otherInstName => {
-      val table = alignInstance(dedupMainInstanceName, dedupMainInstanceNodes, otherInstName, sg)
-      otherInstName -> table
-    }}.toMap
-    // Propagate partition
-    dedupRemainingInstances.foreach{otherInstName => {
-      val mergesToConsider = dedupMainInstancePartitions.map{case (_, group) => {
-        group.map(alignTables(otherInstName))
-      }}.toSeq
-      ap.perfomMergesIfPossible(mergesToConsider)
+    val numPartsInMain = dedupMainInstancePartitionMembers.size
+    val numNodesInMain = dedupMainInstancePartitions.keys.map(ap.mg.mergeIDToMembers).map(_.size).sum
+    println(s"Average size of partition in main instance is ${numNodesInMain.toFloat / numPartsInMain}")
 
-      // Save successful partitions
+    // Check merge graph size
+    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
+    logger.info(s"After propagate initial partition, max partition size is ${max_partition_size}")
+
+
+    logger.info("Propagating initial partition result to other instances")
+    // Propagate partition
+    dedupRemainingInstances.indices.foreach{instId => {
+      val otherInstName = dedupRemainingInstances(instId)
+
+      val mergesToConsider = dedupPropagationPlan(otherInstName)
+      val completedMerges = ap.perfomMergesIfPossible(mergesToConsider)
+      // Assert: every group is merged
+      assert(mergesToConsider.size == completedMerges.size)
+
+      // Save partitions
       dedupMainInstancePartitions.foreach{case (mainInstMergeId, members) => {
         val correspondingNodeId = alignTables(otherInstName)(members.head)
         val correspondingMergeId = ap.mg.idToMergeID(correspondingNodeId)
         dedupMergeIdMap(mainInstMergeId) += correspondingMergeId
       }}
-
     }}
 
 
-    // 3. Unmerge?
+    // TODO: Double check nodes not in dedup are never merged
 
-    // Unsuccessful propagation: Partitions that doesn't apply to all dedup instances
-    // Those partitions should work, but might be good to unmerge them to create larger partitions
-    val unsuccesfulMergeIds = dedupMergeIdMap.values.filter(_.size < dedupInstances.size - 1).flatten.toSeq
-
-
-    // Note: Optional: unmerge partitions that doesn't apply to all dedup instances
-    val unmerge = true
+    // Check merge graph size
+    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
+    logger.info(s"After propagate partition, max partition size is ${max_partition_size}")
 
 
-    // 4. Apply original AP algorithm on remaining part of graph
+    logger.info(s"${dedupMergeIdMap.size} partitions in main dedup instance propagated to ${dedupInstances.size - 1} instances.")
+
+    val excludeIDsForFinalPhase = (excludedIDs ++ dedupMainInstancePartitionMembers.flatten ++ dedupPropagationPlan.values.flatten.flatten).toSet
+    ap = new AcyclicPart(ap.mg, excludeIDsForFinalPhase)
     ap.partition(smallPartCutoff)
 
+//    dedupRemainingInstances.indices.foreach{instId => {
+//      val otherInstName = dedupRemainingInstances(instId)
+//
+//      val numParts = dedupPropagationPlan(otherInstName).size
+//      val numNodes = dedupMainInstancePartitions.keys.map(dedupMergeIdMap).map(_(instId)).map(ap.mg.mergeIDToMembers).map(_.size).sum
+//      println(s"Before partitioning, Average size of partition in instance ${otherInstName} is ${numNodes.toFloat / numParts}")
+//    }}
+
+
+//    dedupRemainingInstances.indices.foreach{instId => {
+//      val otherInstName = dedupRemainingInstances(instId)
+//
+//      // Search for new id
+//      val partitions = dedupPropagationPlan(otherInstName)
+//      val mergeIds = partitions.map {members => {
+//        ap.mg.idToMergeID(members.head)
+//      }}
+//
+//      val numParts = partitions.size
+//      val numNodes = mergeIds.map(ap.mg.mergeIDToMembers).map(_.size).sum
+//      println(s"After partitioning, Average size of partition in instance ${otherInstName} is ${numNodes.toFloat / numParts}")
+//    }}
+
+
+
+    // Check merge graph size
+    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
+    logger.info(s"After final partition, max partition size is ${max_partition_size}")
+
+    TopologicalSort(ap.mg)
+
+
+
+//    // Test
+//    dedupRemainingInstances.indices.foreach{idx => {
+//      val instName = dedupRemainingInstances(idx)
+//      val mainInstMergeIds = dedupMainInstancePartitions.keys
+//      val numPartsInInst = mainInstMergeIds.size
+//      val numNodesInInst = mainInstMergeIds.map(dedupMergeIdMap).map(_(idx)).map(ap.mg.mergeIDToMembers).map(_.size).sum
+//      println(s"Average size of partition in instance ${instName} is ${numNodesInInst.toFloat / numPartsInInst}")
+//    }}
+//
+    // Test
+    val numParts = ap.mg.mergeIDToMembers.size
+    val numNodes = ap.mg.mergeIDToMembers.values.map(_.size).sum
+    println(s"Average size of partition is ${numNodes.toFloat / numParts}")
+
+
     convertIntoCPStmts(ap, excludedIDs.toSet)
+
+    TopologicalSort(sg)
     logger.info(partitioningQualityStats())
 
   }
