@@ -227,30 +227,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     ap = new AcyclicPart(ap.mg, excludeIDsForFinalPhase)
     ap.partition(smallPartCutoff)
 
-//    dedupRemainingInstances.indices.foreach{instId => {
-//      val otherInstName = dedupRemainingInstances(instId)
-//
-//      val numParts = dedupPropagationPlan(otherInstName).size
-//      val numNodes = dedupMainInstancePartitions.keys.map(dedupMergeIdMap).map(_(instId)).map(ap.mg.mergeIDToMembers).map(_.size).sum
-//      println(s"Before partitioning, Average size of partition in instance ${otherInstName} is ${numNodes.toFloat / numParts}")
-//    }}
-
-
-//    dedupRemainingInstances.indices.foreach{instId => {
-//      val otherInstName = dedupRemainingInstances(instId)
-//
-//      // Search for new id
-//      val partitions = dedupPropagationPlan(otherInstName)
-//      val mergeIds = partitions.map {members => {
-//        ap.mg.idToMergeID(members.head)
-//      }}
-//
-//      val numParts = partitions.size
-//      val numNodes = mergeIds.map(ap.mg.mergeIDToMembers).map(_.size).sum
-//      println(s"After partitioning, Average size of partition in instance ${otherInstName} is ${numNodes.toFloat / numParts}")
-//    }}
-
-
 
     // Check merge graph size
     max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max

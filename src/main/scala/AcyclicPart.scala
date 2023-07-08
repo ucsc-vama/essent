@@ -37,7 +37,17 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
 
   def coarsenWithMFFCs() {
     val mffcResults = MFFC(mg, excludeSet)
-    mg.applyInitialAssignments(mffcResults)
+    // Note: applyInitialAssignments would clear existing partitions
+    // mg.applyInitialAssignments(mffcResults)
+
+    // Don't clear
+    val asMap = Util.groupIndicesByValue(mffcResults)
+    asMap foreach { case (mergeID, members) => {
+      assert(members.contains(mergeID))
+      mg.mergeIDToMembers.getOrElseUpdate(mergeID, new ArrayBuffer[NodeID]()) // maybe create the entry if it doesn't already exist
+      mg.mergeGroups(mergeID, members diff Seq(mergeID))
+    }}
+
     logger.info(s"  #mffcs found: ${mg.mergeIDToMembers.size - excludeSet.size}")
     logger.info(s"  largest mffc: ${(mg.mergeIDToMembers.values.map{_.size}).max}")
   }
