@@ -103,29 +103,20 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
     excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
 
+    // ************************************************
     // 1. Only partition nodes for main dedup instqance
     var startTime = System.currentTimeMillis()
-    logger.info("Start initial partitioning for main dedup module")
+
     val excludeIDsForDedup1 = excludedIDs.clone() ++ sg.nodeRange().filterNot(dedupMainInstanceNodes.contains)
     var ap = AcyclicPart(sg, excludeIDsForDedup1.toSet)
     ap.partition(smallPartCutoff)
 
-    var stopTime = System.currentTimeMillis()
-    logger.info(s"Took ${stopTime - startTime} ms for initial partitioning")
-
-    // Check merge graph size
-    var max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
-    logger.info(s"After initial partition, max partition size is ${max_partition_size}")
-
-
-    startTime = System.currentTimeMillis()
     // Collect partition result
     // Note: Only record members, as after multiple merge (AcyclicPart), mergeId may not be head of group
     val dedupMainInstancePartitionMembers = ArrayBuffer[Seq[NodeID]]()
 
     ap.mg.mergeIDToMembers.foreach{case (mergeId, members) => {
-      // For all merges (more than 1 members), they should within main dedup inst
-      //   as limited by excludeIDsForDedup1
+      // For all merges (more than 1 members), they should within main dedup inst as limited by excludeIDsForDedup1
       if (members.size > 1) {
         // Only save internal partitions (no outside connection)
         val groupHasOutsideConnection = members.flatMap{nid => {
@@ -137,13 +128,13 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       }
     }}
 
+    var stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to perform initial partitioning and collect result")
 
-
-    stopTime = System.currentTimeMillis()
-    logger.info(s"Took ${stopTime - startTime} ms for collecting initial partition result")
-
+    // ************************************************
     // 2. Plan for partitioning propagation from main instance to other dedup instances
     // Only cares partitions that are internal to main instance
+    startTime = System.currentTimeMillis()
 
     // Align remaining dedup instances with main instance
     val alignTables = dedupRemainingInstances.map{otherInstName => {
@@ -159,9 +150,13 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       otherInstName -> otherInstMerges
     }}.toMap
 
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to create deduplication scheme")
 
+    // ************************************************
+    // 3. Recover dedup instances
+    startTime = System.currentTimeMillis()
 
-    // 4. Recover dedup instances
     ap = AcyclicPart(sg, excludedIDs.toSet)
     // Recover main inst
     val completedMerges = ap.perfomMergesIfPossible(dedupMainInstancePartitionMembers)
@@ -174,28 +169,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       val headMember = members.head
       val mergeId = ap.mg.idToMergeID(headMember)
 
-      // Just curious. This doesn't need to be true
-      assert(mergeId == headMember)
-
       dedupMainInstancePartitions(mergeId) = members
     }}
 
-    // Init
+    // Init mapping table
     dedupMainInstancePartitions.keys.foreach{mid => {
       dedupMergeIdMap(mid) = new ArrayBuffer[NodeID]()
     }}
 
-
-    val numPartsInMain = dedupMainInstancePartitionMembers.size
-    val numNodesInMain = dedupMainInstancePartitions.keys.map(ap.mg.mergeIDToMembers).map(_.size).sum
-    println(s"Average size of partition in main instance is ${numNodesInMain.toFloat / numPartsInMain}")
-
-    // Check merge graph size
-    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
-    logger.info(s"After propagate initial partition, max partition size is ${max_partition_size}")
-
-
-    logger.info("Propagating initial partition result to other instances")
     // Propagate partition
     dedupRemainingInstances.indices.foreach{instId => {
       val otherInstName = dedupRemainingInstances(instId)
@@ -205,7 +186,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       // Assert: every group is merged
       assert(mergesToConsider.size == completedMerges.size)
 
-      // Save partitions
+      // Save partition mapping
       dedupMainInstancePartitions.foreach{case (mainInstMergeId, members) => {
         val correspondingNodeId = alignTables(otherInstName)(members.head)
         val correspondingMergeId = ap.mg.idToMergeID(correspondingNodeId)
@@ -214,46 +195,57 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     }}
 
 
-    // TODO: Double check nodes not in dedup are never merged
-
-    // Check merge graph size
-    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
-    logger.info(s"After propagate partition, max partition size is ${max_partition_size}")
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to apply deduplication scheme (${dedupMainInstancePartitions.size} partitions) to ${dedupInstances.size - 1} instances.")
 
 
-    logger.info(s"${dedupMergeIdMap.size} partitions in main dedup instance propagated to ${dedupInstances.size - 1} instances.")
+    // ************************************************
+    // 4. Partitioning remaining part of graph
+    startTime = System.currentTimeMillis()
 
     val excludeIDsForFinalPhase = (excludedIDs ++ dedupMainInstancePartitionMembers.flatten ++ dedupPropagationPlan.values.flatten.flatten).toSet
     ap = new AcyclicPart(ap.mg, excludeIDsForFinalPhase)
     ap.partition(smallPartCutoff)
 
-    // Done partitioning. Check
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to finish remaining graph.")
+
+    // ************************************************
+    // 5. Done partitioning. Check
+    startTime = System.currentTimeMillis()
+
     assert(ap.checkPartioning())
 
+    // Dedup instances should partitioned as planned
+    // For main:
+    dedupMainInstancePartitions.foreach{case (mergeId, members) => {
+      val realMembers = ap.mg.mergeIDToMembers(mergeId)
+      assert((members.toSet diff realMembers.toSet).isEmpty)
+    }}
+    // For others:
+    dedupPropagationPlan.foreach{case (instName, merges) => {
+      merges.foreach{members => {
+        // every member in this group should be in same partition
+        val mergeIds = members.map{ap.mg.idToMergeID}.toSet
+        assert(mergeIds.size == 1)
 
-    // Check merge graph size
-    max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
-    logger.info(s"After final partition, max partition size is ${max_partition_size}")
+        val mergeId = mergeIds.head
+        val realMembers = ap.mg.mergeIDToMembers(mergeId)
+        assert((members.toSet diff realMembers.toSet).isEmpty)
+      }}
+    }}
 
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to check correctness.")
 
-
-
-//    // Test
-//    dedupRemainingInstances.indices.foreach{idx => {
-//      val instName = dedupRemainingInstances(idx)
-//      val mainInstMergeIds = dedupMainInstancePartitions.keys
-//      val numPartsInInst = mainInstMergeIds.size
-//      val numNodesInInst = mainInstMergeIds.map(dedupMergeIdMap).map(_(idx)).map(ap.mg.mergeIDToMembers).map(_.size).sum
-//      println(s"Average size of partition in instance ${instName} is ${numNodesInInst.toFloat / numPartsInInst}")
-//    }}
-//
-    // Test
-    val numParts = ap.mg.mergeIDToMembers.size
-    val numNodes = ap.mg.mergeIDToMembers.values.map(_.size).sum
-    println(s"Average size of partition is ${numNodes.toFloat / numParts}")
-
+    // ************************************************
+    // 6. Convert to CondPart
+    startTime = System.currentTimeMillis()
 
     convertIntoCPStmts(ap, excludedIDs.toSet)
+
+    stopTime = System.currentTimeMillis()
+    logger.info(s"Took ${stopTime - startTime} ms to convert into CondPart statements.")
 
     logger.info(partitioningQualityStats())
 
