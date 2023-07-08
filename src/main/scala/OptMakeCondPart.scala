@@ -227,12 +227,14 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     ap = new AcyclicPart(ap.mg, excludeIDsForFinalPhase)
     ap.partition(smallPartCutoff)
 
+    // Done partitioning. Check
+    assert(ap.checkPartioning())
+
 
     // Check merge graph size
     max_partition_size = ap.mg.mergeIDToMembers.values.map(_.size).max
     logger.info(s"After final partition, max partition size is ${max_partition_size}")
 
-    TopologicalSort(ap.mg)
 
 
 
@@ -253,7 +255,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
     convertIntoCPStmts(ap, excludedIDs.toSet)
 
-    TopologicalSort(sg)
     logger.info(partitioningQualityStats())
 
   }

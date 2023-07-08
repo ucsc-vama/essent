@@ -148,8 +148,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
       logger.info(s"[$label] took: ${stopTime - startTime}")
       logger.info(s"Down to ${partsRemaining()} parts")
     }}
-    // TODO: checkPartitioning() is extremely slow for partially partitioned graph
-    assert(checkPartioning())
+    // assert(checkPartioning())
   }
 
   def iterParts() = mg.iterGroups
