@@ -71,75 +71,69 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     }
   }
 
-  def declareOldValues(m: Module, topName: String) {
-    if (m.name == topName) {
-      val registers = findInstancesOf[DefRegister](m.body)
-      val registerDecs = registers map {
-        r: DefRegister => s"${genCppType(r.tpe)} ${rn.vcdOldValue(r.name)};"
-      }
-      val memories = findInstancesOf[DefMemory](m.body)
-      val memDecs = memories map { m: DefMemory =>
-        s"${genCppType(m.dataType)} ${rn.vcdOldValue(m.name)}[${m.depth}];"
-      }
-      val portDecs = m.ports flatMap { p =>
-        p.tpe match {
-          case ClockType => Seq()
-          case _ => Seq(s"${genCppType(p.tpe)} ${rn.vcdOldValue(p.name)};")
-        }
-      }
-      w.writeLines(1, registerDecs)
-      w.writeLines(1, memDecs)
-      w.writeLines(1, portDecs)
+  def declareOldValues(m: Module) {
+    val registers = findInstancesOf[DefRegister](m.body)
+    val registerDecs = registers map {
+      r: DefRegister => s"${genCppType(r.tpe)} ${rn.vcdOldValue(r.name)};"
     }
+    val memories = findInstancesOf[DefMemory](m.body)
+    val memDecs = memories map { m: DefMemory =>
+      s"${genCppType(m.dataType)} ${rn.vcdOldValue(m.name)}[${m.depth}];"
+    }
+    val portDecs = m.ports flatMap { p =>
+      p.tpe match {
+        case ClockType => Seq()
+        case _ => Seq(s"${genCppType(p.tpe)} ${rn.vcdOldValue(p.name)};")
+      }
+    }
+    w.writeLines(1, registerDecs)
+    w.writeLines(1, memDecs)
+    w.writeLines(1, portDecs)
   }
 
-  def compareOldNewSignal(m: Module, topName: String) {
-    if (m.name == topName) {
-      val registers = findInstancesOf[DefRegister](m.body)
-      val registerComps = registers map {
-        r: DefRegister => compSig(r.name, rn.vcdOldValue(r.name))
-      }
-      val memories = findInstancesOf[DefMemory](m.body)
-      val memComps = memories map { m: DefMemory =>
-        // TODO: Is this correct?
-        compSig(s"${m.name}[${m.depth}]", s"${rn.vcdOldValue(m.name)}[${m.depth}]")
-      }
-      val portComps = m.ports flatMap { p =>
-        p.tpe match {
-          case ClockType => Seq()
-          case _ => Seq(compSig(p.name, rn.vcdOldValue(p.name)))
-        }
-      }
-      w.writeLines(2, registerComps)
-      w.writeLines(2, memComps)
-      w.writeLines(2, portComps)
+  def compareOldNewSignal(m: Module) {
+    val registers = findInstancesOf[DefRegister](m.body)
+    val registerComps = registers map {
+      r: DefRegister => compSig(r.name, rn.vcdOldValue(r.name))
     }
+    val memories = findInstancesOf[DefMemory](m.body)
+    val memComps = memories map { m: DefMemory =>
+      // TODO: Is this correct?
+      compSig(s"${m.name}[${m.depth}]", s"${rn.vcdOldValue(m.name)}[${m.depth}]")
+    }
+    val portComps = m.ports flatMap { p =>
+      p.tpe match {
+        case ClockType => Seq()
+        case _ => Seq(compSig(p.name, rn.vcdOldValue(p.name)))
+      }
+    }
+    w.writeLines(2, registerComps)
+    w.writeLines(2, memComps)
+    w.writeLines(2, portComps)
   }
 
-  def assignOldValue(m: Module, topName: String) {
-    if(m.name == topName) {
-      val registers = findInstancesOf[DefRegister](m.body)
-      val registerAssigns = registers map {
-        r: DefRegister => s"${rn.vcdOldValue(r.name)} = ${r.name};"
-      }
-      val memories = findInstancesOf[DefMemory](m.body)
-      val memAssigns = memories map { m: DefMemory =>
-        // TODO: Is this correct?
-        s"${rn.vcdOldValue(m.name)}[${m.depth}] = ${m.name}[${m.depth}];"
-      }
-      val portAssigns = m.ports flatMap { p =>
-        // Removing signal names with "_" similar to verilator
-        if (p.name.contains("$_")) Seq()
-        else p.tpe match {
-          case ClockType => Seq()
-          case _ => Seq(s"${rn.vcdOldValue(p.name)} = ${p.name};")
-        }
-      }
-      w.writeLines(2, "//Assigning old values ")
-      w.writeLines(2, registerAssigns)
-      w.writeLines(2, memAssigns)
-      w.writeLines(2, portAssigns)
+  def assignOldValue(m: Module) {
+    val registers = findInstancesOf[DefRegister](m.body)
+    val registerAssigns = registers map {
+      r: DefRegister => s"${rn.vcdOldValue(r.name)} = ${r.name};"
     }
+    val memories = findInstancesOf[DefMemory](m.body)
+    val memAssigns = memories map { m: DefMemory =>
+      // TODO: Is this correct?
+      s"${rn.vcdOldValue(m.name)}[${m.depth}] = ${m.name}[${m.depth}];"
+    }
+    val portAssigns = m.ports flatMap { p =>
+      // Removing signal names with "_" similar to verilator
+      if (p.name.contains("$_")) Seq()
+      else p.tpe match {
+        case ClockType => Seq()
+        case _ => Seq(s"${rn.vcdOldValue(p.name)} = ${p.name};")
+      }
+    }
+    w.writeLines(2, "//Assigning old values ")
+    w.writeLines(2, registerAssigns)
+    w.writeLines(2, memAssigns)
+    w.writeLines(2, portAssigns)
   }
 
   //function for vcd multiple hierarchy
@@ -175,7 +169,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
 
   def declareOldvaluesAll(circuit: Circuit): Unit = {
     circuit.modules foreach {
-      case m: Module => declareOldValues(m, topName)
+      case m: Module => if (m.name == topName) declareOldValues(m)
       case m: ExtModule => Seq()
     }
     allNamesAndTypes map {
@@ -201,7 +195,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
 
   def compareOldValues(circuit: Circuit): Unit = {
     circuit.modules foreach {
-      case m: Module => compareOldNewSignal(m, topName)
+      case m: Module => if (m.name == topName) compareOldNewSignal(m)
       case m: ExtModule => Seq()
     }
     w.writeLines(1, "if(vcd_cycle_count == 0) {")
@@ -215,7 +209,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
 
   def assignOldValues(circuit: Circuit): Unit = {
     circuit.modules foreach {
-      case m: Module => assignOldValue(m, topName)
+      case m: Module => if (m.name == topName) assignOldValue(m)
       case m: ExtModule => Seq()
     }
   }
