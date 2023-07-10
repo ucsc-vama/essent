@@ -158,19 +158,21 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     }}
   }
 
+  def localSignalToTrack(name: String): Boolean = {
+    val isLocal = rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet
+    val new_name = rn.removeDots(name)
+    val safeToWrite = !new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")
+    isLocal && safeToWrite
+  }
+
   def declareOldvaluesAll(circuit: Circuit): Unit = {
     circuit.modules foreach {
       case m: Module => if (m.name == topName) declareOldValues(m)
       case m: ExtModule => Seq()
     }
-    allNamesAndTypes map {
-      case(name, tpe) =>
-        if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-          val new_name = rn.removeDots(name)
-          if(!new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")) {
-            w.writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
-          }
-        }
+    allNamesAndTypes map { case(name, tpe) =>
+      if (localSignalToTrack(name))
+        w.writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(rn.removeDots(name))};""")
     }
   }
 
@@ -280,24 +282,17 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
      sanitizeIdenCode(iden_code)
   }
 
-  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = {
-    stmt match {
-      case mw: MemWrite =>
-      case _ =>
-        val resultName = findResultName(stmt)
-        resultName match {
-          case Some(name) =>
-            val cleanName = rn.removeDots(name)
-            if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-              if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
-                val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))
-                w.writeLines(indentLevel, temp_str)
-                w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
-              }
-            }
-          case None =>
+  def compSmallEval(stmt: Statement, indentLevel: Int): Unit = stmt match {
+    case mw: MemWrite =>
+    case _ => findResultName(stmt) match {
+      case Some(name) =>
+        val cleanName = rn.removeDots(name)
+        if (localSignalToTrack(name)) {
+          val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))
+          w.writeLines(indentLevel, temp_str)
+          w.writeLines(indentLevel, s""" ${rn.vcdOldValue(cleanName)} = $cleanName;""")
         }
+      case None =>
     }
   }
 }
-
