@@ -17,7 +17,9 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
   val alreadyDeclared = sg.stateElemNames().toSet
 
-  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
+  // Update: Return partition to CP id map
+  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) = {
+    val mergeIdToCPid = mutable.HashMap[Int, Int]()
     val idToMemberIDs = ap.iterParts
     val idToMemberStmts = (idToMemberIDs map { case (id, members) => {
       val memberStmts = sg.idToStmt(id) match {
@@ -55,6 +57,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       }
       assert(isAcyclic)
       sg.mergeStmtsMutably(id, idToMemberIDs(id) diff Seq(id), cpStmt)
+      mergeIdToCPid(id) = topoOrder
       namesToDeclare foreach { name => {
         rn.mutateDecTypeIfLocal(name, PartOut) }
         rn.addPartCache(name + cacheSuffix, rn.nameToMeta(name).sigType)
@@ -65,6 +68,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     externalInputs foreach {
       case (name, tpe) => rn.addPartCache(name + cacheSuffix, tpe)
     }
+    mergeIdToCPid
   }
 
   def clumpByStmtType[T <: Statement]()(implicit tag: ClassTag[T]): Option[Int] = {
@@ -242,10 +246,19 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     // 6. Convert to CondPart
     startTime = System.currentTimeMillis()
 
-    convertIntoCPStmts(ap, excludedIDs.toSet)
+    val mergeIdToCPid = convertIntoCPStmts(ap, excludedIDs.toSet)
 
     stopTime = System.currentTimeMillis()
     logger.info(s"Took ${stopTime - startTime} ms to convert into CondPart statements.")
+
+    // ************************************************
+    // 7. Map
+    val dedupCPIdMap = dedupMergeIdMap.map{case (mainId, dupIds) => {
+      val mainInstCPid = mergeIdToCPid(mainId)
+      val dedupInstCPids = dupIds.map(mergeIdToCPid)
+      mainInstCPid -> dedupInstCPids
+    }}
+
 
     logger.info(partitioningQualityStats())
 
