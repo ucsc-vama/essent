@@ -27,27 +27,27 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val memories = findInstancesOf[DefMemory](m.body)
     var depth = 0
     var mem_depth = BigInt(1)
-    val register_name_identifier = registers flatMap {d: DefRegister => {
+    val register_name_identifier = registers map {d: DefRegister =>
       val width = bitWidth(d.tpe)
       val width_l = bitWidth(d.tpe) - 1
       val identifier_code = genIdenCode(last_used_index)
       last_used_index = last_used_index + 1
       hashMap(d.name) = identifier_code
-      if(width_l > 0) Seq(s""""$$var wire $width $identifier_code ${d.name} [$width_l:0] $$end\\n"""")
-      else Seq(s""""$$var wire  $width $identifier_code ${d.name} $$end\n"""")
-    }}
+      if (width_l > 0) s""""$$var wire $width $identifier_code ${d.name} [$width_l:0] $$end\\n""""
+      else s""""$$var wire  $width $identifier_code ${d.name} $$end\n""""
+    }
 
-    val ports_name_identifier = m.ports flatMap { p =>
+    val ports_name_identifier = m.ports map { p =>
       p.tpe match {
-        case ClockType => Seq(s""""$$var wire 1  !clock ${p.name}  $$end\\n"""")
+        case ClockType => s""""$$var wire 1  !clock ${p.name}  $$end\\n""""
         case _ =>
           val width = bitWidth(p.tpe)
           val width_l = bitWidth(p.tpe) - 1
           val identifier_code = genIdenCode(last_used_index)
           last_used_index = last_used_index + 1
           hashMap(p.name) = identifier_code
-          if(width_l > 0) Seq(s""""$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end\\n"""")
-          else Seq(s""""$$var wire $width $identifier_code ${p.name} $$end\\n"""")
+          if (width_l > 0) s""""$$var wire $width $identifier_code ${p.name} [$width_l:0] $$end\\n""""
+          else s""""$$var wire $width $identifier_code ${p.name} $$end\\n""""
       }
     }
 
@@ -80,11 +80,8 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val memDecs = memories map { m: DefMemory =>
       s"${genCppType(m.dataType)} ${rn.vcdOldValue(m.name)}[${m.depth}];"
     }
-    val portDecs = m.ports flatMap { p =>
-      p.tpe match {
-        case ClockType => Seq()
-        case _ => Seq(s"${genCppType(p.tpe)} ${rn.vcdOldValue(p.name)};")
-      }
+    val portDecs = m.ports collect {
+      case p if (p.tpe != ClockType) => s"${genCppType(p.tpe)} ${rn.vcdOldValue(p.name)};"
     }
     w.writeLines(1, registerDecs)
     w.writeLines(1, memDecs)
@@ -101,11 +98,8 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       // TODO: Is this correct?
       compSig(s"${m.name}[${m.depth}]", s"${rn.vcdOldValue(m.name)}[${m.depth}]")
     }
-    val portComps = m.ports flatMap { p =>
-      p.tpe match {
-        case ClockType => Seq()
-        case _ => Seq(compSig(p.name, rn.vcdOldValue(p.name)))
-      }
+    val portComps = m.ports collect {
+      case p if (p.tpe != ClockType) => compSig(p.name, rn.vcdOldValue(p.name))
     }
     w.writeLines(2, registerComps)
     w.writeLines(2, memComps)
@@ -122,14 +116,11 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       // TODO: Is this correct?
       s"${rn.vcdOldValue(m.name)}[${m.depth}] = ${m.name}[${m.depth}];"
     }
-    val portAssigns = m.ports flatMap { p =>
-      // Removing signal names with "_" similar to verilator
-      if (p.name.contains("$_")) Seq()
-      else p.tpe match {
-        case ClockType => Seq()
-        case _ => Seq(s"${rn.vcdOldValue(p.name)} = ${p.name};")
-      }
-    }
+    // Removing signal names with "_" similar to verilator
+    val portAssigns = m.ports collect {
+      case p if (!p.name.contains("$_") && p.tpe != ClockType) =>
+        s"${rn.vcdOldValue(p.name)} = ${p.name};"
+    }    
     w.writeLines(2, "//Assigning old values ")
     w.writeLines(2, registerAssigns)
     w.writeLines(2, memAssigns)
