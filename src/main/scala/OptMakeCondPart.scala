@@ -93,7 +93,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     logger.info(partitioningQualityStats())
   }
 
-  def doOptForDedup(smallPartCutoff: Int, dedupInstances: Seq[String], modInstInfo: ModuleInstanceInfo) {
+  def doOptForDedup(smallPartCutoff: Int, dedupInstances: Seq[String], modInstInfo: ModuleInstanceInfo): DedupCPInfo = {
 
     val dedupMainInstanceName = dedupInstances.head
     val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName).toSet
@@ -251,17 +251,12 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     stopTime = System.currentTimeMillis()
     logger.info(s"Took ${stopTime - startTime} ms to convert into CondPart statements.")
 
-    // ************************************************
-    // 7. Map
-    val dedupCPIdMap = dedupMergeIdMap.map{case (mainId, dupIds) => {
-      val mainInstCPid = mergeIdToCPid(mainId)
-      val dedupInstCPids = dupIds.map(mergeIdToCPid)
-      mainInstCPid -> dedupInstCPids
-    }}
-
-
     logger.info(partitioningQualityStats())
 
+    // ************************************************
+    // 7. Collect information and return
+    val dedupCPInfo = new DedupCPInfo(sg, dedupInstances, mergeIdToCPid, dedupMergeIdMap)
+    dedupCPInfo
   }
 
   def getNumParts(): Int = sg.idToStmt count { _.isInstanceOf[CondPart] }

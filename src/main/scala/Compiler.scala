@@ -240,7 +240,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
     rn.populateFromSG(sg, extIOMap)
 
-
+    var dedupCPInfo: Option[DedupCPInfo] = None
     if (opt.useCondParts) {
       assert(opt.dedup)
       // Dedup + VCD not supported yet
@@ -292,8 +292,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         condPartWorker.doOpt((opt.partCutoff))
       } else {
         logger.info("Start working on dedup optimization")
-        condPartWorker.doOptForDedup(opt.partCutoff, dedupInstances, modInstInfo)
-
+        dedupCPInfo = Some(condPartWorker.doOptForDedup(opt.partCutoff, dedupInstances, modInstInfo))
       }
 
     } else {
