@@ -80,6 +80,14 @@ class Renamer {
   def vcdOldValue(sig_name: String) = sig_name + "_old" 
 }
 
+object Renamer {
+  def apply(rn: Renamer) = {
+    val new_rn = new Renamer
+    new_rn.nameToEmitName ++= rn.nameToEmitName
+    new_rn.nameToMeta ++= rn.nameToMeta
+    new_rn
+  }
+}
 // object Renamer {
 //   def apply(ng: NamedGraph, extIOMap: Map[String,Type]) = {
 //     val rn = new Renamer
