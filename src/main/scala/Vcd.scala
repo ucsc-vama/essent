@@ -172,7 +172,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
           val iden_code = iden_code_hier + key
           allNamesAndTypes map {
             case (name , tpe ) =>
-              val new_name = rn.removeDots(name)
+              val new_name = removeDots(name)
               if(new_name == iden_code) {
                 val ident_code = hashMap(new_name)
                 val width = bitWidth(tpe)
@@ -198,7 +198,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     allNamesAndTypes map {
       case(name, tpe) =>
         if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
-          val new_name = rn.removeDots(name)
+          val new_name = removeDots(name)
           if(!new_name.contains("$_") && !new_name.contains("$next") && !new_name.startsWith("_")) {
             w.writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(new_name)};""")
           }
@@ -259,7 +259,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       var up_index = last_used_index
     debug_name.zipWithIndex map { case(sn, index ) => {
       val iden_code = genIdenCode(index + last_used_index)
-      val sig_name = rn.removeDots(sn)
+      val sig_name = removeDots(sn)
       if ( !hashMap.contains(sig_name)) {
       hashMap(sig_name) = iden_code
       up_index = index + last_used_index}
@@ -268,7 +268,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
     non_und_name.zipWithIndex map { case(sn , index ) => {
-          val sig_name = rn.removeDots(sn)
+          val sig_name = removeDots(sn)
           val iden_code = genIdenCode(index + last_used_index)
           hashMap(sig_name) = iden_code
         }
@@ -312,7 +312,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
            val resultName = findResultName(stmt)
             resultName match {
               case Some(name) =>
-                 val cleanName = rn.removeDots(name)
+                 val cleanName = removeDots(name)
                   if(rn.nameToMeta(name).decType != ExtIO && rn.nameToMeta(name).decType != RegSet) {
                     if(!cleanName.contains("$_") && !cleanName.contains("$next") && !cleanName.startsWith("_")) {
                       val temp_str = compSig(cleanName,rn.vcdOldValue(cleanName))

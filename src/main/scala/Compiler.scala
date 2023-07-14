@@ -13,12 +13,18 @@ import firrtl.stage.TransformManager.TransformDependency
 import firrtl.stage.transforms
 import firrtl.transforms.DedupedResult
 import _root_.logger._
+import essent.Graph.NodeID
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
   val flagVarName = "PARTflags"
+  val flagAliasName = "PARTAlias"
+  val outsideCircuitDataStructTypeName = "OutsideCircuitData"
+  val dedupCircuitDataStructTypeName = "DedupCircuitData"
+
   implicit val rn = new Renamer
   val actTrac = new ActivityTracker(w, initialOpt)
   val vcd = if (initialOpt.withVCD) Some(new Vcd(circuit,initialOpt,w,rn)) else None
@@ -121,7 +127,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
                           extIOtypes: Map[String, Type],
                           opt: OptFlags) {
     // predeclare part outputs
-    val outputPairs = condPartWorker.getPartOutputsToDeclare()
+    val outputPairs = condPartWorker.getPartOutputsToDeclare().filter{case (sigName, sigType) => condPartWorker.allDedupInstRWSignals.contains(sigName)}
     val outputConsumers = condPartWorker.getPartInputMap()
     w.writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
     val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
@@ -207,6 +213,217 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     // w.writeLines(2, s"$flagVarName.fill(true);" )
     // w.writeLines(2,  "#endif")
     w.writeLines(2, "regs_set = true;")
+  }
+
+
+  def writeFlatternVariableDeclaration(regDecls: Seq[(String, String)], memDecls: Seq[(String, String, BigInt, BigInt)], memPtrs: Seq[(String, String)]) = {
+
+    w.writeLines(1, "// Registers")
+    regDecls.foreach{case (typeStr, declName) => {
+      w.writeLines(1, s"${typeStr} ${declName};")
+    }}
+
+    if (memDecls.nonEmpty) {
+      w.writeLines(1, "// Memories")
+      memDecls.foreach { case (typeStr, declName, memDepth, memWidth) => {
+        w.writeLines(1, s"${typeStr} ${declName}[${memDepth}];")
+      }}
+    }
+
+    if (memPtrs.nonEmpty) {
+      w.writeLines(1, "// Memory pointers")
+      memPtrs.foreach { case (declName, typeStr) => {
+        w.writeLines(1, s"${typeStr}* ${declName};")
+      }}
+    }
+
+    w.writeLines(0, "")
+    w.writeLines(1, s"void init() {")
+    regDecls.foreach{case (typeStr, declName) => {
+      w.writeLines(2, s"${declName}.rand_init();")
+    }}
+    memDecls.foreach{case (typeStr, declName, memDepth, memWidth) => {
+      // TODO: Is this magic number reasonable? Need performance data
+      val initStmts = if ((memDepth > 1000) && (memWidth) <= 64) {
+        Seq(s"${declName}[0].rand_init();",
+          s"for (size_t a=0; a < ${memDepth}; a++) ${declName}[a] = ${declName}[0].as_single_word() + a;")
+      } else {
+        Seq(s"for (size_t a=0; a < ${memDepth}; a++) ${declName}[a].rand_init();")
+      }
+      w.writeLines(2, initStmts)
+    }}
+    w. writeLines(1, "}")
+
+  }
+
+  def declareFlattenModules(sg:StatementGraph, dedupInfo: DedupCPInfo): Unit = {
+    val topName = circuit.main
+
+    val modules = circuit.modules.collect {case m: Module => m}
+    val extModules = circuit.modules.collect {case em: ExtModule => em}
+    val moduleDict = modules.map(x => (x.name, x)).toMap
+    val extModuleDict = extModules.map(x => (x.name, x)).toMap
+
+    val modulesAndPrefixes = findAllModuleInstances(circuit)
+    // Don't collect extmodules
+    val regularModulesAndPrefixes = modulesAndPrefixes filter {case (modName, _) => moduleDict.contains(modName)}
+    val extModulesAndPrefixes = modulesAndPrefixes.filter{case(modName, _) => {extModuleDict.contains(modName)}}
+
+    val dedupRegisters = (dedupInfo.dedupRegisterNames).toSet
+    val mainInstRegisters = (dedupInfo.dedupMainRegisterNames).toSet
+    val mainInstName = dedupInfo.dedupMainInstanceName
+
+    // Registers
+    val cpTopoOrdered = TopologicalSort(sg).filter(sg.validNodes.contains)
+    val sgTopoOrdered = cpTopoOrdered.flatMap{id => {
+      sg.idToStmt(id) match {
+        case cp: CondPart => {
+          cp.memberStmts
+        }
+      }
+    }}
+
+    val allWriteRegisters = sgTopoOrdered.collect { case ru: RegUpdate => ru}
+    val allRegisterNames = dedupInfo.allRegisterNames
+
+    // (typeStr, declName)
+    val outsideRegisterDecls = ArrayBuffer[(String, String)]()
+    val dedupRegisterDecls = ArrayBuffer[(String, String)]()
+
+    allWriteRegisters.foreach{case ru => {
+      val canonicalName = emitExpr(ru.regRef)
+      val typeStr = genCppType(ru.regRef.tpe)
+
+      if (!dedupRegisters.contains(canonicalName)) {
+        val genName = removeDots(canonicalName)
+        val decl = (typeStr, genName)
+        outsideRegisterDecls.append(decl)
+      }
+      if (mainInstRegisters.contains(canonicalName)) {
+        val shortName = canonicalName.stripPrefix(mainInstName)
+        val genName = removeDots(shortName)
+        val decl = (typeStr, genName)
+        dedupRegisterDecls.append(decl)
+      }
+
+    }}
+
+
+
+    // (typeStr, declName, depth, width)
+    val allMemoryDecls = regularModulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories map {m: DefMemory => {
+        val canonicalName = prefix + m.name
+        val declName = removeDots(canonicalName)
+        (genCppType(m.dataType), declName, m.depth, bitWidth(m.dataType))
+      }}
+    }}
+
+
+    // Memory pointers
+    val allMemoryNameAndType = regularModulesAndPrefixes.flatMap{case (moduleName, prefix) => {
+      val memories = findInstancesOf[DefMemory](moduleDict(moduleName).body)
+      memories map {m: DefMemory => {
+        (prefix + m.name -> m.dataType)
+      }}
+    }}.toMap
+    val allMemoryNames = allMemoryNameAndType.keys.toSet
+    // Save
+    dedupInfo.allMemoryNameAndType ++= allMemoryNameAndType
+    dedupInfo.allMemoryNames ++= allMemoryNames
+
+    val dedupAccessedMemories = (dedupInfo.mainInstInputSignals ++ dedupInfo.mainInstOutputSignals).intersect(allMemoryNames)
+    val dedupAccessedMemoryInfo = dedupAccessedMemories.toSeq.map{memName => {
+      val declName = removeDots(memName.stripPrefix(dedupInfo.dedupMainInstanceName))
+      (declName, genCppType(allMemoryNameAndType(memName)))
+    }}
+
+    // Declare global data for outside circuit and all memories
+    w.writeLines(0, "")
+    w.writeLines(0, s"typedef struct ${outsideCircuitDataStructTypeName} {")
+    w.writeLines(0, "")
+    writeFlatternVariableDeclaration(outsideRegisterDecls, allMemoryDecls, Seq())
+    w. writeLines(0, s"} $outsideCircuitDataStructTypeName;")
+
+
+    // Declare dedup data
+    w.writeLines(0, "")
+    w.writeLines(0, s"typedef struct ${dedupCircuitDataStructTypeName} {")
+    w.writeLines(0, "")
+    writeFlatternVariableDeclaration(dedupRegisterDecls, Seq(), dedupAccessedMemoryInfo)
+    w.writeLines(1, s"int ${flagAliasName}[${dedupInfo.dedupCPIdMap.size}];")
+
+    w.writeLines(1, "// Declare internal signals (cache)")
+    dedupInfo.mainDedupInstInternalSignals.foreach{sigName =>
+      val sigType = dedupInfo.signalNameToType(sigName)
+
+      val typeStr = genCppType(sigType)
+      val declName = removeDots(sigName.stripPrefix(dedupInfo.dedupMainInstanceName))
+      w.writeLines(1, s"${typeStr} ${declName};")
+    }
+    w.writeLines(1, "// Declare boundary signals")
+    dedupInfo.mainDedupInstBoundarySignals.diff(allRegisterNames).diff(allMemoryNames).foreach{ sigName =>
+      val sigType = dedupInfo.signalNameToType(sigName)
+
+      val typeStr = genCppType(sigType)
+      val declName = removeDots(sigName.stripPrefix(dedupInfo.dedupMainInstanceName))
+      w.writeLines(1, s"${typeStr} ${declName};")
+    }
+
+
+    w. writeLines(0, s"} $dedupCircuitDataStructTypeName;")
+    w.writeLines(0, "")
+
+
+
+    w.writeLines(0, "")
+    w.writeLines(0, s"typedef struct $topName {")
+    w.writeLines(0, "")
+
+
+
+    val extModuleDecs = extModulesAndPrefixes map { case (module, fullName) => {
+      // val instanceName = fullName.split("\\.").last
+      val instanceName = removeDots(fullName).dropRight(1)
+      s"$module $instanceName;"
+    }}
+
+    w.writeLines(1, extModuleDecs)
+    w.writeLines(0, s"")
+
+    w.writeLines(1, "// Public data structure")
+    w.writeLines(1, s"${outsideCircuitDataStructTypeName} ${rn.outsideDSName};")
+    dedupInfo.dedupInstanceNameList.zipWithIndex.foreach{case (name: String, idx: Int) => {
+      w.writeLines(1, s"// Private data structure for dedup instance ${name}")
+      w.writeLines(1, s"${dedupCircuitDataStructTypeName} ${rn.getDedupInstanceDSName(idx)};")
+    }}
+    w.writeLines(0, s"")
+    w.writeLines(1, s"$topName() {")
+    w.writeLines(2, s"${rn.outsideDSName}.init;")
+    dedupInfo.dedupInstanceNameList.zipWithIndex.foreach{case (name: String, idx: Int) => {
+      w.writeLines(2, s"${rn.getDedupInstanceDSName(idx)}.init();")
+    }}
+    dedupInfo.dedupInstanceNameList.zipWithIndex.foreach{case (instanceName: String, idx: Int) => {
+      val globalDSName = rn.outsideDSName
+      val dedupDSName = rn.getDedupInstanceDSName(idx)
+
+      w.writeLines(2, s"// Setup pointers for instance ${instanceName}")
+      dedupAccessedMemories.foreach{memName => {
+        val memShortName = memName.stripPrefix(dedupInfo.dedupMainInstanceName)
+        val dedupDeclName = removeDots(memShortName)
+        val memGlobalName = removeDots(memName)
+        w.writeLines(2, s"${dedupDSName}.${dedupDeclName} = &(${globalDSName}.${memGlobalName});")
+      }}
+
+      w.writeLines(2, s"// Declare part alias for instance ${instanceName}")
+      val partAlias = dedupInfo.dedupInstNameToCPids(instanceName).sorted
+
+      w.writeLines(1, s"${dedupDSName}${flagAliasName} = { ${partAlias.mkString(", ")} };")
+    }}
+    w.writeLines(1, "}")
+
+    w.writeLines(0, s"")
   }
 
 
@@ -305,10 +522,23 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     if (opt.trackParts || opt.trackSigs || opt.trackExts)
       actTrac.declareTop(sg, topName, condPartWorker)
 
-    circuit.modules foreach {
-      case m: Module => declareModule(m, topName)
-      case m: ExtModule => declareExtModule(m)
+    dedupCPInfo match {
+      case None => {
+        // No dedup
+        circuit.modules foreach {
+          case m: Module => declareModule(m, topName)
+          case m: ExtModule => declareExtModule(m)
+        }
+      }
+      case Some(dedupInfo) => {
+        circuit.modules foreach {
+          case m: ExtModule => declareExtModule(m)
+          case _ => Nil
+        }
+        declareFlattenModules(sg, dedupInfo)
+      }
     }
+
     val topModule = findModule(topName, circuit) match {case m: Module => m}
     if (initialOpt.writeHarness) {
       w.writeLines(0, "")

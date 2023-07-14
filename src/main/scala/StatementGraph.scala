@@ -137,6 +137,7 @@ class StatementGraph extends Graph {
     val idsToRemove = mergeSources
     idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
     // NOTE: keeps mappings of name (idToName & nameToID) for debugging dead nodes
+    // NOTE: name mapping is required by dedup
     mergeNodesMutably(mergeDest, mergeSources)
     idToStmt(mergeDest) = mergeStmt
     validNodes(mergeDest) = (mergeSources :+ mergeDest) exists { validNodes }

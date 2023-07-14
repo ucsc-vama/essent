@@ -30,6 +30,8 @@ object Util {
     hm.keys foreach { k => hm(k) = hm(k).sorted }
   }
 
+  def removeDots(s: String) = s.replace('.','$')
+
   // Extends the Writer to have the writeLines method below to indent and auto-terminate strings
   implicit class IndentWriter(writer: Writer) {
     val indent = "  "

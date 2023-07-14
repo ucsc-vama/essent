@@ -3,6 +3,8 @@ package essent
 import essent.Extract._
 
 import firrtl.ir._
+import essent.ir._
+import essent.Util.removeDots
 
 import collection.mutable.HashMap
 
@@ -19,6 +21,9 @@ case class SigMeta(decType: SigDecType, sigType: firrtl.ir.Type)
 class Renamer {
   val nameToEmitName = HashMap[String,String]()
   val nameToMeta = HashMap[String,SigMeta]()
+
+  val outsideDSName = "circuitState"
+  def getDedupInstanceDSName(idx: Int) = s"dedupInst_${idx}"
 
   def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
     val stateNames = sg.stateElemNames.toSet
@@ -71,7 +76,21 @@ class Renamer {
     notLocalSigs.toSet
   }
 
-  def removeDots(s: String) = s.replace('.','$')
+  def factorFlatternedRegisterName(): Unit = {
+    // TODO
+  }
+
+  def factorNameForDedupCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
+    factorFlatternedRegisterName()
+    // Only cares CP in main instance
+    dedupCPInfo.mainInstOutputSignals.foreach{name => {
+      // Those signals will be replicated
+    }}
+  }
+
+  def factorNameForOutsideCircuit() = {
+    factorFlatternedRegisterName()
+  }
 
   def decLocal(name: String) = nameToMeta(name).decType == Local
 
