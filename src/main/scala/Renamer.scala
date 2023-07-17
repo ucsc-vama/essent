@@ -1,7 +1,7 @@
 package essent
 
 import essent.Extract._
-
+import essent.Graph.NodeID
 import firrtl.ir._
 import essent.ir._
 import essent.Util.removeDots
@@ -22,8 +22,12 @@ class Renamer {
   val nameToEmitName = HashMap[String,String]()
   val nameToMeta = HashMap[String,SigMeta]()
 
+  // Outside datastructure, contains memory and registers in outside
   val outsideDSName = "circuitState"
+  // Name used to access dedup data from outside
   def getDedupInstanceDSName(idx: Int) = s"dedupInst_${idx}"
+  // Name used to access dedup data from inside. This should be same with EssentEmitter.dedupCitcuitDSInstName
+  val dedupCitcuitDSInstName = "dedupData"
 
   def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
     val stateNames = sg.stateElemNames.toSet
@@ -76,20 +80,119 @@ class Renamer {
     notLocalSigs.toSet
   }
 
-  def factorFlatternedRegisterName(): Unit = {
-    // TODO
+
+  def factorFlatternedMemoryName(dedupCPInfo: DedupCPInfo) = {
+    // factor all memory access
   }
 
   def factorNameForDedupCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
-    factorFlatternedRegisterName()
-    // Only cares CP in main instance
-    dedupCPInfo.mainInstOutputSignals.foreach{name => {
-      // Those signals will be replicated
+    factorFlatternedMemoryName(dedupCPInfo)
+
+    // factor all register access
+    // In original design, registers are accessed using canonical name
+
+    // Dedup instance registers.
+    // Note: For dedup instance registers, only need to rename for main instance
+    // As only main instance would go to code gen
+    dedupCPInfo.dedupRegisterNamesByInst.foreach{ case (instName, registerNames) => {
+      if (instName == dedupCPInfo.dedupMainInstanceName) {
+        registerNames.foreach{rname => {
+          val shortName = rname.stripPrefix(instName)
+          val declName = removeDots(shortName)
+          val fullName = s"(${dedupCitcuitDSInstName}->${declName})"
+          nameToEmitName(rname) = fullName
+        }}
+      } else {
+        // Remove unused signal
+        registerNames.foreach{rname => {
+          nameToEmitName(rname) = "!!ShouldntReachHere!!"
+        }}
+      }
     }}
+
+    dedupCPInfo.allRegisterNames.foreach {canonicalName => {
+
+      if (!dedupCPInfo.dedupRegisterNames.contains(canonicalName)) {
+        // Outside circuit registers
+        // Assertion: Those registers are not renamed yet
+//        assert(nameToEmitName(canonicalName) == canonicalName)
+        if (nameToEmitName(canonicalName) != canonicalName) {
+          println(canonicalName)
+          println(nameToEmitName(canonicalName))
+          assert(false)
+        }
+
+        val declName = removeDots(canonicalName)
+        nameToEmitName(canonicalName) = s"${outsideDSName}.${declName}"
+      }
+    }}
+
+    // rename partcache
+    // For main instance
+    dedupCPInfo.mainDedupInstInternalSignals.foreach{sigName =>
+      val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
+      nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
+    }
+    dedupCPInfo.mainDedupInstBoundarySignals.diff(dedupCPInfo.allRegisterNames).diff(dedupCPInfo.allMemoryNames).foreach{ sigName =>
+      val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
+      nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
+    }
+
   }
 
-  def factorNameForOutsideCircuit() = {
-    factorFlatternedRegisterName()
+  def factorNameForOutsideCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
+    factorFlatternedMemoryName(dedupCPInfo)
+
+
+    // factor all register access
+    // In original design, registers are accessed using canonical name
+
+    // Dedup instance registers.
+    // Note: For outside circuit, every instance need to be renamed
+    dedupCPInfo.dedupRegisterNamesByInst.foreach{ case (instName, registerNames) => {
+      val instId = dedupCPInfo.dedupInstanceNameToId(instName)
+      registerNames.foreach{rname => {
+        val shortName = rname.stripPrefix(instName)
+        val declName = removeDots(shortName)
+        val fullName = s"(${getDedupInstanceDSName(instId)}.${declName})"
+        nameToEmitName(rname) = fullName
+      }}
+    }}
+
+    // Any register outside
+    dedupCPInfo.allRegisterNames.foreach {canonicalName => {
+      if (!dedupCPInfo.dedupRegisterNames.contains(canonicalName)) {
+        // Outside circuit registers
+        // Assertion: Those registers are not renamed yet
+        assert(nameToEmitName(canonicalName) == canonicalName)
+
+        val declName = removeDots(canonicalName)
+        nameToEmitName(canonicalName) = s"${outsideDSName}.${declName}"
+      }
+    }}
+
+    // rename partcache
+    // For main instance
+    dedupCPInfo.allDedupInstInternalSignals.foreach{sigName => {
+      // Outside circuit should not touch dedup internal signals
+      nameToEmitName(sigName) = "!!!Should_not_access_this_signal!!!"
+    }}
+
+    dedupCPInfo.allDedupInstBoundarySignals.foreach{sigName => {
+      val signalReaderCPids = dedupCPInfo.inputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
+      val signalWriterCPids = dedupCPInfo.outputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
+      val signalCPId_ = signalWriterCPids ++ signalReaderCPids
+
+      val instName_ = signalCPId_.filter(dedupCPInfo.allDedupCPids).map(dedupCPInfo.cpIdToDedupInstName)
+      assert(instName_.size == 1)
+      val instName = instName_.head
+      val instId = dedupCPInfo.dedupInstanceNameToId(instName)
+
+      val declName = removeDots(sigName.stripPrefix(instName))
+      nameToEmitName(sigName) = s"(${getDedupInstanceDSName(instId)}.${declName})"
+    }}
+
+
   }
 
   def decLocal(name: String) = nameToMeta(name).decType == Local

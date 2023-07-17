@@ -13,12 +13,17 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 
   val dedupMainInstanceName = dedupInstanceNames.head
   val dedupInstanceNameList = dedupInstanceNames
+  val dedupInstanceNameToId = dedupInstanceNames.zipWithIndex.toMap
 
   // CP id in main instance -> CP ids in other instances
   val dedupCPIdMap = dedupMergeIdMap.map{case (mainId, dupIds) => {
     val mainInstCPid = mergeIdToCPid(mainId)
     val dedupInstCPids = dupIds.map(mergeIdToCPid)
     mainInstCPid -> dedupInstCPids
+  }}
+
+  val dedupOtherCPToMainCPMap = dedupCPIdMap.flatMap{ case (mainId, otherIds) => {
+    otherIds.map{oid => oid -> mainId}
   }}
 
   // Instance name -> All CP ids
@@ -148,6 +153,13 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val dedupStmts = allDedupCPids.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   val dedupRegisterNames = dedupStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}
 //  val dedupMemoryNames = dedupStmts.collect{case m: DefMemory => m}.map{m => m.name}
+
+  val dedupStmtsByInst = dedupInstNameToCPids.map{case (instName, cpIds) => {
+    instName -> cpIds.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
+  }}
+  val dedupRegisterNamesByInst = dedupStmtsByInst.map{ case (instName, stmts) => {
+    instName -> stmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}
+  }}
 
   val dedupMainStmts = dedupCPIdMap.keys.toSeq.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   val dedupMainRegisterNames = dedupMainStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}
