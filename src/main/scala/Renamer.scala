@@ -83,10 +83,30 @@ class Renamer {
 
   def factorFlatternedMemoryName(dedupCPInfo: DedupCPInfo) = {
     // factor all memory access
+    dedupCPInfo.allMemoryNames.foreach{canonicalName => {
+      val declName = removeDots(canonicalName)
+      val fullName = s"${outsideDSName}.${declName}"
+      nameToEmitName(canonicalName) = fullName
+    }}
+  }
+
+  def factorExtModuleName(dedupCPInfo: DedupCPInfo): Unit = {
+    // For each ExtIO
+    nameToMeta.filter{case (_, SigMeta(declType, _)) => {declType == ExtIO}}.foreach{case (name, SigMeta(declType, signalType)) => {
+      val splitByDots = name.split('.')
+      val signalName = splitByDots.last
+      val hierarchyName = splitByDots.dropRight(1).mkString(".")
+      val instName = removeDots(hierarchyName)
+      // Note: Patch for topModule. TopModule signals are marked as ExtIO
+      val fullName = if (instName.nonEmpty) s"${instName}.${signalName}" else signalName
+
+      nameToEmitName(name) = fullName
+    }}
   }
 
   def factorNameForDedupCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
     factorFlatternedMemoryName(dedupCPInfo)
+    factorExtModuleName(dedupCPInfo)
 
     // factor all register access
     // In original design, registers are accessed using canonical name
@@ -142,6 +162,7 @@ class Renamer {
 
   def factorNameForOutsideCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
     factorFlatternedMemoryName(dedupCPInfo)
+    factorExtModuleName(dedupCPInfo)
 
 
     // factor all register access
@@ -179,17 +200,29 @@ class Renamer {
     }}
 
     dedupCPInfo.allDedupInstBoundarySignals.foreach{sigName => {
-      val signalReaderCPids = dedupCPInfo.inputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
-      val signalWriterCPids = dedupCPInfo.outputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
-      val signalCPId_ = signalWriterCPids ++ signalReaderCPids
+      if (dedupCPInfo.signalWriteOnlyByOutside(sigName)) {
+        // Don't rename if already renamed (signals can be registers or memories)
+        if (nameToEmitName(sigName) == sigName) {
+          val declName = removeDots(sigName)
+          nameToEmitName(sigName) = s"${outsideDSName}.${declName}"
+        }
 
-      val instName_ = signalCPId_.filter(dedupCPInfo.allDedupCPids).map(dedupCPInfo.cpIdToDedupInstName)
-      assert(instName_.size == 1)
-      val instName = instName_.head
-      val instId = dedupCPInfo.dedupInstanceNameToId(instName)
+      } else {
+        val signalReaderCPids = dedupCPInfo.inputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
+        val signalWriterCPids = dedupCPInfo.outputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
+        val signalCPId_ = signalWriterCPids ++ signalReaderCPids
 
-      val declName = removeDots(sigName.stripPrefix(instName))
-      nameToEmitName(sigName) = s"(${getDedupInstanceDSName(instId)}.${declName})"
+        val instName_ = signalCPId_.filter(dedupCPInfo.allDedupCPids).map(dedupCPInfo.cpIdToDedupInstName)
+        assert(instName_.size == 1)
+        val instName = instName_.head
+        val instId = dedupCPInfo.dedupInstanceNameToId(instName)
+
+        val declName = removeDots(sigName.stripPrefix(instName))
+        assert(declName != "tile_reset_domain$tile$dcache$doUncachedResp")
+        assert(nameToEmitName(sigName) != sigName)
+        nameToEmitName(sigName) = s"(${getDedupInstanceDSName(instId)}.${declName})"
+      }
+
     }}
 
 

@@ -85,6 +85,13 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
     outputSignalNameToCPid(name).forall(allDedupCPids.contains)
   }
 
+  def signalWriteOnlyByOutside(name: String) = {
+    if (outputSignalNameToCPid.contains(name)) {
+      assert(outputSignalNameToCPid(name).size == 1)
+      !signalWriteOnlyByDedup(name)
+    } else true
+  }
+
 
   val dedupInputSignals = allDedupCPids.flatMap{cpid => {
     val mergeId = cpidToMergeId(cpid)
@@ -165,7 +172,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val dedupMainRegisterNames = dedupMainStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}
 //  val dedupMainMemoryNames = dedupMainStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
-  val allMemoryNameAndType = mutable.HashMap[String, Type]()
+  // val allMemoryNameAndType = mutable.HashMap[String, Type]()
   val allMemoryNames = mutable.Set[String]()
 
 

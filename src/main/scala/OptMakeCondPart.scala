@@ -17,7 +17,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
   val alreadyDeclared = sg.stateElemNames().toSet
   val replicatedSignalsToDeclareName = mutable.HashMap[String, String]()
-  val allDedupInstRWSignals = mutable.ArrayBuffer[String]()
 
   // Update: Return partition to CP id map
   def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) = {
@@ -259,7 +258,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     // 7. Collect information and return
     val dedupCPInfo = new DedupCPInfo(sg, dedupInstances, mergeIdToCPid, dedupMergeIdMap)
     replicatedSignalsToDeclareName ++= dedupCPInfo.replicatedSignalsToDeclareName
-    allDedupInstRWSignals ++= dedupCPInfo.allDedupInstRWSignals
     dedupCPInfo.signalNameToType ++= getPartOutputsToDeclare()
 
     dedupCPInfo

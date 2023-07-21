@@ -21,7 +21,6 @@ import scala.collection.mutable.ArrayBuffer
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
   val flagVarName = "PARTflags"
-  val flagAliasName = "PARTAlias"
   val outsideCircuitDataStructTypeName = "OutsideCircuitData"
   val dedupCircuitDataStructTypeName = "DedupCircuitData"
   val dedupCitcuitDSInstName = "dedupData"
@@ -115,9 +114,29 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
   }
 
   def genAllTriggers(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
-      suffix: String): Seq[String] = {
+                     suffix: String): Seq[String] = {
     selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
       genDepPartTriggers(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
+    }}
+  }
+
+
+  def getPartAliasGlobalName(pardId: Int) = s"PARTAlias_${pardId}"
+  val partAliasArrayName = "partAlias"
+  val currentCPPartAlias = mutable.ArrayBuffer[NodeID]()
+
+  def genDepPartTriggersForDedup(consumerIDs: Seq[Int], condition: String): Seq[String] = {
+    consumerIDs.sorted map { consumerID => {
+      val partAliasOffset = currentCPPartAlias.size
+      currentCPPartAlias += consumerID
+      s"$flagVarName[${partAliasArrayName}[${partAliasOffset}]] |= $condition;"
+    }}
+  }
+
+  def genAllTriggersForDedup(signalNames: Seq[String], outputConsumers: Map[String, Seq[Int]],
+                     suffix: String): Seq[String] = {
+    selectFromMap(signalNames, outputConsumers).toSeq flatMap { case (name, consumerIDs) => {
+      genDepPartTriggersForDedup(consumerIDs, s"${rn.emit(name)} != ${rn.emit(name + suffix)}")
     }}
   }
 
@@ -128,7 +147,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
                           extIOtypes: Map[String, Type],
                           opt: OptFlags) {
     // predeclare part outputs
-    val outputPairs = condPartWorker.getPartOutputsToDeclare().filter{case (sigName, sigType) => condPartWorker.allDedupInstRWSignals.contains(sigName)}
+    val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
     w.writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
     val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
@@ -181,6 +200,36 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
   }
 
 
+//  def getPartAliasContent(cpNo: Int, cp: CondPart, outputConsumers: Map[String, Seq[NodeID]]) = {
+//
+//    val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
+//
+//    def getTriggerIdList(signalNames: Seq[String]) = {
+//      selectFromMap(signalNames, outputConsumers).toSeq.flatMap{case (name, consumerIDs) => consumerIDs.sorted}
+//    }
+//
+//    // Trigger ids for cp outputs
+//    val cpOutputTriggerIds = getTriggerIdList(cp.outputsToDeclare.keys.toSeq)
+//
+//    // Trigger ids for reg updates
+//    val regUpdateNamesInPart = regUpdates flatMap findResultName
+//    val regUpdateTriggerIds = getTriggerIdList(regUpdateNamesInPart)
+//
+//    // triggers for MemWrites
+//    val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+//    val memWriteTriggerIds = memWritesInPart flatMap { mw => {
+//      outputConsumers.getOrElse(mw.memName, Seq()).sorted
+//    }}
+//
+//    Seq(cpNo) ++ cpOutputTriggerIds ++ regUpdateTriggerIds ++ memWriteTriggerIds
+//
+//  }
+
+  def genPartAliasDecls(cpId: Int) = {
+    s"const int ${getPartAliasGlobalName(cpId)}[${currentCPPartAlias.size}] = { ${currentCPPartAlias.mkString(", ")} };"
+  }
+
+
   def writeZoningPredecsForDedup(
                           sg: StatementGraph,
                           condPartWorker: MakeCondPart,
@@ -189,9 +238,11 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
                           opt: OptFlags,
                           dedupInfo: DedupCPInfo) {
     // predeclare part outputs
-    val outputPairs = condPartWorker.getPartOutputsToDeclare().filter{case (sigName, sigType) => condPartWorker.allDedupInstRWSignals.contains(sigName)}
+    val outputPairs = condPartWorker.getPartOutputsToDeclare().filterNot{case (sigName, sigType) => dedupInfo.allDedupInstInternalSignals.contains(sigName)}
     val outputConsumers = condPartWorker.getPartInputMap()
+    w.writeLines(1, "// Cached signals")
     w.writeLines(1, outputPairs map {case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name)};"})
+    w.writeLines(1, "// Done cached signals")
     val extIOCacheDecs = condPartWorker.getExternalPartInputTypes(extIOtypes) map {
       case (name, tpe) => s"${genCppType(tpe)} ${rn.emit(name + condPartWorker.cacheSuffix)};"
     }
@@ -219,6 +270,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
     // Write main dedup code
     dedupMainInstCPs.zipWithIndex.foreach{ case ((cpid, cp), cpNo) => {
+      currentCPPartAlias.clear()
+      currentCPPartAlias += cp.id
+
       w.writeLines(1, s"// Code for CondPart ${cpid}, instance name ${dedupInfo.dedupMainInstanceName}")
       (1 until dedupInfo.dedupInstanceNameList.size).foreach {idx =>{
         val correspondingCPid = dedupInfo.dedupCPIdMap(cpid)(idx - 1)
@@ -226,10 +280,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         w.writeLines(1, s"// Alias with CP ${correspondingCPid} in instance ${correspondingCPName}")
       }}
 
-      w.writeLines(1, s"void ${genEvalFuncName(cp.id)}(${dedupCircuitDataStructTypeName}* ${dedupCitcuitDSInstName}) {")
+      w.writeLines(1, s"void ${genEvalFuncName(cp.id)}(${dedupCircuitDataStructTypeName}* ${dedupCitcuitDSInstName}, const int* ${partAliasArrayName}) {")
       assert(!cp.alwaysActive) // May be true in future?
-      w.writeLines(2, s"int realPartId = ${dedupCitcuitDSInstName}->${flagAliasName}[${cpNo}];")
-      w.writeLines(2, s"${flagVarName}[realPartId] = false;")
+      w.writeLines(2, s"${flagVarName}[${partAliasArrayName}[0]] = false;")
 
 
       if (opt.trackParts)
@@ -246,26 +299,31 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         MakeCondMux(bodySG, rn, keepAvail)
       writeBodyInner(2, bodySG, opt, keepAvail)
 
-      w.writeLines(0, "// Start genAllTriggers")
-      w.writeLines(2, genAllTriggers(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
-      w.writeLines(0, "// End genAllTriggers")
-      
+      // TODO: Triggers not correctly generated
+      w.writeLines(2, "// Start genAllTriggers")
+      w.writeLines(2, genAllTriggersForDedup(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix))
+      w.writeLines(2, "// End genAllTriggers")
+
       val regUpdateNamesInPart = regUpdates flatMap findResultName
-      w.writeLines(2, genAllTriggers(regUpdateNamesInPart, outputConsumers, "$next"))
+      w.writeLines(2, genAllTriggersForDedup(regUpdateNamesInPart, outputConsumers, "$next"))
       // triggers for MemWrites
       val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
       val memWriteTriggers = memWritesInPart flatMap { mw => {
         val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-        genDepPartTriggers(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+        genDepPartTriggersForDedup(outputConsumers.getOrElse(mw.memName, Seq()), condition)
       }}
-      w.writeLines(0, "// Start memWriteTriggers")
+      w.writeLines(2, "// Start memWriteTriggers")
       w.writeLines(2, memWriteTriggers)
-      w.writeLines(0, "// End memWriteTriggers")
-      w.writeLines(0, "// Start regUpdates")
+      w.writeLines(2, "// End memWriteTriggers")
+      w.writeLines(2, "// Start regUpdates")
       w.writeLines(2, regUpdates flatMap emitStmt)
-      w.writeLines(0, "// End regUpdates")
+      w.writeLines(2, "// End regUpdates")
 
       w.writeLines(1, "}")
+
+      // w.writeLines(1, s"const int ${getPartAliasGlobalName(cp.id)}[] = { ${currentCPPartAlias.mkString(", ")} };")
+      w.writeLines(1, genPartAliasDecls(cp.id))
+      w.writeLines(0, "")
     }}
 
 
@@ -273,6 +331,27 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     dedupOtherInstCPs.zipWithIndex.foreach{case ((cpid, cp), cpNo) => {
       val correspondingMainCPId = dedupInfo.dedupOtherCPToMainCPMap(cpid)
       w.writeLines(1, s"// CondPart ${cpid} skipped as it's dedupped (Alias of CondPart ${correspondingMainCPId})")
+
+      currentCPPartAlias.clear()
+      currentCPPartAlias += cp.id
+
+
+      val (regUpdates, noRegUpdates) = partitionByType[RegUpdate](cp.memberStmts)
+      genAllTriggersForDedup(cp.outputsToDeclare.keys.toSeq, outputConsumers, condPartWorker.cacheSuffix)
+
+      val regUpdateNamesInPart = regUpdates flatMap findResultName
+      genAllTriggersForDedup(regUpdateNamesInPart, outputConsumers, "$next")
+      // triggers for MemWrites
+      val memWritesInPart = cp.memberStmts collect { case mw: MemWrite => mw }
+      val memWriteTriggers = memWritesInPart flatMap { mw => {
+        val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+        genDepPartTriggersForDedup(outputConsumers.getOrElse(mw.memName, Seq()), condition)
+      }}
+
+      // w.writeLines(1, s"const int ${getPartAliasGlobalName(cp.id)}[] = { ${currentCPPartAlias.mkString(", ")} };")
+      w.writeLines(1, genPartAliasDecls(cp.id))
+      w.writeLines(0, "")
+
     }}
 
 
@@ -372,21 +451,24 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     w.writeLines(2, extIOCaches.toSeq)
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered.zipWithIndex foreach { case (stmt, cpNo) => stmt match {
       case cp: CondPart => {
         if (cp.alwaysActive)
           w.writeLines(2, s"${genEvalFuncName(cp.id)}();")
         else {
           if (dedupInfo.allDedupCPids.contains(cp.id)) {
+            val partAliasName = getPartAliasGlobalName(cp.id)
             if (dedupInfo.dedupCPIdMap.contains(cp.id)) {
               // main inst cps
-              val funcCall = s"${genEvalFuncName(cp.id)}(&${rn.getDedupInstanceDSName(0)})"
+              val funcCall = s"${genEvalFuncName(cp.id)}(&${rn.getDedupInstanceDSName(0)}, ${partAliasName})"
               w.writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${funcCall};")
             } else {
               // other deduplicated instances
               val correspondingCPId = dedupInfo.dedupOtherCPToMainCPMap(cp.id)
-              w.writeLines(2, s"// CondPart ${cp.id} is an alias of CondPart ${correspondingCPId}")
-              val funcCall = s"${genEvalFuncName(correspondingCPId)}(&${rn.getDedupInstanceDSName(0)})"
+              val instName = dedupInfo.cpIdToDedupInstName(cp.id)
+              val instId = dedupInfo.dedupInstanceNameToId(instName)
+              w.writeLines(2, s"// CondPart ${cp.id} in [${instName}] is an alias of CondPart ${correspondingCPId} in instance ${dedupInfo.dedupMainInstanceName}")
+              val funcCall = s"${genEvalFuncName(correspondingCPId)}(&${rn.getDedupInstanceDSName(instId)}, ${partAliasName})"
               w.writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${funcCall};")
             }
           } else {
@@ -446,6 +528,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
   def declareFlattenModules(sg:StatementGraph, dedupInfo: DedupCPInfo): Unit = {
     val topName = circuit.main
+    val topModule = findModule(topName, circuit) match {case m: Module => m}
 
     val modules = circuit.modules.collect {case m: Module => m}
     val extModules = circuit.modules.collect {case em: ExtModule => em}
@@ -518,7 +601,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}.toMap
     val allMemoryNames = allMemoryNameAndType.keys.toSet
     // Save
-    dedupInfo.allMemoryNameAndType ++= allMemoryNameAndType
+    // dedupInfo.allMemoryNameAndType ++= allMemoryNameAndType
     dedupInfo.allMemoryNames ++= allMemoryNames
 
     val dedupAccessedMemories = (dedupInfo.mainInstInputSignals ++ dedupInfo.mainInstOutputSignals).intersect(allMemoryNames)
@@ -540,7 +623,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(0, s"typedef struct ${dedupCircuitDataStructTypeName} {")
     w.writeLines(0, "")
     writeFlatternVariableDeclaration(dedupRegisterDecls, Seq(), dedupAccessedMemoryInfo)
-    w.writeLines(1, s"int ${flagAliasName}[${dedupInfo.dedupCPIdMap.size}];")
 
     w.writeLines(1, "// Declare internal signals (cache)")
     dedupInfo.mainDedupInstInternalSignals.foreach{sigName =>
@@ -571,6 +653,25 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
 
 
+    // Declare top Module signals
+    val topModuleRegisters = findInstancesOf[DefRegister](topModule.body)
+    val topModuleMemories = findInstancesOf[DefMemory](topModule.body)
+    val topModuleRegDesc = topModuleRegisters flatMap {d: DefRegister => {
+      val typeStr = genCppType(d.tpe)
+      val regName = d.name
+      Seq(s"$typeStr $regName;")
+    }}
+    val topModuleMemDesc = topModuleMemories map {m: DefMemory => {
+      s"${genCppType(m.dataType)} ${m.name}[${m.depth}];"
+    }}
+    w.writeLines(1, topModuleRegDesc)
+    w.writeLines(1, topModuleMemDesc)
+    w.writeLines(1, topModule.ports flatMap emitPort(topLevel = true))
+
+
+
+
+
     val extModuleDecs = extModulesAndPrefixes map { case (module, fullName) => {
       // val instanceName = fullName.split("\\.").last
       val instanceName = removeDots(fullName).dropRight(1)
@@ -588,7 +689,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}
     w.writeLines(0, s"")
     w.writeLines(1, s"$topName() {")
-    w.writeLines(2, s"${rn.outsideDSName}.init;")
+
+    w.writeLines(2, initializeVals(topLevel = true)(topModule, topModuleRegisters, topModuleMemories))
+    w.writeLines(2, s"${rn.outsideDSName}.init();")
     dedupInfo.dedupInstanceNameList.zipWithIndex.foreach{case (name: String, idx: Int) => {
       w.writeLines(2, s"${rn.getDedupInstanceDSName(idx)}.init();")
     }}
@@ -601,13 +704,13 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         val memShortName = memName.stripPrefix(dedupInfo.dedupMainInstanceName)
         val dedupDeclName = removeDots(memShortName)
         val memGlobalName = removeDots(memName)
-        w.writeLines(2, s"${dedupDSName}.${dedupDeclName} = &(${globalDSName}.${memGlobalName});")
+        w.writeLines(2, s"${dedupDSName}.${dedupDeclName} = ${globalDSName}.${memGlobalName};")
       }}
-
-      w.writeLines(2, s"// Declare part alias for instance ${instanceName}")
-      val partAlias = dedupInfo.dedupInstNameToCPids(instanceName).sorted
-
-      w.writeLines(1, s"${dedupDSName}${flagAliasName} = { ${partAlias.mkString(", ")} };")
+//
+//      w.writeLines(2, s"// Declare part alias for instance ${instanceName}")
+//      val partAlias = dedupInfo.dedupInstNameToCPids(instanceName).sorted
+//
+//      w.writeLines(1, s"${dedupDSName}${flagAliasName} = { ${partAlias.mkString(", ")} };")
     }}
     w.writeLines(1, "}")
 
