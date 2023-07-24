@@ -392,6 +392,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(1, "}")
     }}
     w.writeLines(0, "")
+
+    if (opt.genRegDump) writeRegisterDump(sg, rn)
   }
 
   def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
@@ -524,6 +526,30 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}
     w. writeLines(1, "}")
 
+  }
+
+  def writeRegisterDump(sg: StatementGraph, rn: Renamer) = {
+
+    // Registers
+    val cpTopoOrdered = TopologicalSort(sg).filter(sg.validNodes.contains)
+    val sgTopoOrdered = cpTopoOrdered.flatMap{id => {
+      sg.idToStmt(id) match {
+        case cp: CondPart => {
+          cp.memberStmts
+        }
+      }
+    }}
+
+    val allWriteRegisters = sgTopoOrdered.collect { case ru: RegUpdate => ru}
+
+    w.writeLines(1, s"void dumpAllRegisters(std::ofstream& ofs) {")
+
+    allWriteRegisters.map{ru => emitExpr(ru.regRef)}.sorted.foreach{regName => {
+      val regDeclName = rn.emit(regName)
+
+      w.writeLines(2, s"""ofs << "${regName} " << ${regDeclName} << "\\n";""")
+    }}
+    w.writeLines(1, "}")
   }
 
   def declareFlattenModules(sg:StatementGraph, dedupInfo: DedupCPInfo): Unit = {

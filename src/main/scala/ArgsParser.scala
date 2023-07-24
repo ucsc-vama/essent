@@ -18,6 +18,7 @@ case class OptFlags(
     trackExts: Boolean = false,
     partStats: Boolean = false,
     dedup: Boolean = false,
+    genRegDump: Boolean = true,
     partCutoff: Int = 8,
     withVCD: Boolean = false,
     withFST: Boolean = false,
