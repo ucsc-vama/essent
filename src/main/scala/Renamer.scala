@@ -117,14 +117,18 @@ class Renamer {
     dedupCPInfo.dedupRegisterNamesByInst.foreach{ case (instName, registerNames) => {
       if (instName == dedupCPInfo.dedupMainInstanceName) {
         registerNames.foreach{rname => {
+          assert(nameToMeta(rname).decType != PartOut)
           val shortName = rname.stripPrefix(instName)
           val declName = removeDots(shortName)
           val fullName = s"(${dedupCitcuitDSInstName}->${declName})"
+          assert(rname == nameToEmitName(rname))
           nameToEmitName(rname) = fullName
         }}
       } else {
         // Remove unused signal
         registerNames.foreach{rname => {
+          assert(rname == nameToEmitName(rname))
+          assert(nameToMeta(rname).decType != PartOut)
           nameToEmitName(rname) = "!!ShouldntReachHere!!"
         }}
       }
@@ -141,6 +145,8 @@ class Renamer {
           println(nameToEmitName(canonicalName))
           assert(false)
         }
+        assert(canonicalName == nameToEmitName(canonicalName))
+        assert(nameToMeta(canonicalName).decType != PartOut)
 
         val declName = removeDots(canonicalName)
         nameToEmitName(canonicalName) = s"${outsideDSName}.${declName}"
@@ -149,11 +155,17 @@ class Renamer {
 
     // rename partcache
     // For main instance
+//    assert(dedupCPInfo.mainDedupInstInternalSignals.contains("ldut$tile_prci_domain$tile_reset_domain$tile$core$ctrl_killd"))
     dedupCPInfo.mainDedupInstInternalSignals.foreach{sigName =>
+//      assert(nameToMeta(sigName).decType == PartOut)
+//      assert(nameToEmitName(sigName) == sigName)
+      assert(sigName != "ldut.tile_prci_domain.tile_reset_domain.tile.core.ctrl_killd")
       val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
       nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
     }
     dedupCPInfo.mainDedupInstBoundarySignals.diff(dedupCPInfo.allRegisterNames).diff(dedupCPInfo.allMemoryNames).foreach{ sigName =>
+      assert(nameToMeta(sigName).decType == PartOut)
+
       val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
       nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
     }
@@ -164,7 +176,6 @@ class Renamer {
     factorFlatternedMemoryName(dedupCPInfo)
     factorExtModuleName(dedupCPInfo)
 
-
     // factor all register access
     // In original design, registers are accessed using canonical name
 
@@ -173,6 +184,8 @@ class Renamer {
     dedupCPInfo.dedupRegisterNamesByInst.foreach{ case (instName, registerNames) => {
       val instId = dedupCPInfo.dedupInstanceNameToId(instName)
       registerNames.foreach{rname => {
+
+        assert(nameToMeta(rname).decType != PartOut)
         val shortName = rname.stripPrefix(instName)
         val declName = removeDots(shortName)
         val fullName = s"(${getDedupInstanceDSName(instId)}.${declName})"
@@ -186,6 +199,7 @@ class Renamer {
         // Outside circuit registers
         // Assertion: Those registers are not renamed yet
         assert(nameToEmitName(canonicalName) == canonicalName)
+        assert(nameToMeta(canonicalName).decType != PartOut)
 
         val declName = removeDots(canonicalName)
         nameToEmitName(canonicalName) = s"${outsideDSName}.${declName}"
@@ -196,17 +210,16 @@ class Renamer {
     // For main instance
     dedupCPInfo.allDedupInstInternalSignals.foreach{sigName => {
       // Outside circuit should not touch dedup internal signals
+
+      assert(nameToMeta(sigName).decType == PartOut)
       nameToEmitName(sigName) = "!!!Should_not_access_this_signal!!!"
     }}
 
     dedupCPInfo.allDedupInstBoundarySignals.foreach{sigName => {
-      if (dedupCPInfo.signalWriteOnlyByOutside(sigName)) {
-        // Don't rename if already renamed (signals can be registers or memories)
-        if (nameToEmitName(sigName) == sigName) {
-          val declName = removeDots(sigName)
-          nameToEmitName(sigName) = s"${outsideDSName}.${declName}"
-        }
 
+      if (dedupCPInfo.allRegisterNames.contains(sigName) || dedupCPInfo.allMemoryNames.contains(sigName)) {
+        // Don't rename memory and registers, as they should already renamed
+        assert(sigName != nameToEmitName(sigName))
       } else {
         val signalReaderCPids = dedupCPInfo.inputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
         val signalWriterCPids = dedupCPInfo.outputSignalNameToCPid.getOrElse(sigName, Set[NodeID]())
@@ -218,7 +231,6 @@ class Renamer {
         val instId = dedupCPInfo.dedupInstanceNameToId(instName)
 
         val declName = removeDots(sigName.stripPrefix(instName))
-        assert(declName != "tile_reset_domain$tile$dcache$doUncachedResp")
         assert(nameToEmitName(sigName) != sigName)
         nameToEmitName(sigName) = s"(${getDedupInstanceDSName(instId)}.${declName})"
       }
