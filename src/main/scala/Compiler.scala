@@ -645,17 +645,14 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       }
     }}
 
-    val allWriteRegisters = sgTopoOrdered.collect { case ru: RegUpdate => ru}
     val allRegisterNames = dedupInfo.allRegisterNames
 
     // (typeStr, declName)
     val outsideRegisterDecls = ArrayBuffer[(String, String)]()
     val dedupRegisterDecls = ArrayBuffer[(String, String)]()
 
-    allWriteRegisters.foreach{case ru => {
-      val canonicalName = emitExpr(ru.regRef)
-      val typeStr = genCppType(ru.regRef.tpe)
-
+    allRegisterNames.foreach{canonicalName => {
+      val typeStr = dedupInfo.allRegesterNameToTypeStr(canonicalName)
       if (!dedupRegisters.contains(canonicalName)) {
         val genName = removeDots(canonicalName)
         val decl = (typeStr, genName)
@@ -667,7 +664,6 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         val decl = (typeStr, genName)
         dedupRegisterDecls.append(decl)
       }
-
     }}
 
 
