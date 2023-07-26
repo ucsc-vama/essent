@@ -691,7 +691,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     // dedupInfo.allMemoryNameAndType ++= allMemoryNameAndType
     dedupInfo.allMemoryNames ++= allMemoryNames
 
-    val dedupAccessedMemories = (dedupInfo.mainInstInputSignals ++ dedupInfo.mainInstOutputSignals).intersect(allMemoryNames)
+    val dedupAccessedMemories = (dedupInfo.mainDedupInstRWSignals).intersect(allMemoryNames)
     val dedupAccessedMemoryInfo = dedupAccessedMemories.toSeq.map{memName => {
       val declName = removeDots(memName.stripPrefix(dedupInfo.dedupMainInstanceName))
       (declName, genCppType(allMemoryNameAndType(memName)))

@@ -81,15 +81,6 @@ class Renamer {
   }
 
 
-  def factorFlatternedMemoryName(dedupCPInfo: DedupCPInfo) = {
-    // factor all memory access
-    dedupCPInfo.allMemoryNames.foreach{canonicalName => {
-      val declName = removeDots(canonicalName)
-      val fullName = s"${outsideDSName}.${declName}"
-      nameToEmitName(canonicalName) = fullName
-    }}
-  }
-
   def factorExtModuleName(dedupCPInfo: DedupCPInfo): Unit = {
     // For each ExtIO
     nameToMeta.filter{case (_, SigMeta(declType, _)) => {declType == ExtIO}}.foreach{case (name, SigMeta(declType, signalType)) => {
@@ -105,8 +96,25 @@ class Renamer {
   }
 
   def factorNameForDedupCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
-    factorFlatternedMemoryName(dedupCPInfo)
     factorExtModuleName(dedupCPInfo)
+
+    // factor all memory access
+    val dedupAccessedMemory = dedupCPInfo.allMemoryNames.filter(dedupCPInfo.allDedupInstRWSignals)
+    val dedupAccessedMemoryByInst = dedupCPInfo.dedupRWSignalsByInst.map{case(instName, signals) => instName -> signals.intersect(dedupAccessedMemory)}
+    val outsideAccessedMemory = dedupCPInfo.allMemoryNames.filterNot(dedupCPInfo.allDedupInstRWSignals)
+
+    dedupAccessedMemoryByInst.foreach{case (instName, memNames) => {
+      memNames.foreach {canonicalName => {
+        val shortName = canonicalName.stripPrefix(instName)
+        val declName = removeDots(shortName)
+        val fullName = s"${dedupCitcuitDSInstName}->${declName}"
+        nameToEmitName(canonicalName) = fullName
+      }}
+    }}
+
+    outsideAccessedMemory.foreach{canonicalName => {
+      nameToEmitName(canonicalName) = "!!!ShouldNotReachHere!!!"
+    }}
 
     // factor all register access
     // In original design, registers are accessed using canonical name
@@ -173,8 +181,14 @@ class Renamer {
   }
 
   def factorNameForOutsideCircuit(sg: StatementGraph, dedupCPInfo: DedupCPInfo): Unit = {
-    factorFlatternedMemoryName(dedupCPInfo)
     factorExtModuleName(dedupCPInfo)
+
+    // factor all memory access
+    dedupCPInfo.allMemoryNames.foreach{canonicalName => {
+      val declName = removeDots(canonicalName)
+      val fullName = s"${outsideDSName}.${declName}"
+      nameToEmitName(canonicalName) = fullName
+    }}
 
     // factor all register access
     // In original design, registers are accessed using canonical name

@@ -166,7 +166,6 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   }
   val allRegisterNames = allStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
   val allRegesterNameToTypeStr = allStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
-//  val allMemoryNames = allStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   val dedupStmts = allDedupCPids.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   val dedupRegisterNames = allDedupInstRWSignals.intersect(allRegisterNames)
