@@ -142,6 +142,10 @@ class Renamer {
       }
     }}
 
+    val weiredReg = "ldut.tile_prci_domain.tile_reset_domain.tile.frontend.icache.tag_array_0_tag_rdata_en_pipe_0"
+    assert(dedupCPInfo.allRegisterNames.contains(weiredReg))
+    assert(dedupCPInfo.dedupRegisterNames.contains(weiredReg))
+
     dedupCPInfo.allRegisterNames.foreach {canonicalName => {
 
       if (!dedupCPInfo.dedupRegisterNames.contains(canonicalName)) {

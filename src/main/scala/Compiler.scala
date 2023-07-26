@@ -712,7 +712,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     writeFlatternVariableDeclaration(dedupRegisterDecls, Seq(), dedupAccessedMemoryInfo)
 
     w.writeLines(1, "// Declare internal signals (cache)")
-    dedupInfo.mainDedupInstInternalSignals.foreach{sigName =>
+    dedupInfo.mainDedupInstInternalSignals.diff(dedupRegisters).foreach{ sigName =>
       val sigType = dedupInfo.signalNameToType(sigName)
 
       val typeStr = genCppType(sigType)

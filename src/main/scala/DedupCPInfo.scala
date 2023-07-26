@@ -59,6 +59,14 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
           outputSignalNameToCPid(name) += cpid
         }}
 
+        cp.memberStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet.foreach {name: String => {
+          // Write only
+          if (!outputSignalNameToCPid.contains(name)) {
+            outputSignalNameToCPid(name) = Set[Int]()
+          }
+          outputSignalNameToCPid(name) += cpid
+        }}
+
         cp.inputs.foreach{case name => {
           if (!inputSignalNameToCPid.contains(name)) {
             inputSignalNameToCPid(name) = Set[Int]()
@@ -79,7 +87,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 
 
   def signalReadOnlyByDedup(name: String) = {
-    inputSignalNameToCPid(name).forall(allDedupCPids.contains)
+    inputSignalNameToCPid.getOrElse(name, Set[Int]()).forall(allDedupCPids.contains)
   }
 
   def signalWriteOnlyByDedup(name: String) = {
@@ -168,13 +176,18 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val allRegesterNameToTypeStr = allStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
 
   val dedupStmts = allDedupCPids.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
-  val dedupRegisterNames = allDedupInstRWSignals.intersect(allRegisterNames)
+  val dedupWriteRegisterNames = dedupStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
+  val dedupRegisterNames = allDedupInstRWSignals.intersect(allRegisterNames) ++ dedupWriteRegisterNames
 //  val dedupMemoryNames = dedupStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   val dedupStmtsByInst = dedupInstNameToCPids.map{case (instName, cpIds) => {
     instName -> cpIds.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   }}
-  val dedupRegisterNamesByInst = dedupRWSignalsByInst.map{case (instName, signals) => {instName -> signals.intersect(allRegisterNames)}}
+  val dedupRegisterNamesByInst = dedupRWSignalsByInst.map{case (instName, signals) => {
+    val instStmts = dedupInstNameToCPids(instName).map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
+    val instWriteRegisterNames = instStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
+    instName -> (signals.intersect(allRegisterNames) ++ instWriteRegisterNames)
+  }}
   assert(dedupRegisterNamesByInst.values.flatten.toSet.size == dedupRegisterNames.toSet.size)
 
   val dedupMainStmts = dedupCPIdMap.keys.toSeq.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
