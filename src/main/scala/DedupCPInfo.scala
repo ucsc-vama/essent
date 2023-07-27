@@ -2,7 +2,7 @@ package essent
 
 import essent.Emitter.{emitExpr, genCppType}
 import essent.Graph.NodeID
-import essent.ir.{CondPart, RegUpdate}
+import essent.ir.{CondPart, MemWrite, RegUpdate}
 import essent.Util.removeDots
 import firrtl.ir.{DefMemory, Type}
 
@@ -195,7 +195,15 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 //  val dedupMainMemoryNames = dedupMainStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   // val allMemoryNameAndType = mutable.HashMap[String, Type]()
-  val allMemoryNames = mutable.Set[String]()
+  val allMemoryNames = allStmts.collect{case mw: MemWrite => mw.memName}.toSet
 
+  // Read mems (and possibly write mems) ++ Write mems
+  val dedupMWNames = dedupStmts.collect{case mw: MemWrite => mw.memName}
+  val dedupAccessedMemory = allMemoryNames.filter(allDedupInstRWSignals) ++ dedupMWNames
+  val dedupAccessedMemoryByInst = dedupRWSignalsByInst.map{case(instName, signals) => {
+    val instMemWriteNames = dedupStmtsByInst(instName).collect{case mw: MemWrite => mw.memName}
+    instName -> (signals.intersect(dedupAccessedMemory) ++ instMemWriteNames)
+  }}
+  val outsideAccessedMemory = allMemoryNames.filterNot(dedupAccessedMemory)
 
 }

@@ -219,6 +219,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     // 5. Done partitioning. Check
     startTime = System.currentTimeMillis()
 
+    // This can be very slow
     assert(ap.checkPartioning())
 
     // Dedup instances should partitioned as planned

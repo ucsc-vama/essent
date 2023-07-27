@@ -99,11 +99,9 @@ class Renamer {
     factorExtModuleName(dedupCPInfo)
 
     // factor all memory access
-    val dedupAccessedMemory = dedupCPInfo.allMemoryNames.filter(dedupCPInfo.allDedupInstRWSignals)
-    val dedupAccessedMemoryByInst = dedupCPInfo.dedupRWSignalsByInst.map{case(instName, signals) => instName -> signals.intersect(dedupAccessedMemory)}
-    val outsideAccessedMemory = dedupCPInfo.allMemoryNames.filterNot(dedupCPInfo.allDedupInstRWSignals)
 
-    dedupAccessedMemoryByInst.foreach{case (instName, memNames) => {
+
+    dedupCPInfo.dedupAccessedMemoryByInst.foreach{case (instName, memNames) => {
       memNames.foreach {canonicalName => {
         val shortName = canonicalName.stripPrefix(instName)
         val declName = removeDots(shortName)
@@ -112,8 +110,10 @@ class Renamer {
       }}
     }}
 
-    outsideAccessedMemory.foreach{canonicalName => {
-      nameToEmitName(canonicalName) = "!!!ShouldNotReachHere!!!"
+    dedupCPInfo.outsideAccessedMemory.foreach{canonicalName => {
+      // ldut.tile_prci_domain.tile_reset_domain.boom_tile.frontend.bpd.banked_predictors_0.components_1.tables_2.hi_us_0
+      // This memory should be deduplicated
+      nameToEmitName(canonicalName) = s"!!!ShouldNotReachHere_${canonicalName}!!!"
     }}
 
     // factor all register access
@@ -224,7 +224,7 @@ class Renamer {
       // Outside circuit should not touch dedup internal signals
 
       assert(nameToMeta(sigName).decType == PartOut)
-      nameToEmitName(sigName) = "!!!Should_not_access_this_signal!!!"
+      nameToEmitName(sigName) = s"!!!Should_not_access_this_signal_${sigName}!!!"
     }}
 
     dedupCPInfo.allDedupInstBoundarySignals.foreach{sigName => {

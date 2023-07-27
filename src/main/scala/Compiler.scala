@@ -686,13 +686,11 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         (prefix + m.name -> m.dataType)
       }}
     }}.toMap
-    val allMemoryNames = allMemoryNameAndType.keys.toSet
-    // Save
-    // dedupInfo.allMemoryNameAndType ++= allMemoryNameAndType
-    dedupInfo.allMemoryNames ++= allMemoryNames
-
-    val dedupAccessedMemories = (dedupInfo.mainDedupInstRWSignals).intersect(allMemoryNames)
-    val dedupAccessedMemoryInfo = dedupAccessedMemories.toSeq.map{memName => {
+//    // val allMemoryNames = allMemoryNameAndType.keys.toSet
+//    val allMemoryNames = dedupInfo.allMemoryNames
+//
+//    val dedupAccessedMemories = (dedupInfo.mainDedupInstRWSignals).intersect(allMemoryNames)
+    val dedupAccessedMemoryInfo = dedupInfo.dedupAccessedMemoryByInst(dedupInfo.dedupMainInstanceName).toSeq.map{memName => {
       val declName = removeDots(memName.stripPrefix(dedupInfo.dedupMainInstanceName))
       (declName, genCppType(allMemoryNameAndType(memName)))
     }}
@@ -720,7 +718,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(1, s"${typeStr} ${declName};")
     }
     w.writeLines(1, "// Declare boundary signals")
-    dedupInfo.mainDedupInstBoundarySignals.diff(allRegisterNames).diff(allMemoryNames).foreach{ sigName =>
+    dedupInfo.mainDedupInstBoundarySignals.diff(allRegisterNames).diff(dedupInfo.allMemoryNames).foreach{ sigName =>
       val sigType = dedupInfo.signalNameToType(sigName)
 
       val typeStr = genCppType(sigType)
@@ -784,7 +782,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}
 
     w.writeLines(2, s"// Setup pointers for all instances")
-    dedupAccessedMemories.foreach{memName => {
+    dedupInfo.dedupAccessedMemoryByInst(dedupInfo.dedupMainInstanceName).foreach{memName => {
       val memShortName = memName.stripPrefix(dedupInfo.dedupMainInstanceName)
       val dedupDeclName = removeDots(memShortName)
       dedupInfo.dedupInstanceNameList.zipWithIndex.foreach{case (instanceName: String, idx: Int) => {
