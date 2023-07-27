@@ -163,11 +163,9 @@ class Renamer {
 
     // rename partcache
     // For main instance
-//    assert(dedupCPInfo.mainDedupInstInternalSignals.contains("ldut$tile_prci_domain$tile_reset_domain$tile$core$ctrl_killd"))
     dedupCPInfo.mainDedupInstInternalSignals.foreach{sigName =>
 //      assert(nameToMeta(sigName).decType == PartOut)
 //      assert(nameToEmitName(sigName) == sigName)
-      assert(sigName != "ldut.tile_prci_domain.tile_reset_domain.tile.core.ctrl_killd")
       val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
       nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
     }
