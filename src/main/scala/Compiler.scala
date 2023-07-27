@@ -150,17 +150,21 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
                             ruSuffix: String
                           ) = {
     val mwNames = mws.map(_.memName).toSet
-    val mwNameToStmt = mws.map{mw => {mw.memName -> mw}}.toMap
-    // Assertion: Each CP only write memory at most once
-    // If violates, please also fix cpOutputMaxConsumers
-    assert(mwNames.size == mws.size)
+    // Note: A memory may have multiple writers
+    val mwNameToStmts = mutable.HashMap[String, Seq[MemWrite]]()
+    mws.foreach{mw => {
+      val memName = mw.memName
+      mwNameToStmts(memName) = mwNameToStmts.getOrElse(memName, Seq()) ++ Seq(mw)
+    }}
     val allSignalNames = (cacheNames ++ ruNames ++ mwNames).map(_.stripPrefix(instName))
     assert(allSignalNames.size == signalMaxConsumers.size)
     assert(allSignalNames.diff(signalMaxConsumers.keySet).isEmpty)
 
     signalMaxConsumers.flatMap{case (sigShortName, maxConsumers) => {
       val canonicalName = instName + sigShortName
-      val consumerIDs = genSigConsumerList(outputConsumeMap.getOrElse(canonicalName, Seq()), maxConsumers)
+      val consumers = outputConsumeMap.getOrElse(canonicalName, Seq())
+      assert(consumers.size <= maxConsumers)
+      val consumerIDs = genSigConsumerList(consumers, maxConsumers)
       if (cacheNames.contains(canonicalName)) {
         genDepPartTriggersForDedup(consumerIDs, s"${rn.emit(canonicalName)} != ${rn.emit(canonicalName + cacheSuffix)}")
       } else if (ruNames.contains(canonicalName)) {
@@ -168,9 +172,11 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       } else {
         assert(mwNames.contains(canonicalName))
 
-        val mw = mwNameToStmt(canonicalName)
-        val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
-        genDepPartTriggersForDedup(consumerIDs, condition)
+        val mws = mwNameToStmts(canonicalName)
+        mws.flatMap{mw => {
+          val condition = s"${emitExprWrap(mw.wrEn)} && ${emitExprWrap(mw.wrMask)}"
+          genDepPartTriggersForDedup(consumerIDs, condition)
+        }}
       }
     }}
   }
