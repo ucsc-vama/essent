@@ -127,4 +127,11 @@ class Graph {
 object Graph {
   type NodeID = Int
   type AdjacencyList = ArrayBuffer[ArrayBuffer[NodeID]]
+
+  def apply(g: Graph): Graph = {
+    val new_graph = new Graph
+    new_graph.inNeigh ++= g.inNeigh.map(_.clone())
+    new_graph.outNeigh ++= g.outNeigh.map(_.clone())
+    new_graph
+  }
 }

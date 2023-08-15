@@ -1,13 +1,14 @@
 package essent
 
 import firrtl.ir._
-
 import essent.Emitter._
 import essent.Extract._
 import essent.ir._
 
 import collection.mutable.{ArrayBuffer, BitSet, HashMap}
 import scala.reflect.ClassTag
+import java.io.{File, FileWriter}
+import scala.collection.mutable
 
 // Extends Graph to include more attributes per node
 //  - Associates a name (String) and Statement with each node
@@ -144,6 +145,71 @@ class StatementGraph extends Graph {
     validNodes --= idsToRemove
   }
 
+  def paint(parent: String, fileName: String) = {
+    val dotWriter = new FileWriter(new File(parent, fileName))
+
+    def writeLine(indentLevel: Int, line: String) {
+      dotWriter write ("  "*indentLevel + line + "\n")
+    }
+
+    writeLine(0, "digraph MergeGraph {")
+
+    for (eachNode <- validNodes) {
+      val node_irName = idToStmt(eachNode).getClass.getName()
+      val node_name = idToName(eachNode)
+      val nodeLabel = s"id:${eachNode}, ${node_irName}"
+      writeLine(1, s"""n$eachNode [label=\"$nodeLabel\", irType=\"$node_irName\", stmtID=\"${eachNode}\"];""")
+    }
+
+    for (eachNode <- idToStmt.indices) {
+      for (eachSrcNode <- inNeigh(eachNode).distinct) {
+        if (validNodes.contains(eachNode) && validNodes.contains(eachSrcNode))
+          writeLine(1, s"n$eachSrcNode -> n$eachNode;")
+      }
+    }
+
+    writeLine(0, "}")
+
+    dotWriter.close()
+  }
+
+  def paintCondPart(parent: String, fileName: String) = {
+    val dotWriter = new FileWriter(new File(parent, fileName))
+    val idToCPId = new mutable.HashMap[NodeID, NodeID]()
+
+    def writeLine(indentLevel: Int, line: String) {
+      dotWriter write ("  "*indentLevel + line + "\n")
+    }
+
+    writeLine(0, "digraph CondPartGraph {")
+
+    for (eachNode <- validNodes) {
+      idToStmt(eachNode) match {
+        case cp: CondPart => {
+          idToCPId(eachNode) = cp.id
+
+          val nodeLabel = s"id:${cp.id}"
+          writeLine(1, s"""n${cp.id} [label=\"$nodeLabel\", cpid=\"${cp.id}\"];""")
+        }
+        case _ => {
+          throw new Exception("Should only see CondPart here")
+        }
+      }
+    }
+
+    for (eachDstNode <- idToCPId.keys) {
+      for (eachSrcNode <- inNeigh(eachDstNode).distinct) {
+        if (idToCPId.contains(eachSrcNode)) {
+          writeLine(1, s"n${idToCPId(eachSrcNode)} -> n${idToCPId(eachDstNode)};")
+        }
+      }
+    }
+
+
+    writeLine(0, "}")
+
+    dotWriter.close()
+  }
 
   // Stats
   //----------------------------------------------------------------------------

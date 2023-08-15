@@ -9,12 +9,13 @@ import firrtl.ir.{DefMemory, Type}
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdToCPid: mutable.HashMap[Int, Int], dedupMergeIdMap: mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]) {
+class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdToCPid: mutable.HashMap[Int, Int], dedupMergeIdMap: mutable.HashMap[NodeID, mutable.ArrayBuffer[NodeID]]) {
 
   val dedupMainInstanceName = dedupInstanceNames.head
   val dedupInstanceNameList = dedupInstanceNames
   val dedupInstanceNameToId = dedupInstanceNames.zipWithIndex.toMap
   val mergeIDToCPID = mergeIdToCPid
+  val dedupMergeIDMap = dedupMergeIdMap
 
   // CP id in main instance -> CP ids in other instances
   val dedupCPIdMap = dedupMergeIdMap.map{case (mainId, dupIds) => {

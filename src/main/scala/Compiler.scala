@@ -514,7 +514,9 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     w.writeLines(2, extIOCaches.toSeq)
-    sg.stmtsOrdered.zipWithIndex foreach { case (stmt, cpNo) => stmt match {
+
+    val orderedSG = sg.collectValidStmts(TopologicalSortWithLocality(sg, dedupInfo.dedupMergeIDMap.map{case (main, others) => Seq(main) ++ others}.toSeq))
+    orderedSG foreach {
       case cp: CondPart => {
         if (cp.alwaysActive)
           w.writeLines(2, s"${genEvalFuncName(cp.id)}();")
@@ -540,8 +542,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
           }
         }
       }
-      case _ => w.writeLines(2, emitStmt(stmt))
-    }}
+      case stmt => w.writeLines(2, emitStmt(stmt))
+    }
     // w.writeLines(2,  "#ifdef ALL_ON")
     // w.writeLines(2, s"$flagVarName.fill(true);" )
     // w.writeLines(2,  "#endif")
@@ -641,15 +643,15 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     val mainInstRegisters = (dedupInfo.dedupMainRegisterNames).toSet
     val mainInstName = dedupInfo.dedupMainInstanceName
 
-    // Registers
-    val cpTopoOrdered = TopologicalSort(sg).filter(sg.validNodes.contains)
-    val sgTopoOrdered = cpTopoOrdered.flatMap{id => {
-      sg.idToStmt(id) match {
-        case cp: CondPart => {
-          cp.memberStmts
-        }
-      }
-    }}
+//    // Registers
+//    val cpTopoOrdered = TopologicalSort(sg).filter(sg.validNodes.contains)
+//    val sgTopoOrdered = cpTopoOrdered.flatMap{id => {
+//      sg.idToStmt(id) match {
+//        case cp: CondPart => {
+//          cp.memberStmts
+//        }
+//      }
+//    }}
 
     val allRegisterNames = dedupInfo.allRegisterNames
 
