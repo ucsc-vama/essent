@@ -170,11 +170,14 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val signalNameToType = mutable.HashMap[String, Type]()
 
   // names for all registers and memory
-  val allStmts = mergeIdToCPid.keys.toSeq.map(sg.idToStmt).flatMap{
-    case cp: CondPart => cp.memberStmts
-  }
-  val allRegisterNames = allStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
-  val allRegesterNameToTypeStr = allStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
+  val allStmtsTopoSorted = TopologicalSort(sg).filter(sg.validNodes.contains).flatMap{id => {
+    sg.idToStmt(id) match {
+      case cp: CondPart => StatementGraph(cp.memberStmts).stmtsOrdered()
+      case _ => Seq()
+    }
+  }}
+  val allRegisterNames = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
+  val allRegesterNameToTypeStr = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
 
   val dedupStmts = allDedupCPids.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   val dedupWriteRegisterNames = dedupStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
@@ -196,7 +199,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 //  val dedupMainMemoryNames = dedupMainStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   // val allMemoryNameAndType = mutable.HashMap[String, Type]()
-  val allMemoryNames = allStmts.collect{case mw: MemWrite => mw.memName}.toSet
+  val allMemoryNames = allStmtsTopoSorted.collect{case mw: MemWrite => mw.memName}.toSet
 
   // Read mems (and possibly write mems) ++ Write mems
   val dedupMWNames = dedupStmts.collect{case mw: MemWrite => mw.memName}
