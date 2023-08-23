@@ -169,7 +169,7 @@ class Renamer {
       val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
       nameToEmitName(sigName) = s"(${dedupCitcuitDSInstName}->${declName})"
     }
-    dedupCPInfo.mainDedupInstBoundarySignals.diff(dedupCPInfo.allRegisterNames).diff(dedupCPInfo.allMemoryNames).foreach{ sigName =>
+    dedupCPInfo.mainDedupInstBoundarySignals.diff(dedupCPInfo.allRegisterNameSet).diff(dedupCPInfo.allMemoryNameSet).foreach{ sigName =>
       assert(nameToMeta(sigName).decType == PartOut)
 
       val declName = removeDots(sigName.stripPrefix(dedupCPInfo.dedupMainInstanceName))
@@ -229,7 +229,7 @@ class Renamer {
 
     dedupCPInfo.allDedupInstBoundarySignals.foreach{sigName => {
 
-      if (dedupCPInfo.allRegisterNames.contains(sigName) || dedupCPInfo.allMemoryNames.contains(sigName)) {
+      if (dedupCPInfo.allRegisterNameSet.contains(sigName) || dedupCPInfo.allMemoryNameSet.contains(sigName)) {
         // Don't rename memory and registers, as they should already renamed
         assert(sigName != nameToEmitName(sigName))
       } else {

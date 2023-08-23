@@ -726,7 +726,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(1, s"${typeStr} ${declName};")
     }
     w.writeLines(1, "// Declare boundary signals")
-    dedupInfo.mainDedupInstBoundarySignals.diff(allRegisterNames).diff(dedupInfo.allMemoryNames).foreach{ sigName =>
+    dedupInfo.mainDedupInstBoundarySignals.diff(dedupInfo.allRegisterNameSet).diff(dedupInfo.allMemoryNameSet).foreach{ sigName =>
       val sigType = dedupInfo.signalNameToType(sigName)
 
       val typeStr = genCppType(sigType)

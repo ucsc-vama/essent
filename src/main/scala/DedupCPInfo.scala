@@ -4,7 +4,7 @@ import essent.Emitter.{emitExpr, genCppType}
 import essent.Graph.NodeID
 import essent.ir.{CondPart, MemWrite, RegUpdate}
 import essent.Util.removeDots
-import firrtl.ir.{DefMemory, Type}
+import firrtl.ir.{DefMemory, DefRegister, Type}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -176,12 +176,13 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
       case _ => Seq()
     }
   }}
-  val allRegisterNames = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
+  val allRegisterNames = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.distinct
+  val allRegisterNameSet = allRegisterNames.toSet
   val allRegesterNameToTypeStr = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
 
   val dedupStmts = allDedupCPids.map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
   val dedupWriteRegisterNames = dedupStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
-  val dedupRegisterNames = allDedupInstRWSignals.intersect(allRegisterNames) ++ dedupWriteRegisterNames
+  val dedupRegisterNames = allDedupInstRWSignals.intersect(allRegisterNameSet) ++ dedupWriteRegisterNames
 //  val dedupMemoryNames = dedupStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   val dedupStmtsByInst = dedupInstNameToCPids.map{case (instName, cpIds) => {
@@ -190,7 +191,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val dedupRegisterNamesByInst = dedupRWSignalsByInst.map{case (instName, signals) => {
     val instStmts = dedupInstNameToCPids(instName).map(cpidToMergeId).map(sg.idToStmt).flatMap{case cp: CondPart => cp.memberStmts}
     val instWriteRegisterNames = instStmts.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.toSet
-    instName -> (signals.intersect(allRegisterNames) ++ instWriteRegisterNames)
+    instName -> (signals.intersect(allRegisterNameSet) ++ instWriteRegisterNames)
   }}
   assert(dedupRegisterNamesByInst.values.flatten.toSet.size == dedupRegisterNames.toSet.size)
 
@@ -199,11 +200,12 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 //  val dedupMainMemoryNames = dedupMainStmts.collect{case m: DefMemory => m}.map{m => m.name}
 
   // val allMemoryNameAndType = mutable.HashMap[String, Type]()
-  val allMemoryNames = allStmtsTopoSorted.collect{case mw: MemWrite => mw.memName}.toSet
+  val allMemoryNames = allStmtsTopoSorted.collect{case mw: MemWrite => mw.memName}.distinct
+  val allMemoryNameSet = allMemoryNames.toSet
 
   // Read mems (and possibly write mems) ++ Write mems
   val dedupMWNames = dedupStmts.collect{case mw: MemWrite => mw.memName}
-  val dedupAccessedMemory = allMemoryNames.filter(allDedupInstRWSignals) ++ dedupMWNames
+  val dedupAccessedMemory = allMemoryNameSet.filter(allDedupInstRWSignals) ++ dedupMWNames
   val dedupAccessedMemoryByInst = dedupRWSignalsByInst.map{case(instName, signals) => {
     val instMemWriteNames = dedupStmtsByInst(instName).collect{case mw: MemWrite => mw.memName}
     instName -> (signals.intersect(dedupAccessedMemory) ++ instMemWriteNames)
