@@ -176,7 +176,12 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
       case _ => Seq()
     }
   }}
-  val allRegisterNames = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.distinct
+  val allRegisterNames = TopologicalSort(sg).flatMap{id => {
+    sg.idToStmt(id) match {
+      case dr: DefRegister => Seq(dr.name)
+      case _ => Seq()
+    }
+  }}
   val allRegisterNameSet = allRegisterNames.toSet
   val allRegesterNameToTypeStr = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
 
