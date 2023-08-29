@@ -717,16 +717,17 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(0, "")
     writeFlatternVariableDeclaration(dedupRegisterDecls, Seq(), dedupAccessedMemoryInfo)
 
-    w.writeLines(1, "// Declare internal signals (cache)")
-    dedupInfo.mainDedupInstInternalSignals.diff(dedupRegisters).foreach{ sigName =>
-      val sigType = dedupInfo.signalNameToType(sigName)
+    val dedupInstInternalCachedSignals = dedupInfo.mainDedupInstInternalSignals.diff(dedupRegisters)
+    val dedupInstBoundaryCachedSignals = dedupInfo.mainDedupInstBoundarySignals.diff(dedupInfo.allRegisterNameSet).diff(dedupInfo.allMemoryNameSet)
+    val dedupInstCachedSignals = dedupInstInternalCachedSignals ++ dedupInstBoundaryCachedSignals
 
-      val typeStr = genCppType(sigType)
-      val declName = removeDots(sigName.stripPrefix(dedupInfo.dedupMainInstanceName))
-      w.writeLines(1, s"${typeStr} ${declName};")
-    }
-    w.writeLines(1, "// Declare boundary signals")
-    dedupInfo.mainDedupInstBoundarySignals.diff(dedupInfo.allRegisterNameSet).diff(dedupInfo.allMemoryNameSet).foreach{ sigName =>
+    // Assertion: Cached signal can either be internal or boundary, not both
+    assert(dedupInstInternalCachedSignals.size + dedupInstBoundaryCachedSignals.size == dedupInstCachedSignals.size)
+
+    val dedupInstCacheSignalsOrdered = dedupInfo.allSignalNamesOrdered.filter(dedupInstCachedSignals.contains)
+
+    w.writeLines(1, "// Declare cached signals (Both internal signals and boundary signals)")
+    dedupInstCacheSignalsOrdered.foreach{ sigName =>
       val sigType = dedupInfo.signalNameToType(sigName)
 
       val typeStr = genCppType(sigType)

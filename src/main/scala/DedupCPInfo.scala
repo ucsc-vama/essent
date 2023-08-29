@@ -1,6 +1,7 @@
 package essent
 
 import essent.Emitter.{emitExpr, genCppType}
+import essent.Extract.{findDependencesStmt, findResultName}
 import essent.Graph.NodeID
 import essent.ir.{CondPart, MemWrite, RegUpdate}
 import essent.Util.removeDots
@@ -170,6 +171,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val signalNameToType = mutable.HashMap[String, Type]()
 
   // names for all registers and memory
+
   val allStmtsTopoSorted = TopologicalSort(sg).filter(sg.validNodes.contains).flatMap{id => {
     sg.idToStmt(id) match {
       case cp: CondPart => StatementGraph(cp.memberStmts).stmtsOrdered()
@@ -182,6 +184,10 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
       case _ => Seq()
     }
   }}
+
+  val allSignalNamesOrdered = allStmtsTopoSorted.flatMap(findResultName)
+//val allSignalNamesOrdered = allStmtsTopoSorted.flatMap(findDependencesStmt).flatMap(_.deps).distinct
+
   val allRegisterNameSet = allRegisterNames.toSet
   val allRegesterNameToTypeStr = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
 
