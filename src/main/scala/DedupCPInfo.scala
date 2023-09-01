@@ -163,6 +163,12 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   val mainDedupInstRWSignals = mainInstInputSignals ++ mainInstOutputSignals
   val mainDedupInstInternalSignals = mainInstOutputSignals.filter(signalReadOnlyByDedup)
   val mainDedupInstBoundarySignals = mainDedupInstRWSignals.diff(mainDedupInstInternalSignals)
+
+//  val mainDedupInstBoundaryROSignals = mainDedupInstBoundarySignals.intersect(dedupInputSignals).diff(dedupOutputSignals)
+//  val mainDedupInstBoundaryWOSignals = mainDedupInstBoundarySignals.intersect(dedupOutputSignals).diff(dedupInputSignals)
+//  val mainDedupInstBoundaryRWSignals = mainDedupInstBoundarySignals.intersect(dedupOutputSignals).intersect(dedupInputSignals)
+//  assert(mainDedupInstBoundaryROSignals.size + mainDedupInstBoundaryWOSignals.size + mainDedupInstBoundaryRWSignals.size == mainDedupInstBoundarySignals.size)
+
   // There should be no signal shared by different dedup instances, ensured by partitioner
   assert(allDedupInstBoundarySignals.size == mainDedupInstBoundarySignals.size * dedupInstanceNames.size)
 
@@ -172,7 +178,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
 
   // names for all registers and memory
 
-  val allStmtsTopoSorted = TopologicalSort(sg).filter(sg.validNodes.contains).flatMap{id => {
+  val allStmtsTopoSorted = TopologicalSortWithLocality(sg, dedupMergeIDMap.map{case (main, others) => Seq(main) ++ others}.toSeq).filter(sg.validNodes.contains).flatMap{id => {
     sg.idToStmt(id) match {
       case cp: CondPart => StatementGraph(cp.memberStmts).stmtsOrdered()
       case _ => Seq()
@@ -185,8 +191,32 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
     }
   }}
 
-  val allSignalNamesOrdered = allStmtsTopoSorted.flatMap(findResultName)
-//val allSignalNamesOrdered = allStmtsTopoSorted.flatMap(findDependencesStmt).flatMap(_.deps).distinct
+//  val allSignalNamesOrdered_W = allStmtsTopoSorted.flatMap(findResultName)
+  val allSignalNamesOrdered_R = allStmtsTopoSorted.flatMap(findDependencesStmt).flatMap(_.deps).distinct
+//
+//  val allCPOutputSignalsTopoSorted_W = TopologicalSort(sg).filter(sg.validNodes.contains).flatMap{id => {
+//    sg.idToStmt(id) match {
+//      case cp: CondPart => {
+//        val resultingSignalsSorted = StatementGraph(cp.memberStmts).stmtsOrdered().flatMap(findResultName)
+//        val outputSignalsSorted = resultingSignalsSorted.filter(cp.outputsToDeclare.contains)
+//        assert(outputSignalsSorted.size == cp.outputsToDeclare.size)
+//        outputSignalsSorted
+//      }
+//      case _ => Seq()
+//    }
+//  }}.distinct
+
+  val allCPOutputSignalsTopoSorted_R = TopologicalSort(sg).filter(sg.validNodes.contains).flatMap{id => {
+    sg.idToStmt(id) match {
+      case cp: CondPart => {
+        val resultingSignalsSorted = StatementGraph(cp.memberStmts).stmtsOrdered().flatMap(findDependencesStmt).flatMap(_.deps).distinct
+        resultingSignalsSorted
+      }
+      case _ => Seq()
+    }
+  }}.distinct.filter(outputSignalNameToCPid.contains)
+
+
 
   val allRegisterNameSet = allRegisterNames.toSet
   val allRegesterNameToTypeStr = allStmtsTopoSorted.collect{case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef) -> genCppType(ru.regRef.tpe)}.toMap
@@ -213,6 +243,7 @@ class DedupCPInfo(sg: StatementGraph, dedupInstanceNames: Seq[String], mergeIdTo
   // val allMemoryNameAndType = mutable.HashMap[String, Type]()
   val allMemoryNames = allStmtsTopoSorted.collect{case mw: MemWrite => mw.memName}.distinct
   val allMemoryNameSet = allMemoryNames.toSet
+  val allMemoryNamesOrdered = allSignalNamesOrdered_R.filter(allMemoryNameSet.contains)
 
   // Read mems (and possibly write mems) ++ Write mems
   val dedupMWNames = dedupStmts.collect{case mw: MemWrite => mw.memName}

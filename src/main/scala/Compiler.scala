@@ -694,11 +694,11 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
         (prefix + m.name -> m.dataType)
       }}
     }}.toMap
-//    // val allMemoryNames = allMemoryNameAndType.keys.toSet
-//    val allMemoryNames = dedupInfo.allMemoryNames
-//
-//    val dedupAccessedMemories = (dedupInfo.mainDedupInstRWSignals).intersect(allMemoryNames)
-    val dedupAccessedMemoryInfo = dedupInfo.dedupAccessedMemoryByInst(dedupInfo.dedupMainInstanceName).toSeq.map{memName => {
+
+
+    val allAccessedMemNamesOrdered = dedupInfo.allMemoryNamesOrdered.filter(dedupInfo.dedupAccessedMemoryByInst(dedupInfo.dedupMainInstanceName).contains)
+    assert(allAccessedMemNamesOrdered.size == dedupInfo.dedupAccessedMemoryByInst(dedupInfo.dedupMainInstanceName).size)
+    val dedupAccessedMemoryInfo = allAccessedMemNamesOrdered.map{memName => {
       val declName = removeDots(memName.stripPrefix(dedupInfo.dedupMainInstanceName))
       (declName, genCppType(allMemoryNameAndType(memName)))
     }}
@@ -717,14 +717,18 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(0, "")
     writeFlatternVariableDeclaration(dedupRegisterDecls, Seq(), dedupAccessedMemoryInfo)
 
+    // 4. stmtSorted -> filter output -> depName
+    val cachedSignalsOrdered = dedupInfo.allCPOutputSignalsTopoSorted_R
     val dedupInstInternalCachedSignals = dedupInfo.mainDedupInstInternalSignals.diff(dedupRegisters)
+
     val dedupInstBoundaryCachedSignals = dedupInfo.mainDedupInstBoundarySignals.diff(dedupInfo.allRegisterNameSet).diff(dedupInfo.allMemoryNameSet)
     val dedupInstCachedSignals = dedupInstInternalCachedSignals ++ dedupInstBoundaryCachedSignals
 
     // Assertion: Cached signal can either be internal or boundary, not both
     assert(dedupInstInternalCachedSignals.size + dedupInstBoundaryCachedSignals.size == dedupInstCachedSignals.size)
 
-    val dedupInstCacheSignalsOrdered = dedupInfo.allSignalNamesOrdered.filter(dedupInstCachedSignals.contains)
+    val dedupInstCacheSignalsOrdered = cachedSignalsOrdered.filter(dedupInstCachedSignals.contains)
+    assert(dedupInstCacheSignalsOrdered.size == dedupInstCachedSignals.size)
 
     w.writeLines(1, "// Declare cached signals (Both internal signals and boundary signals)")
     dedupInstCacheSignalsOrdered.foreach{ sigName =>
