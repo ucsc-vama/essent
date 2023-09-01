@@ -607,9 +607,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     val cpTopoOrdered = TopologicalSort(sg).filter(sg.validNodes.contains)
     val sgTopoOrdered = cpTopoOrdered.flatMap{id => {
       sg.idToStmt(id) match {
-        case cp: CondPart => {
-          cp.memberStmts
-        }
+        case cp: CondPart => cp.memberStmts
+        case _ => Seq()
       }
     }}
 
@@ -617,22 +616,17 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
     w.writeLines(1, s"void dumpRegisterNames(std::ofstream& ofs) {")
     w.writeLines(2, "ofs << ")
-
     allWriteRegisterNamesSorted.foreach{regName => {
       val regDeclName = rn.emit(regName)
       w.writeLines(3, s""""${regName}, ${regDeclName}\\n"""")
     }}
-
     w.writeLines(2, ";")
     w.writeLines(1, "}")
 
 
-
     w.writeLines(1, s"void dumpRegisterContent(std::ofstream& ofs) {")
-
     allWriteRegisterNamesSorted.foreach{regName => {
       val regDeclName = rn.emit(regName)
-
       w.writeLines(2, s"""ofs << ${regDeclName} << "\\n";""")
     }}
     w.writeLines(1, "}")
