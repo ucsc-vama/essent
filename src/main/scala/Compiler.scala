@@ -613,14 +613,27 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       }
     }}
 
-    val allWriteRegisters = sgTopoOrdered.collect { case ru: RegUpdate => ru}
+    val allWriteRegisterNamesSorted = sgTopoOrdered.collect { case ru: RegUpdate => ru}.map{ru => emitExpr(ru.regRef)}.sorted
 
-    w.writeLines(1, s"void dumpAllRegisters(std::ofstream& ofs) {")
+    w.writeLines(1, s"void dumpRegisterNames(std::ofstream& ofs) {")
+    w.writeLines(2, "ofs << ")
 
-    allWriteRegisters.map{ru => emitExpr(ru.regRef)}.sorted.foreach{regName => {
+    allWriteRegisterNamesSorted.foreach{regName => {
+      val regDeclName = rn.emit(regName)
+      w.writeLines(3, s""""${regName}, ${regDeclName}\\n"""")
+    }}
+
+    w.writeLines(2, ";")
+    w.writeLines(1, "}")
+
+
+
+    w.writeLines(1, s"void dumpRegisterContent(std::ofstream& ofs) {")
+
+    allWriteRegisterNamesSorted.foreach{regName => {
       val regDeclName = rn.emit(regName)
 
-      w.writeLines(2, s"""ofs << "${regName} " << ${regDeclName} << "\\n";""")
+      w.writeLines(2, s"""ofs << ${regDeclName} << "\\n";""")
     }}
     w.writeLines(1, "}")
   }
