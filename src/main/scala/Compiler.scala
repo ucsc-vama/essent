@@ -836,7 +836,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(0, "#include <uint.h>")
     w.writeLines(0, "#include <sint.h>")
     w.writeLines(0, "#define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)")
-    if (opt.trackParts || opt.trackSigs || opt.withVCD) {
+    if (opt.trackParts || opt.trackSigs || opt.withVCD || opt.genRegDump) {
       w.writeLines(0, "#include <fstream>")
     }
 
