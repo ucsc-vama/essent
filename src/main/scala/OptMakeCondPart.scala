@@ -99,6 +99,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val dedupMainInstanceName = dedupInstances.head
     val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName).toSet
     val dedupRemainingInstances = dedupInstances.filter(_ != dedupMainInstanceName)
+    logger.info(s"Main instance has ${dedupMainInstanceNodes.size} IR nodes")
 
     // Table that stores corresponding mergeIDs
     val dedupMergeIdMap = mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]()
