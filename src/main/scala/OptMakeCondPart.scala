@@ -99,7 +99,6 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     val dedupMainInstanceName = dedupInstances.head
     val dedupMainInstanceNodes = modInstInfo.instInclusiveNodesTable(dedupMainInstanceName).toSet
     val dedupRemainingInstances = dedupInstances.filter(_ != dedupMainInstanceName)
-    logger.info(s"Main instance has ${dedupMainInstanceNodes.size} IR nodes")
 
     // Table that stores corresponding mergeIDs
     val dedupMergeIdMap = mutable.HashMap[Int, mutable.ArrayBuffer[NodeID]]()
@@ -121,6 +120,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     // Note: Only record members, as after multiple merge (AcyclicPart), mergeId may not be head of group
     val dedupMainInstancePartitionMembers = ArrayBuffer[Seq[NodeID]]()
 
+    var dropped_cnt = 0
+
     ap.mg.mergeIDToMembers.foreach{case (mergeId, members) => {
       // For all merges (more than 1 members), they should within main dedup inst as limited by excludeIDsForDedup1
       if (members.size > 1) {
@@ -130,9 +131,13 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         }}.reduce(_|_)
         if ((!groupHasOutsideConnection)){
           dedupMainInstancePartitionMembers += members
+        } else {
+          dropped_cnt += members.size
         }
       }
     }}
+
+    logger.info(s"Dropped ${dropped_cnt} IR nodes")
 
     var stopTime = System.currentTimeMillis()
     logger.info(s"Took ${stopTime - startTime} ms to perform initial partitioning and collect result")
