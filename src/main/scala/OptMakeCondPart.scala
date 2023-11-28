@@ -137,7 +137,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       }
     }}
 
-    logger.info(s"Dropped ${dropped_cnt} IR nodes")
+    logger.info(s"Dropped ${dropped_cnt} IR nodes from main instance")
 
     var stopTime = System.currentTimeMillis()
     logger.info(s"Took ${stopTime - startTime} ms to perform initial partitioning and collect result")
