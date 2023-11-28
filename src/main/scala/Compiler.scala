@@ -887,7 +887,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       val dedupInstances = modInstInfo.allModInstanceTable(dedupMod)
 
       val dedupBenefit = modDedupBenefitsSorted.head._2
-      val originalIRSize = modInstInfo.instInclusiveNodesTable("").size // Root instance is always named as ""
+      val originalIRSize = sg.validNodes.size
       logger.info(s"Deduplicate module [${dedupMod}], ideal benefit (num IR nodes) ${dedupBenefit} (-${dedupBenefit.toFloat * 100 / originalIRSize}%)")
       logger.info(s"Original design has ${originalIRSize} IR nodes")
       logger.info(s"Dedup instances: ${dedupInstances}")

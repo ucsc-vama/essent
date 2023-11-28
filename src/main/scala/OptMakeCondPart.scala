@@ -132,12 +132,17 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
         if ((!groupHasOutsideConnection)){
           dedupMainInstancePartitionMembers += members
         } else {
-          dropped_cnt += members.size
+          dropped_cnt += members.count(sg.validNodes)
         }
       }
     }}
 
-    logger.info(s"Dropped ${dropped_cnt} IR nodes from main instance")
+    val main_inst_valid_nodes = dedupMainInstanceNodes.count(sg.validNodes)
+    val real_dedup_benefits = (dedupMainInstanceNodes.count(sg.validNodes) - dropped_cnt) * (dedupRemainingInstances.size)
+    val real_dedup_benefit_percentage = real_dedup_benefits * 100 / sg.validNodes.size
+    val failed_node_cnt = dropped_cnt * dedupRemainingInstances.size
+    val failed_node_percentage = failed_node_cnt * 100 / sg.validNodes.size
+    logger.info(s"Succesfully dedup ${real_dedup_benefits} nodes (${real_dedup_benefit_percentage}%), failed (dropped) ${failed_node_cnt}(${failed_node_percentage}%). Original main instance has ${main_inst_valid_nodes} valid nodes")
 
     var stopTime = System.currentTimeMillis()
     logger.info(s"Took ${stopTime - startTime} ms to perform initial partitioning and collect result")
