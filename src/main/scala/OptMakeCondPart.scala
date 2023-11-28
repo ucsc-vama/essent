@@ -139,9 +139,10 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
     val main_inst_valid_nodes = dedupMainInstanceNodes.count(sg.validNodes)
     val real_dedup_benefits = (dedupMainInstanceNodes.count(sg.validNodes) - dropped_cnt) * (dedupRemainingInstances.size)
-    val real_dedup_benefit_percentage = real_dedup_benefits * 100 / sg.validNodes.size
+    val real_dedup_benefit_percentage = real_dedup_benefits.toFloat * 100.0 / sg.validNodes.size
     val failed_node_cnt = dropped_cnt * dedupRemainingInstances.size
-    val failed_node_percentage = failed_node_cnt * 100 / sg.validNodes.size
+    val failed_node_percentage = failed_node_cnt.toFloat * 100.0 / sg.validNodes.size
+    logger.info(s"After transformation, graph has ${sg.validNodes.size} valid nodes")
     logger.info(s"Succesfully dedup ${real_dedup_benefits} nodes (${real_dedup_benefit_percentage}%), failed (dropped) ${failed_node_cnt}(${failed_node_percentage}%). Original main instance has ${main_inst_valid_nodes} valid nodes")
 
     var stopTime = System.currentTimeMillis()
