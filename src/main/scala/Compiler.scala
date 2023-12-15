@@ -304,7 +304,19 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
 
 class EssentCompiler(opt: OptFlags) {
+
+  // VerilogMemDelays: compiling memory latencies to combinational-read memories with delay pipelines.
+  // This pass eliminates mems with read latency = 1 (introduced by CHIRRTL smem)
+  // and thus satisfy essent.pass.FactorMemReads (memHasRightParams)
+
+  // ConvertAsserts: Convert Verification IR (with op == Formal.Assert) into conventional print statement
+
   val readyForEssent: Seq[TransformDependency] =
+    Seq(
+      Dependency(firrtl.passes.memlib.VerilogMemDelays),
+      Dependency(essent.passes.RemoveFormalNCover),
+      Dependency(firrtl.transforms.formal.ConvertAsserts)
+    ) ++
     firrtl.stage.Forms.LowFormOptimized ++
     Seq(
 //      Dependency(essent.passes.LegacyInvalidNodesForConds),
