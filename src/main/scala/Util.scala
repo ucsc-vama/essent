@@ -7,12 +7,12 @@ import java.io.Writer
 object Util {
   // Given an array, returns a map of value to all indices that had that value (CAM-like)
   def groupIndicesByValue[T](a: ArrayBuffer[T]): Map[T, Seq[Int]] = {
-    a.zipWithIndex.groupBy{ _._1 }.mapValues{ v => v.toSeq map { _._2 }}
+    a.zipWithIndex.groupBy{ _._1 }.view.mapValues{ v => v.toSeq map { _._2 }}.toMap
   }
 
   // Given a list of pairs, returns a map of value of first element to all second values (CAM-like)
   def groupByFirst[T,Y](l: Seq[(T,Y)]): Map[T, Seq[Y]] = {
-    l.groupBy{ _._1 }.mapValues{ v => v map { _._2 }}
+    l.groupBy{ _._1 }.view.mapValues{ v => v map { _._2 }}.toMap
   }
 
   def selectFromMap[K,V](selectors: Seq[K], targetMap: Map[K,V]): Map[K,V] = {
@@ -26,7 +26,7 @@ object Util {
     str filter { !charsToRemove.contains(_) }
   }
 
-  def sortHashMapValues[K](hm: HashMap[K,Seq[Int]]) {
+  def sortHashMapValues[K](hm: HashMap[K,Seq[Int]]): Unit = {
     hm.keys foreach { k => hm(k) = hm(k).sorted }
   }
 

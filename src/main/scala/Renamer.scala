@@ -20,9 +20,9 @@ class Renamer {
   val nameToEmitName = HashMap[String,String]()
   val nameToMeta = HashMap[String,SigMeta]()
 
-  def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]) {
-    val stateNames = sg.stateElemNames.toSet
-    sg.nodeRange foreach { id => {
+  def populateFromSG(sg: StatementGraph, extIOMap: Map[String,Type]): Unit = {
+    val stateNames = sg.stateElemNames().toSet
+    sg.nodeRange() foreach { id => {
       val name = sg.idToName(id)
       val decType = if (stateNames.contains(name))        RegSet
                     else if (extIOMap.contains(name))     ExtIO
@@ -40,7 +40,7 @@ class Renamer {
     fixEmitNames()
   }
 
-  def fixEmitNames() {
+  def fixEmitNames(): Unit = {
     def shouldBeLocal(meta: SigMeta) = meta.decType match {
       case Local | MuxOut | PartOut => true
       case _ => false
@@ -53,13 +53,13 @@ class Renamer {
     }
   }
 
-  def mutateDecTypeIfLocal(name: String, newDecType: SigDecType) {
+  def mutateDecTypeIfLocal(name: String, newDecType: SigDecType): Unit = {
     val currentMeta = nameToMeta(name)
     if (currentMeta.decType == Local)
       nameToMeta(name) = currentMeta.copy(decType = newDecType)
   }
 
-  def addPartCache(name: String, sigType: firrtl.ir.Type) {
+  def addPartCache(name: String, sigType: firrtl.ir.Type): Unit = {
     nameToEmitName(name) = removeDots(name)
     nameToMeta(name) = SigMeta(PartCache, sigType)
   }

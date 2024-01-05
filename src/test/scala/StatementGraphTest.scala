@@ -8,38 +8,38 @@ class StatementGraphSpec extends AnyFlatSpec {
   "A NamedGraph" should "grow as necessary for new edges" in {
     val sg = new StatementGraph
     sg.addEdge("alpha", "beta")
-    assertResult(0) { sg.numValidNodes }
-    assertResult(2) { sg.numNodeRefs }
-    assertResult(1) { sg.numEdges }
+    assertResult(0) { sg.numValidNodes() }
+    assertResult(2) { sg.numNodeRefs() }
+    assertResult(1) { sg.numEdges() }
     sg.addEdge("gamma", "zeta")
-    assertResult(0) { sg.numValidNodes }
-    assertResult(4) { sg.numNodeRefs }
-    assertResult(2) { sg.numEdges }
+    assertResult(0) { sg.numValidNodes() }
+    assertResult(4) { sg.numNodeRefs() }
+    assertResult(2) { sg.numEdges() }
   }
 
   it should "not add duplicate edges (if requested)" in {
     val sg = new StatementGraph
     sg.addEdgeIfNew("alpha", "beta")
-    assertResult(0) { sg.numValidNodes }
-    assertResult(2) { sg.numNodeRefs }
-    assertResult(1) { sg.numEdges }
+    assertResult(0) { sg.numValidNodes() }
+    assertResult(2) { sg.numNodeRefs() }
+    assertResult(1) { sg.numEdges() }
     sg.addEdgeIfNew("alpha", "beta")
-    assertResult(0) { sg.numValidNodes }
-    assertResult(2) { sg.numNodeRefs }
-    assertResult(1) { sg.numEdges }
+    assertResult(0) { sg.numValidNodes() }
+    assertResult(2) { sg.numNodeRefs() }
+    assertResult(1) { sg.numEdges() }
   }
 
   it should "be buildable from hyperedges" in {
     val sg = new StatementGraph
     sg.addStatementNode("child", Seq("parent0","parent1"))
-    assertResult(1) { sg.numValidNodes }
-    assertResult(3) { sg.numNodeRefs }
-    assertResult(2) { sg.numEdges }
+    assertResult(1) { sg.numValidNodes() }
+    assertResult(3) { sg.numNodeRefs() }
+    assertResult(2) { sg.numEdges() }
     assert(sg.idToStmt(sg.nameToID("child")) == EmptyStmt)
     sg.addStatementNode("sibling", Seq("parent0","parent1"), Block(Seq()))
-    assertResult(2) { sg.numValidNodes }
-    assertResult(4) { sg.numNodeRefs }
-    assertResult(4) { sg.numEdges }
+    assertResult(2) { sg.numValidNodes() }
+    assertResult(4) { sg.numNodeRefs() }
+    assertResult(4) { sg.numEdges() }
     assert(sg.idToStmt(sg.nameToID("sibling")) == Block(Seq()))
   }
 
@@ -104,6 +104,6 @@ class StatementGraphSpec extends AnyFlatSpec {
   it should "be able to handle a 1 node graph with no edges" in {
     val stmt = DefNode(NoInfo,"dummy",UIntLiteral(0,IntWidth(1)))
     val sg = StatementGraph(Seq(stmt))
-    assertResult(Seq(stmt)) { sg.stmtsOrdered }
+    assertResult(Seq(stmt)) { sg.stmtsOrdered() }
   }
 }

@@ -23,7 +23,7 @@ case class OptFlags(
     essentLogLevel: String = "warn",
     firrtlLogLevel: String = "warn") {
   def inputFileDir() = firInputFile.getParent
-  def outputDir() = if (inputFileDir == null) "" else inputFileDir()
+  def outputDir() = if (inputFileDir() == null) "" else inputFileDir()
 }
 
 class ArgsParser {

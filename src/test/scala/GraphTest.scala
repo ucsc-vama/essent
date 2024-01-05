@@ -6,34 +6,34 @@ class GraphSpec extends AnyFlatSpec {
   "A Graph" should "grow as necessary for new edges" in {
     val g = new Graph
     g.addEdge(0,1)
-    assertResult(2) { g.numNodes }
-    assertResult(1) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(1) { g.numEdges() }
     g.addEdge(2,4)
-    assertResult(5) { g.numNodes }
-    assertResult(2) { g.numEdges }
+    assertResult(5) { g.numNodes() }
+    assertResult(2) { g.numEdges() }
   }
 
   it should "not add duplicate edges (if requested)" in {
     val g = new Graph
     g.addEdgeIfNew(0,1)
-    assertResult(2) { g.numNodes }
-    assertResult(1) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(1) { g.numEdges() }
     g.addEdgeIfNew(0,1)
-    assertResult(2) { g.numNodes }
-    assertResult(1) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(1) { g.numEdges() }
   }
 
   it should "remove duplicate edges from graph" in {
     val g = new Graph
     g.addEdge(0,1)
-    assertResult(2) { g.numNodes }
-    assertResult(1) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(1) { g.numEdges() }
     g.addEdge(0,1)
-    assertResult(2) { g.numNodes }
-    assertResult(2) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(2) { g.numEdges() }
     g.removeDuplicateEdges()
-    assertResult(2) { g.numNodes }
-    assertResult(1) { g.numEdges }
+    assertResult(2) { g.numNodes() }
+    assertResult(1) { g.numEdges() }
   }
 
   it should "be able to merge nodes mutably" in {

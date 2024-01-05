@@ -9,7 +9,7 @@ object TopologicalSort {
     val finalOrdering = ArrayBuffer[NodeID]()
     val inStack = BitSet()
     val finished = BitSet()
-    def visit(v: NodeID) {
+    def visit(v: NodeID): Unit = {
       if (inStack(v)) {
         findCyclesByTopoSort(g) match {
           case None => throw new Exception("Was a cycle but couldn't reproduce")
@@ -26,7 +26,7 @@ object TopologicalSort {
         finalOrdering += v
       }
     }
-    g.nodeRange foreach { startingID => visit(startingID) }
+    g.nodeRange() foreach { startingID => visit(startingID) }
     finalOrdering
   }
 
@@ -35,7 +35,7 @@ object TopologicalSort {
     var cycleFound: Option[Seq[NodeID]] = None
     val inStack = BitSet()
     val finished = BitSet()
-    val callerIDs = ArrayBuffer.fill(bg.numNodes)(-1)
+    val callerIDs = ArrayBuffer.fill(bg.numNodes())(-1)
 
     def backtrackToFindCycle(v: NodeID, cycleSoFar: Seq[NodeID]): Seq[NodeID] = {
       if (callerIDs(v) == -1) cycleSoFar
@@ -48,7 +48,7 @@ object TopologicalSort {
       }
     }
 
-    def visit(v: NodeID, callerID: NodeID) {
+    def visit(v: NodeID, callerID: NodeID): Unit = {
       if (inStack(v)) {
         val cycle = backtrackToFindCycle(callerID, Seq(v))
         cycleFound = Some(cycle)
@@ -61,7 +61,7 @@ object TopologicalSort {
         inStack.remove(v)
       }
     }
-    bg.nodeRange foreach { startingID => visit(startingID, startingID) }
+    bg.nodeRange() foreach { startingID => visit(startingID, startingID) }
     cycleFound
   }
 }

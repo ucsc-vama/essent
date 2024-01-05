@@ -4,9 +4,10 @@ import firrtl._
 import firrtl.ir._
 
 import java.io.Writer
+import scala.collection.mutable.ArrayBuffer
 
 object HarnessGenerator {
-  def harnessConnections(m: Module) = {
+  def ections(m: Module) = {
     // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
     // Reverses order of signals, but if signals are from same vec (share prefix
     // and have numeric suffix), reverses them (so vec signals are not reversed).
@@ -54,9 +55,9 @@ object HarnessGenerator {
     val mapConnects = (internalNames.zipWithIndex) map {
       case (label: String, index: Int) => s"""comm->map_signal("$modName.$label", $index);"""
     }
-    (origOrderInputNames ++ reorderPorts(inputNames) map connectSignal("in_")) ++
-    (reorderPorts(outputNames) map connectSignal("out_")) ++
-    (reorderPorts(signalNames) map connectSignal("")) ++ mapConnects
+    ((origOrderInputNames ++ reorderPorts(inputNames.toSeq) map {connectSignal("in_")(_)}) ++
+    (reorderPorts(outputNames.toSeq) map {connectSignal("out_")(_)}) ++
+    (reorderPorts(signalNames.toSeq) map {connectSignal("")(_)}) ++ mapConnects).toSeq
   }
 
   def topFile(circuitName: String, writer: Writer , vcdHeader: String) = {

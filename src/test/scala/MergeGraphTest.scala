@@ -23,7 +23,7 @@ class MergeGraphSpec extends AnyFlatSpec {
   "A MergeGraph" should "be built from a Graph with initialAssignments" in {
     val mg = MergeGraph(buildStartingGraph(), initialAssignments)
     assert(mg.idToMergeID == initialAssignments)
-    assert(mg.iterGroups == Map(
+    assert(mg.iterGroups() == Map(
       (1,Seq(0,1,2)), (3,Seq(3)), (4,Seq(4)), (6,Seq(5,6))))
     assert(mg.outNeigh(0).isEmpty)
     assert(mg.outNeigh(1) == Seq(6))
@@ -45,7 +45,7 @@ class MergeGraphSpec extends AnyFlatSpec {
     val mg = MergeGraph(buildStartingGraph())
     mg.applyInitialAssignments(initialAssignments)
     assert(mg.idToMergeID == initialAssignments)
-    assert(mg.iterGroups == Map(
+    assert(mg.iterGroups() == Map(
       (1,Seq(0,1,2)), (3,Seq(3)), (4,Seq(4)), (6,Seq(5,6))))
     assert(mg.outNeigh(0).isEmpty)
     assert(mg.outNeigh(1) == Seq(6))
@@ -67,7 +67,7 @@ class MergeGraphSpec extends AnyFlatSpec {
     val mg = buildStartingMG()
     mg.mergeGroups(6, Seq(1))
     assert(mg.idToMergeID == ArrayBuffer(6,6,6,3,4,6,6))
-    assert(mg.iterGroups == Map(
+    assert(mg.iterGroups() == Map(
       (3,Seq(3)), (4,Seq(4)), (6,Seq(5,6,0,1,2))))
     assert(mg.outNeigh(0).isEmpty)
     assert(mg.outNeigh(1).isEmpty)
@@ -90,7 +90,7 @@ class MergeGraphSpec extends AnyFlatSpec {
     val mg = buildStartingMG()
     mg.mergeGroups(1, Seq(3))
     assert(mg.idToMergeID == ArrayBuffer(1,1,1,1,4,6,6))
-    assert(mg.iterGroups == Map(
+    assert(mg.iterGroups() == Map(
       (1,Seq(0,1,2,3)), (4,Seq(4)), (6,Seq(5,6))))
     assert(mg.outNeigh(0).isEmpty)
     assert(mg.outNeigh(1) == Seq(6))
@@ -112,7 +112,7 @@ class MergeGraphSpec extends AnyFlatSpec {
     val mg = buildStartingMG()
     mg.mergeGroups(1, Seq(4))
     assert(mg.idToMergeID == ArrayBuffer(1,1,1,3,1,6,6))
-    assert(mg.iterGroups == Map(
+    assert(mg.iterGroups() == Map(
       (1,Seq(0,1,2,4)), (3,Seq(3)), (6,Seq(5,6))))
     assert(mg.outNeigh(0).isEmpty)
     assert(mg.outNeigh(1) == Seq(6))
