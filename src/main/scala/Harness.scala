@@ -7,7 +7,7 @@ import java.io.Writer
 import scala.collection.mutable.ArrayBuffer
 
 object HarnessGenerator {
-  def ections(m: Module) = {
+  def harnessConnections(m: Module) = {
     // Attempts to reproduce the port ordering from chisel3 -> firrtl -> verilator
     // Reverses order of signals, but if signals are from same vec (share prefix
     // and have numeric suffix), reverses them (so vec signals are not reversed).
