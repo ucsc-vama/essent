@@ -259,7 +259,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     if (initialOpt.writeHarness) {
       w.writeLines(0, "")
       w.writeLines(1, s"void connect_harness(CommWrapper<struct $topName> *comm) {")
-      w.writeLines(2, HarnessGenerator.ections(topModule))
+      w.writeLines(2, HarnessGenerator.harnessConnections(topModule))
       w.writeLines(1, "}")
       w.writeLines(0, "")
     }
