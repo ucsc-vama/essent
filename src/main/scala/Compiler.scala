@@ -17,12 +17,12 @@ import logger._
 
 class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends LazyLogging {
   val flagVarName = "PARTflags"
-  implicit val rn = new Renamer
+  implicit val rn: Renamer = new Renamer
   val actTrac = new ActivityTracker(w, initialOpt)
-  val vcd = if (initialOpt.withVCD) Some(new Vcd(circuit,initialOpt,w,rn)) else None
+  val vcd: Option[Vcd] = if (initialOpt.withVCD) Some(new Vcd(circuit,initialOpt,w,rn)) else None
   // Declaring Modules
   //----------------------------------------------------------------------------
-  def declareModule(m: Module, topName: String) {
+  def declareModule(m: Module, topName: String): Unit = {
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     val registerDecs = registers flatMap {d: DefRegister => {
@@ -57,7 +57,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }
   }
 
-  def declareExtModule(m: ExtModule) {
+  def declareExtModule(m: ExtModule): Unit = {
     val modName = m.name
     w.writeLines(0, "")
     w.writeLines(0, s"typedef struct $modName {")
@@ -70,8 +70,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
   //----------------------------------------------------------------------------
   // TODO: move specialized CondMux emitter elsewhere?
   def writeBodyInner(indentLevel: Int, sg: StatementGraph, opt: OptFlags,
-                     keepAvail: Set[String] = Set()) {
-    sg.stmtsOrdered foreach { stmt => stmt match {
+                     keepAvail: Set[String] = Set()): Unit = {
+    sg.stmtsOrdered() foreach { stmt => stmt match {
       case cm: CondMux => {
         if (rn.nameToMeta(cm.name).decType == MuxOut)
           w.writeLines(indentLevel, s"${genCppType(cm.mux.tpe)} ${rn.emit(cm.name)};")
@@ -91,8 +91,8 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     }}
   }
 
-  def checkRegResetSafety(sg: StatementGraph) {
-    val updatesWithResets = sg.allRegDefs filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
+  def checkRegResetSafety(sg: StatementGraph): Unit = {
+    val updatesWithResets = sg.allRegDefs() filter { r => emitExpr(r.reset) != "UInt<1>(0x0)" }
     assert(updatesWithResets.isEmpty)
   }
 
@@ -117,7 +117,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
                           condPartWorker: MakeCondPart,
                           topName: String,
                           extIOtypes: Map[String, Type],
-                          opt: OptFlags) {
+                          opt: OptFlags): Unit = {
     // predeclare part outputs
     val outputPairs = condPartWorker.getPartOutputsToDeclare()
     val outputConsumers = condPartWorker.getPartInputMap()
@@ -134,7 +134,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(1, s"bool done_reset;")
     w.writeLines(1, s"bool verbose;")
     w.writeLines(0, "")
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered() foreach { stmt => stmt match {
       case cp: CondPart => {
         w.writeLines(1, s"void ${genEvalFuncName(cp.id)}() {")
         if (!cp.alwaysActive)
@@ -171,7 +171,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
     w.writeLines(0, "")
   }
 
-  def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags) {
+  def writeZoningBody(sg: StatementGraph, condPartWorker: MakeCondPart, opt: OptFlags): Unit = {
     w.writeLines(2, "if (reset || !done_reset) {")
     w.writeLines(3, "sim_cached = false;")
     w.writeLines(3, "regs_set = false;")
@@ -192,7 +192,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       sigName => s"${rn.emit(sigName + condPartWorker.cacheSuffix)} = ${rn.emit(sigName)};"
     }
     w.writeLines(2, extIOCaches.toSeq)
-    sg.stmtsOrdered foreach { stmt => stmt match {
+    sg.stmtsOrdered() foreach { stmt => stmt match {
       case cp: CondPart => {
         if (!cp.alwaysActive)
           w.writeLines(2, s"if (UNLIKELY($flagVarName[${cp.id}])) ${genEvalFuncName(cp.id)}();")
@@ -210,7 +210,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
 
   // General Structure (and Compiler Boilerplate)
   //----------------------------------------------------------------------------
-  def execute(circuit: Circuit) {
+  def execute(circuit: Circuit): Unit = {
     val opt = initialOpt
     val topName = circuit.main
     val headerGuardName = topName.toUpperCase + "_H_"
@@ -234,7 +234,7 @@ class EssentEmitter(initialOpt: OptFlags, w: Writer, circuit: Circuit) extends L
       w.writeLines(1,s"""char VCD_BUF[2000];""")
     }
     val sg = StatementGraph(circuit, opt.removeFlatConnects)
-    logger.info(sg.makeStatsString)
+    logger.info(sg.makeStatsString())
     val containsAsserts = sg.containsStmtOfType[Stop]()
     val extIOMap = findExternalPorts(circuit)
     val condPartWorker = MakeCondPart(sg, rn, extIOMap)
@@ -332,10 +332,10 @@ class EssentCompiler(opt: OptFlags) {
       Dependency(essent.passes.ReplaceRsvdKeywords)
     )
 
-  def compileAndEmit(circuit: Circuit) {
+  def compileAndEmit(circuit: Circuit): Unit = {
     val topName = circuit.main
     if (opt.writeHarness) {
-      val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
+      val harnessFilename = new File(opt.outputDir(), s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
       if (opt.withVCD) { HarnessGenerator.topFile(topName, harnessWriter," |  dut.genWaveHeader();") }
       else { HarnessGenerator.topFile(topName, harnessWriter, "")}
@@ -344,11 +344,11 @@ class EssentCompiler(opt: OptFlags) {
     val firrtlCompiler = new transforms.Compiler(readyForEssent)
     val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
     if (opt.dumpLoFirrtl) {
-      val debugWriter = new FileWriter(new File(opt.outputDir, s"$topName.lo.fir"))
+      val debugWriter = new FileWriter(new File(opt.outputDir(), s"$topName.lo.fir"))
       debugWriter.write(resultState.circuit.serialize)
       debugWriter.close()
     }
-    val dutWriter = new FileWriter(new File(opt.outputDir, s"$topName.h"))
+    val dutWriter = new FileWriter(new File(opt.outputDir(), s"$topName.h"))
     val emitter = new EssentEmitter(opt, dutWriter,resultState.circuit)
     emitter.execute(resultState.circuit)
     dutWriter.close()

@@ -9,18 +9,18 @@ class MFFC(val g: Graph) {
   import MFFC.{Unclaimed,Excluded}
 
   // numeric vertex ID -> MFFC ID
-  val mffc = ArrayBuffer.fill(g.numNodes)(Unclaimed)
+  val mffc = ArrayBuffer.fill(g.numNodes())(Unclaimed)
 
-  def overrideMFFCs(newAssignments: ArrayBuffer[NodeID]) {
+  def overrideMFFCs(newAssignments: ArrayBuffer[NodeID]): Unit = {
     mffc.clear()
-    newAssignments.copyToBuffer(mffc)
+    mffc ++= newAssignments
   }
 
   def findMFFCs(): ArrayBuffer[NodeID] = {
-    val unvisitedSinks = g.nodeRange filter {
+    val unvisitedSinks = g.nodeRange() filter {
       id => mffc(id) == Unclaimed && g.outNeigh(id).isEmpty
     }
-    val visited = g.nodeRange filter { id => mffc(id) != Unclaimed }
+    val visited = g.nodeRange() filter { id => mffc(id) != Unclaimed }
     val fringe = (visited flatMap(g.inNeigh)).distinct
     val unvisitedFringe = fringe filter { mffc(_) == Unclaimed }
     val newMFFCseeds = unvisitedSinks.toSet ++ unvisitedFringe
@@ -33,7 +33,7 @@ class MFFC(val g: Graph) {
     }
   }
 
-  def maximizeFFCs(fringe: Set[NodeID]) {
+  def maximizeFFCs(fringe: Set[NodeID]): Unit = {
     val fringeAncestors = fringe flatMap g.inNeigh filter { mffc(_) == Unclaimed }
     val newMembers = fringeAncestors flatMap { parent => {
       val childrenMFFCs = (g.outNeigh(parent) map mffc).distinct

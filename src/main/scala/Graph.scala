@@ -20,7 +20,7 @@ class Graph {
 
   // Graph building
   //----------------------------------------------------------------------------
-  def growNeighsIfNeeded(id: NodeID) {
+  def growNeighsIfNeeded(id: NodeID): Unit = {
     assert(id >= 0)
     if (id >= outNeigh.size) {
       val numElemsToGrow = id - outNeigh.size + 1
@@ -29,13 +29,13 @@ class Graph {
     }
   }
 
-  def addEdge(sourceID: NodeID, destID: NodeID) {
+  def addEdge(sourceID: NodeID, destID: NodeID): Unit = {
     growNeighsIfNeeded(math.max(sourceID, destID))
     outNeigh(sourceID) += destID
     inNeigh(destID) += sourceID
   }
 
-  def addEdgeIfNew(sourceID: NodeID, destID: NodeID) {
+  def addEdgeIfNew(sourceID: NodeID, destID: NodeID): Unit = {
     if ((sourceID >= outNeigh.size) || !outNeigh(sourceID).contains(destID))
       addEdge(sourceID, destID)
   }
@@ -79,16 +79,16 @@ class Graph {
 
   // Mutators
   //----------------------------------------------------------------------------
-  def removeDuplicateEdges() {
+  def removeDuplicateEdges(): Unit = {
     // will not remove self-loops
-    def uniquifyNeighs(neighs: AdjacencyList) {
-      (0 until neighs.size) foreach { id => neighs(id) = neighs(id).distinct }
+    def uniquifyNeighs(neighs: AdjacencyList): Unit = {
+      neighs.indices foreach { id => neighs(id) = neighs(id).distinct }
     }
     uniquifyNeighs(outNeigh)
     uniquifyNeighs(inNeigh)
   }
 
-  def mergeNodesMutably(mergeDest: NodeID, mergeSources: Seq[NodeID]) {
+  def mergeNodesMutably(mergeDest: NodeID, mergeSources: Seq[NodeID]): Unit = {
     val mergedID = mergeDest
     val idsToRemove = mergeSources
     val idsToMerge = mergeSources :+ mergeDest
@@ -103,8 +103,8 @@ class Graph {
       inNeigh(outNeighID) --= idsToRemove
       if (!inNeigh(outNeighID).contains(mergedID)) inNeigh(outNeighID) += mergedID
     }}
-    inNeigh(mergedID) = combinedInNeigh.to[ArrayBuffer]
-    outNeigh(mergedID) = combinedOutNeigh.to[ArrayBuffer]
+    inNeigh(mergedID) = combinedInNeigh.to(ArrayBuffer)
+    outNeigh(mergedID) = combinedOutNeigh.to(ArrayBuffer)
     idsToRemove foreach { deleteID => {
       inNeigh(deleteID).clear()
       outNeigh(deleteID).clear()

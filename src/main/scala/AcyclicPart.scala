@@ -35,14 +35,14 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     totalInDegree + totalOutDegree - (mergedInDegree + mergedOutDegree)
   }
 
-  def coarsenWithMFFCs() {
+  def coarsenWithMFFCs(): Unit = {
     val mffcResults = MFFC(mg, excludeSet)
     mg.applyInitialAssignments(mffcResults)
     logger.info(s"  #mffcs found: ${mg.mergeIDToMembers.size - excludeSet.size}")
     logger.info(s"  largest mffc: ${(mg.mergeIDToMembers.values.map{_.size}).max}")
   }
 
-  def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20) {
+  def mergeSingleInputPartsIntoParents(smallPartCutoff: Int = 20): Unit = {
     val smallPartIDs = findSmallParts(smallPartCutoff)
     val singleInputIDs = smallPartIDs filter { id => (mg.inNeigh(id).size == 1) }
     val singleInputParents = (singleInputIDs flatMap mg.inNeigh).distinct
@@ -57,7 +57,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
       mergeSingleInputPartsIntoParents(smallPartCutoff)
   }
 
-  def mergeSmallSiblings(smallPartCutoff: Int = 10) {
+  def mergeSmallSiblings(smallPartCutoff: Int = 10): Unit = {
     val smallPartIDs = findSmallParts(smallPartCutoff)
     val inputsAndIDPairs = smallPartIDs map { id => {
       val inputsCanonicalized = mg.inNeigh(id).toSeq.sorted
@@ -75,11 +75,11 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     }
   }
 
-  def mergeSmallParts(smallPartCutoff: Int = 20, mergeThreshold: Double = 0.5) {
+  def mergeSmallParts(smallPartCutoff: Int = 20, mergeThreshold: Double = 0.5): Unit = {
     val smallPartIDs = findSmallParts(smallPartCutoff)
     val mergesToConsider = smallPartIDs flatMap { id => {
       val numInputs = mg.inNeigh(id).size.toDouble
-      val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct - id
+      val siblings = (mg.inNeigh(id) flatMap mg.outNeigh).distinct.filter(_ != id)
       val legalSiblings = siblings filter { sibID => !excludeSet.contains(sibID) }
       val orderConstrSibs = legalSiblings filter { _ < id }
       val myInputSet = mg.inNeigh(id).toSet
@@ -101,7 +101,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     }
   }
 
-  def mergeSmallPartsDown(smallPartCutoff: Int = 20) {
+  def mergeSmallPartsDown(smallPartCutoff: Int = 20): Unit = {
     val smallPartIDs = findSmallParts(smallPartCutoff)
     val mergesToConsider = smallPartIDs flatMap { id => {
       val mergeableChildren = mg.outNeigh(id) filter {
@@ -122,7 +122,7 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     }
   }
 
-  def partition(smallPartCutoff: Int = 20) {
+  def partition(smallPartCutoff: Int = 20): Unit = {
     val toApply = Seq(
       ("mffc", {ap: AcyclicPart => ap.coarsenWithMFFCs()}),
       ("single", {ap: AcyclicPart => ap.mergeSingleInputPartsIntoParents()}),
@@ -141,16 +141,16 @@ class AcyclicPart(val mg: MergeGraph, excludeSet: Set[NodeID]) extends LazyLoggi
     assert(checkPartioning())
   }
 
-  def iterParts() = mg.iterGroups
+  def iterParts() = mg.iterGroups()
 
   def checkPartioning() = {
     val includedSoFar = HashSet[NodeID]()
-    val disjoint = mg.iterGroups forall { case (macroID, memberIDs) => {
+    val disjoint = mg.iterGroups() forall { case (macroID, memberIDs) => {
       val overlap = includedSoFar.intersect(memberIDs.toSet).nonEmpty
       includedSoFar ++= memberIDs
       !overlap
     }}
-    val complete = includedSoFar == mg.nodeRange.toSet
+    val complete = includedSoFar == mg.nodeRange().toSet
     disjoint && complete
   }
 }

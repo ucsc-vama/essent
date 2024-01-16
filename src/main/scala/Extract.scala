@@ -146,7 +146,7 @@ object Extract extends LazyLogging {
     case ru: RegUpdate => Seq(HyperedgeDep(emitExpr(ru.regRef)+"$final", findDependencesExpr(ru.expr), s))
     case mw: MemWrite =>
       val deps = Seq(mw.wrEn, mw.wrMask, mw.wrAddr, mw.wrData) flatMap findDependencesExpr
-      Seq(HyperedgeDep(mw.nodeName, deps.distinct, s))
+      Seq(HyperedgeDep(mw.nodeName(), deps.distinct, s))
     case p: Print =>
       val deps = (Seq(p.en) ++ p.args) flatMap findDependencesExpr
       val uniqueName = "PRINTF" + emitExpr(p.clk) + deps.mkString("$") + Util.tidyString(p.string.serialize)
@@ -216,7 +216,7 @@ object Extract extends LazyLogging {
                                    namesToExclude: Set[String]): Seq[Statement] = {
     def isRef(e: Expression): Boolean = e.isInstanceOf[WRef] || e.isInstanceOf[WSubField]
     def findChainRenames(sg: StatementGraph): Map[String, String] = {
-      val sourceIDs = sg.nodeRange filter { sg.inNeigh(_).isEmpty }
+      val sourceIDs = sg.nodeRange() filter { sg.inNeigh(_).isEmpty }
       def reachableIDs(id: Int): Seq[Int] = {
         Seq(id) ++ (sg.outNeigh(id) flatMap reachableIDs)
       }

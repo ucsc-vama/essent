@@ -16,8 +16,8 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
 
   val alreadyDeclared = sg.stateElemNames().toSet
 
-  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]) {
-    val idToMemberIDs = ap.iterParts
+  def convertIntoCPStmts(ap: AcyclicPart, excludedIDs: Set[NodeID]): Unit = {
+    val idToMemberIDs = ap.iterParts()
     val idToMemberStmts = (idToMemberIDs map { case (id, members) => {
       val memberStmts = sg.idToStmt(id) match {
         case cp: CondPart => cp.memberStmts
@@ -25,7 +25,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       }
       (id -> memberStmts)
     }}).toMap
-    val idToProducedOutputs = idToMemberStmts mapValues { _ flatMap findResultName }
+    val idToProducedOutputs = idToMemberStmts.view.mapValues { _ flatMap findResultName }
     val idToInputNames = idToMemberStmts map { case (id, memberStmts) => {
       val partDepNames = memberStmts flatMap findDependencesStmt flatMap { _.deps }
       val externalDepNames = partDepNames.toSet -- (idToProducedOutputs(id).toSet -- alreadyDeclared)
@@ -66,16 +66,16 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
     else {
       val newGroupID = matchingIDs.min
       val memberStmts = matchingIDs map sg.idToStmt
-      val tempCPstmt = CondPart(newGroupID, true, Seq(), memberStmts, Map())
-      sg.mergeStmtsMutably(newGroupID, matchingIDs diff Seq(newGroupID), tempCPstmt)
+      val tempCPstmt = CondPart(newGroupID, true, Seq(), memberStmts.toSeq, Map())
+      sg.mergeStmtsMutably(newGroupID, (matchingIDs diff Seq(newGroupID)).toSeq, tempCPstmt)
       Some(newGroupID)
     }
   }
 
-  def doOpt(smallPartCutoff: Int = 20) {
+  def doOpt(smallPartCutoff: Int = 20): Unit = {
     val excludedIDs = ArrayBuffer[Int]()
     clumpByStmtType[Print]() foreach { excludedIDs += _ }
-    excludedIDs ++= (sg.nodeRange filterNot sg.validNodes)
+    excludedIDs ++= (sg.nodeRange() filterNot sg.validNodes)
     val ap = AcyclicPart(sg, excludedIDs.toSet)
     ap.partition(smallPartCutoff)
     convertIntoCPStmts(ap, excludedIDs.toSet)
@@ -97,7 +97,7 @@ class MakeCondPart(sg: StatementGraph, rn: Renamer, extIOtypes: Map[String, Type
       case cp: CondPart => cp.outputsToDeclare.toSeq
       case _ => Seq()
     }}
-    allPartOutputTypes
+    allPartOutputTypes.toSeq
   }
 
   def getExternalPartInputNames(): Seq[String] = {

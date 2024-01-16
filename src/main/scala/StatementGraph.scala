@@ -47,16 +47,16 @@ class StatementGraph extends Graph {
     }
   }
 
-  def addEdge(sourceName: String, destName: String) {
+  def addEdge(sourceName: String, destName: String): Unit = {
     super.addEdge(getID(sourceName), getID(destName))
   }
 
-  def addEdgeIfNew(sourceName: String, destName: String) {
+  def addEdgeIfNew(sourceName: String, destName: String): Unit = {
     super.addEdgeIfNew(getID(sourceName), getID(destName))
   }
 
   def addStatementNode(resultName: String, depNames: Seq[String],
-                       stmt: Statement = EmptyStmt) = {
+                       stmt: Statement = EmptyStmt): Unit = {
     val potentiallyNewDestID = getID(resultName)
     depNames foreach {depName : String => addEdge(depName, resultName)}
     if (potentiallyNewDestID >= idToStmt.size) {
@@ -69,7 +69,7 @@ class StatementGraph extends Graph {
       validNodes += potentiallyNewDestID
   }
 
-  def buildFromBodies(bodies: Seq[Statement]) {
+  def buildFromBodies(bodies: Seq[Statement]): Unit = {
     val bodyHE = bodies flatMap {
       case b: Block => b.stmts flatMap findDependencesStmt
       case s => findDependencesStmt(s)
@@ -82,26 +82,26 @@ class StatementGraph extends Graph {
   //----------------------------------------------------------------------------
   def collectValidStmts(ids: Seq[NodeID]): Seq[Statement] = ids filter validNodes map idToStmt
 
-  def stmtsOrdered(): Seq[Statement] = collectValidStmts(TopologicalSort(this))
+  def stmtsOrdered(): Seq[Statement] = collectValidStmts(TopologicalSort(this).toSeq)
 
   def containsStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Boolean = {
     (idToStmt collectFirst { case s: T => s }).isDefined
   }
 
   def findIDsOfStmtOfType[T <: Statement]()(implicit tag: ClassTag[T]): Seq[NodeID] = {
-    idToStmt.zipWithIndex collect { case (s: T , id: Int) => id }
+    (idToStmt.zipWithIndex collect { case (s: T , id: Int) => id }).toSeq
   }
 
-  def allRegDefs(): Seq[DefRegister] = idToStmt collect {
+  def allRegDefs(): Seq[DefRegister] = (idToStmt collect {
     case dr: DefRegister => dr
-  }
+  }).toSeq
 
-  def stateElemNames(): Seq[String] = idToStmt collect {
+  def stateElemNames(): Seq[String] = (idToStmt collect {
     case dr: DefRegister => dr.name
     case dm: DefMemory => dm.name
-  }
+  }).toSeq
 
-  def stateElemIDs() = findIDsOfStmtOfType[DefRegister] ++ findIDsOfStmtOfType[DefMemory]
+  def stateElemIDs() = findIDsOfStmtOfType[DefRegister]() ++ findIDsOfStmtOfType[DefMemory]()
 
   def mergeIsAcyclic(nameA: String, nameB: String): Boolean = {
     val idA = nameToID(nameA)
@@ -114,8 +114,8 @@ class StatementGraph extends Graph {
 
   // Mutation
   //----------------------------------------------------------------------------
-  def addOrderingDepsForStateUpdates() {
-    def addOrderingEdges(writerID: NodeID, readerTargetID: NodeID) {
+  def addOrderingDepsForStateUpdates(): Unit = {
+    def addOrderingEdges(writerID: NodeID, readerTargetID: NodeID): Unit = {
       outNeigh(readerTargetID) foreach {
         readerID => if (readerID != writerID) addEdgeIfNew(readerID, writerID)
       }
@@ -132,7 +132,7 @@ class StatementGraph extends Graph {
     }}
   }
 
-  def mergeStmtsMutably(mergeDest: NodeID, mergeSources: Seq[NodeID], mergeStmt: Statement) {
+  def mergeStmtsMutably(mergeDest: NodeID, mergeSources: Seq[NodeID], mergeStmt: Statement): Unit = {
     val mergedID = mergeDest
     val idsToRemove = mergeSources
     idsToRemove foreach { id => idToStmt(id) = EmptyStmt }
@@ -151,7 +151,7 @@ class StatementGraph extends Graph {
   def numNodeRefs() = idToName.size
 
   def makeStatsString() =
-    s"Graph has $numNodes nodes ($numValidNodes valid) and $numEdges edges"
+    s"Graph has ${numNodes()} nodes (${numValidNodes()} valid) and ${numEdges()} edges"
 }
 
 

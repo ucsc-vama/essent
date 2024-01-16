@@ -8,7 +8,7 @@ import firrtl.ir._
 
 
 object OptElideRegUpdates extends LazyLogging {
-  def apply(sg: StatementGraph) {
+  def apply(sg: StatementGraph): Unit = {
     def safeToMergeWithParentNextNode(u: NodeID): Boolean = {
       sg.inNeigh(u).nonEmpty &&                              // node u isn't floating (parentless)
       sg.idToName(sg.inNeigh(u).head).endsWith("$next") &&   // first parent assigns $next

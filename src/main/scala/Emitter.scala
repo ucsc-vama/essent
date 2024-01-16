@@ -224,7 +224,7 @@ object Emitter {
           val printWidth = math.ceil(width.toDouble/4).toInt
           (format, s"""%0${printWidth}" PRIx64 """")
         } else {
-          val printWidth = math.ceil(math.log10((1l<<width.toInt).toDouble)).toInt
+          val printWidth = math.ceil(math.log10((1L<<width.toInt).toDouble)).toInt
           (format, s"""%${printWidth}" PRIu64 """")
         }
       }

@@ -34,7 +34,7 @@ class MakeCondMux(val sg: StatementGraph, rn: Renamer, keepAvail: Set[NodeID]) {
     sg.idToStmt(muxID) mapExpr replaceMux(muxWay)
   }
 
-  def makeCondMuxesTopDown(muxIDsRemaining: Set[NodeID], muxIDToWays: Map[NodeID,(Seq[NodeID],Seq[NodeID])]) {
+  def makeCondMuxesTopDown(muxIDsRemaining: Set[NodeID], muxIDToWays: Map[NodeID,(Seq[NodeID],Seq[NodeID])]): Unit = {
     val muxesWithMuxesInside = muxIDToWays collect {
       case (muxID, (tWay, fWay)) if ((tWay ++ fWay) exists muxIDsRemaining) => muxID
     }
@@ -55,7 +55,7 @@ class MakeCondMux(val sg: StatementGraph, rn: Renamer, keepAvail: Set[NodeID]) {
     }
   }
 
-  def doOpt() {
+  def doOpt(): Unit = {
     val muxIDs = (sg.idToStmt.zipWithIndex collect {
       case (DefNode(_, _, m: Mux), id) => id
       case (Connect(_, _, m: Mux), id) => id
@@ -79,7 +79,7 @@ class MakeCondMux(val sg: StatementGraph, rn: Renamer, keepAvail: Set[NodeID]) {
 object MakeCondMux {
   // FUTURE: pull mux chains into if else chains to reduce indent depth
   // FUTURE: consider mux size threshold
-  def apply(sg: StatementGraph, rn: Renamer, keepAvailNames: Set[String] = Set()) {
+  def apply(sg: StatementGraph, rn: Renamer, keepAvailNames: Set[String] = Set()): Unit = {
     val keepAvailIDs = keepAvailNames map sg.nameToID
     val optimizer = new MakeCondMux(sg, rn, keepAvailIDs)
     optimizer.doOpt()

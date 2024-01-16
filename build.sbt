@@ -4,7 +4,7 @@ version := "0.8-SNAPSHOT"
 
 name := "essent"
 
-scalaVersion := "2.12.18"
+scalaVersion := "2.13.12"
 
 scalacOptions ++= Seq("-deprecation", "-unchecked")
 
@@ -16,12 +16,11 @@ libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.12"
 
 libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.5.6"
 
-
 // Assembly
 
-assemblyJarName in assembly := "essent.jar"
+assembly / assemblyJarName := "essent.jar"
 
-assemblyOutputPath in assembly := file("./utils/bin/essent.jar")
+assembly / assemblyOutputPath:= file("./utils/bin/essent.jar")
 
 
 // Ignore disabled .scala files
@@ -31,7 +30,7 @@ unmanagedSources / excludeFilter := HiddenFileFilter || "*disabled*.scala"
 
 // Publishing setup
 publishMavenStyle := true
-publishArtifact in Test := false
+Test / publishArtifact := false
 pomIncludeRepository := { x => false }
 
 // POM info

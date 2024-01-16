@@ -18,11 +18,11 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   val opt = initopt
   val topName = circuit.main
   val sg = StatementGraph(circuit, opt.removeFlatConnects)
-  val allNamesAndTypes = sg.stmtsOrdered flatMap findStmtNameAndType
+  val allNamesAndTypes = sg.stmtsOrdered() flatMap findStmtNameAndType
   var hashMap =  HashMap[String,String]() 
   var last_used_index = BigInt(1)
 
-  def displayNameIdentifierSize(m: Module, topName: String) {
+  def displayNameIdentifierSize(m: Module, topName: String): Unit = {
     val registers = findInstancesOf[DefRegister](m.body)
     val memories = findInstancesOf[DefMemory](m.body)
     var depth = 0
@@ -71,7 +71,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     }
   }
 
-  def declareOldValues(m: Module) {
+  def declareOldValues(m: Module): Unit = {
     val registers = findInstancesOf[DefRegister](m.body)
     val registerDecs = registers map {
       r: DefRegister => s"${genCppType(r.tpe)} ${rn.vcdOldValue(r.name)};"
@@ -88,7 +88,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     w.writeLines(1, portDecs)
   }
 
-  def compareOldNewSignal(m: Module) {
+  def compareOldNewSignal(m: Module): Unit = {
     val registers = findInstancesOf[DefRegister](m.body)
     val registerComps = registers map {
       r: DefRegister => compSig(r.name, rn.vcdOldValue(r.name))
@@ -106,7 +106,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     w.writeLines(2, portComps)
   }
 
-  def assignOldValue(m: Module) {
+  def assignOldValue(m: Module): Unit = {
     val registers = findInstancesOf[DefRegister](m.body)
     val registerAssigns = registers map {
       r: DefRegister => s"${rn.vcdOldValue(r.name)} = ${r.name};"
@@ -128,7 +128,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
   }
 
   //function for vcd multiple hierarchy
-  def hierScope(allNamesAndTypes: Seq[(String, Type)],splitted: Seq[Seq[String]], indentlevel: Int, iden_code_hier: String) {
+  def hierScope(allNamesAndTypes: Seq[(String, Type)],splitted: Seq[Seq[String]], indentlevel: Int, iden_code_hier: String): Unit = {
 
     // This groups returns a Map( key -> Seq[Seq[String]]
     val grouped = splitted groupBy {_.head }
@@ -170,7 +170,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       case m: Module => if (m.name == topName) declareOldValues(m)
       case m: ExtModule => Seq()
     }
-    allNamesAndTypes map { case(name, tpe) =>
+    allNamesAndTypes foreach { case(name, tpe) =>
       if (localSignalToTrack(name))
         w.writeLines(1, s"""${genCppType(tpe)} ${rn.vcdOldValue(rn.removeDots(name))};""")
     }
@@ -224,10 +224,10 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
       case m: Module => displayNameIdentifierSize(m, topName)
       case m: ExtModule => Seq()
     }
-    val name = sg.stmtsOrdered flatMap findResultName
+    val name = sg.stmtsOrdered() flatMap findResultName
     val debug_name = name map { n => if ( !n.contains(".")) n else ""}
     var up_index = last_used_index
-    debug_name.zipWithIndex map { case(sn, index ) => {
+    debug_name.zipWithIndex foreach { case(sn, index ) => {
       val iden_code = genIdenCode(index + last_used_index)
       val sig_name = rn.removeDots(sn)
       if ( !hashMap.contains(sig_name)) {
@@ -237,7 +237,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     last_used_index = up_index 
     val non_und_name = name map { n => if (!n.contains("._") && !n.contains("$next") && n.contains(".")) n else "" }
     val splitted = non_und_name map { _.split('.').toSeq}
-    non_und_name.zipWithIndex map { case(sn , index ) => {
+    non_und_name.zipWithIndex foreach { case(sn , index ) => {
       val sig_name = rn.removeDots(sn)
       val iden_code = genIdenCode(index + last_used_index)
       hashMap(sig_name) = iden_code
@@ -250,7 +250,7 @@ class Vcd(circuit: Circuit, initopt: OptFlags, w: Writer, rn: Renamer) {
     w.writeLines(0, "")
   }
 
-  def writeFprintf(s: String) {
+  def writeFprintf(s: String): Unit = {
     w.writeLines(2,s"fprintf(outfile,$s);")
   }
 

@@ -7,18 +7,18 @@ import logger._
 
 
 object Driver {
-  def main(args: Array[String]) {
-    (new ArgsParser).getConfig(args) match {
+  def main(args: Array[String]): Unit = {
+    (new ArgsParser).getConfig(args.toSeq) match {
       case Some(config) => generate(config)
       case None =>
     }
   }
 
-  def generate(opt: OptFlags) {
+  def generate(opt: OptFlags): Unit = {
     Logger.setClassLogLevels(Map("essent" -> logger.LogLevel(opt.essentLogLevel)))
     Logger.setClassLogLevels(Map("firrtl" -> logger.LogLevel(opt.firrtlLogLevel)))
     val sourceReader = Source.fromFile(opt.firInputFile)
-    val circuit = firrtl.Parser.parse(sourceReader.getLines, firrtl.Parser.IgnoreInfo)
+    val circuit = firrtl.Parser.parse(sourceReader.getLines(), firrtl.Parser.IgnoreInfo)
     sourceReader.close()
     val compiler = new EssentCompiler(opt)
     compiler.compileAndEmit(circuit)

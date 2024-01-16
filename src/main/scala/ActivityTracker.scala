@@ -31,7 +31,7 @@ class ActivityTracker(w: Writer, opt: OptFlags) {
   }
 
   def declareSigTracking(sg: StatementGraph, topName: String): Unit = {
-    val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange) flatMap findStmtNameAndType
+    val allNamesAndTypes = sg.collectValidStmts(sg.nodeRange()) flatMap findStmtNameAndType
     sigNameToID = (allNamesAndTypes map {
       _._1
     }).zipWithIndex.toMap

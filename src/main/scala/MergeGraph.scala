@@ -19,23 +19,23 @@ class MergeGraph extends Graph {
 
   // inherits outNeigh and inNeigh from Graph
 
-  def buildFromGraph(g: Graph) {
+  def buildFromGraph(g: Graph): Unit = {
     // FUTURE: cleaner way to do this with clone on superclass?
-    outNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
-    inNeigh.appendAll(ArrayBuffer.fill(g.numNodes)(ArrayBuffer[NodeID]()))
-    g.nodeRange foreach { id => {
-      g.outNeigh(id).copyToBuffer(outNeigh(id))
-      g.inNeigh(id).copyToBuffer(inNeigh(id))
+    outNeigh.appendAll(ArrayBuffer.fill(g.numNodes())(ArrayBuffer[NodeID]()))
+    inNeigh.appendAll(ArrayBuffer.fill(g.numNodes())(ArrayBuffer[NodeID]()))
+    g.nodeRange() foreach { id => {
+      outNeigh(id) ++= g.outNeigh(id)
+      inNeigh(id) ++= g.inNeigh(id)
     }}
-    ArrayBuffer.range(0, numNodes()).copyToBuffer(idToMergeID)
+    idToMergeID ++= ArrayBuffer.range(0, numNodes())
     nodeRange() foreach { id  => mergeIDToMembers(id) = Seq(id) }
   }
 
-  def applyInitialAssignments(initialAssignments: ArrayBuffer[NodeID]) {
+  def applyInitialAssignments(initialAssignments: ArrayBuffer[NodeID]): Unit = {
     // FUTURE: support negative (unassigned) initial assignments
     idToMergeID.clear()
     mergeIDToMembers.clear()
-    initialAssignments.copyToBuffer(idToMergeID)
+    idToMergeID ++= initialAssignments
     val asMap = Util.groupIndicesByValue(initialAssignments)
     asMap foreach { case (mergeID, members) => {
       assert(members.contains(mergeID))
@@ -44,8 +44,8 @@ class MergeGraph extends Graph {
     }}
   }
 
-  def mergeGroups(mergeDest: NodeID, mergeSources: Seq[NodeID]) {
-    val newMembers = (mergeSources map mergeIDToMembers).flatten
+  def mergeGroups(mergeDest: NodeID, mergeSources: Seq[NodeID]): Unit = {
+    val newMembers = mergeSources flatMap mergeIDToMembers
     newMembers foreach { id => idToMergeID(id) = mergeDest}
     mergeIDToMembers(mergeDest) ++= newMembers
     mergeSources foreach { id => mergeIDToMembers.remove(id) }
