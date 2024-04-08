@@ -335,7 +335,7 @@ class EssentCompiler(opt: OptFlags) {
   def compileAndEmit(circuit: Circuit): Unit = {
     val topName = circuit.main
     if (opt.writeHarness) {
-      val harnessFilename = new File(opt.outputDir, s"$topName-harness.cc")
+      val harnessFilename = new File(opt.outputDir(), s"$topName-harness.cc")
       val harnessWriter = new FileWriter(harnessFilename)
       if (opt.withVCD) { HarnessGenerator.topFile(topName, harnessWriter," |  dut.genWaveHeader();") }
       else { HarnessGenerator.topFile(topName, harnessWriter, "")}
@@ -344,13 +344,13 @@ class EssentCompiler(opt: OptFlags) {
     val firrtlCompiler = new transforms.Compiler(readyForEssent)
     val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
     if (opt.dumpLoFirrtl) {
-      val debugFilename = new File(opt.outputDir, s"$topName.lo.fir")
+      val debugFilename = new File(opt.outputDir(), s"$topName.lo.fir")
       val debugWriter = new FileWriter(debugFilename)
       debugWriter.write(resultState.circuit.serialize)
       debugWriter.close()
     }
 
-    val outputDir = if (opt.outputDir.nonEmpty) opt.outputDir else System.getProperty("user.dir")
+    val outputDir = if (opt.outputDir().nonEmpty) opt.outputDir() else System.getProperty("user.dir")
     val dutFile = new File(outputDir, s"$topName.h")
 
     val dutWriter = new FileWriter(dutFile)
