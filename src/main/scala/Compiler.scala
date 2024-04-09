@@ -344,11 +344,16 @@ class EssentCompiler(opt: OptFlags) {
     val firrtlCompiler = new transforms.Compiler(readyForEssent)
     val resultState = firrtlCompiler.execute(CircuitState(circuit, Seq()))
     if (opt.dumpLoFirrtl) {
-      val debugWriter = new FileWriter(new File(opt.outputDir(), s"$topName.lo.fir"))
+      val debugFilename = new File(opt.outputDir(), s"$topName.lo.fir")
+      val debugWriter = new FileWriter(debugFilename)
       debugWriter.write(resultState.circuit.serialize)
       debugWriter.close()
     }
-    val dutWriter = new FileWriter(new File(opt.outputDir(), s"$topName.h"))
+
+    val outputDir = if (opt.outputDir().nonEmpty) opt.outputDir() else System.getProperty("user.dir")
+    val dutFile = new File(outputDir, s"$topName.h")
+
+    val dutWriter = new FileWriter(dutFile)
     val emitter = new EssentEmitter(opt, dutWriter,resultState.circuit)
     emitter.execute(resultState.circuit)
     dutWriter.close()
