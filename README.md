@@ -8,6 +8,8 @@ Without optimization, essent will generate a simulator that is a very literal tr
 RepCut
 --------------------------------------------------------------------------------
 
+If you need a standalone RepCut partitioner, follow [this repo](https://github.com/ucsc-vama/RepCut-Partitioner).
+
 This branch contains implementation of RepCut, parallel version of Essent. For more details please refer to this paper:
 
 **RepCut: Superlinear Parallel RTL Simulation with Replication-Aided Partitioning**
