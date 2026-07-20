@@ -2,9 +2,7 @@ name: Scala/C++ CI
 
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
 
   workflow_dispatch:
 
@@ -14,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: cache SBT deps
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/coursier
