@@ -25,14 +25,6 @@ jobs:
           cache: sbt
       - uses: sbt/setup-sbt@v1
 
-      - name: cache SBT deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/coursier
-            ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
-
       - name: build
         run: sbt compile
 
