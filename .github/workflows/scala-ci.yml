@@ -11,6 +11,9 @@ jobs:
   unit-tests:
     runs-on: ubuntu-slim
 
+    env:
+      JAVA_OPTS: -Xms2048M -Xmx2048M -Xss6M
+
     steps:
       - uses: actions/checkout@v6
 
