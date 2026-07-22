@@ -1,13 +1,15 @@
 essent (essential signal simulation enabled by netlist transformations) [![Build Status](https://github.com/ucsc-vama/essent/actions/workflows/scala-ci.yml/badge.svg)](https://github.com/ucsc-vama/essent/actions/workflows/scala-ci.yml)
 ================================================================================
 
-_Looking for RepCut, the parallelized version? Please check the [repcut branch](https://github.com/ucsc-vama/essent/tree/repcut)!_
+_Looking for RepCut (ASPLOS 2023), the parallelized version? Please check the [repcut branch](https://github.com/ucsc-vama/essent/tree/repcut)!_
 
-This is a beta of _essent_, a high-performance RTL simulator generator. Essent operates on hardware designs in the form of [firrtl](https://github.com/freechipsproject/firrtl), an IR for hardware with a well-defined [spec](https://github.com/chipsalliance/firrtl-spec/releases/latest/download/spec.pdf). Given a hardware design in firrtl, essent emits C++ that can be compiled to make a fast simulator of the design. Essent provides several optimizations to improve performance, and they can be turned on or off with command line flags. A typical flow using the tool will: use essent to make C++ from the firrtl input, write a C++ harness for the emitted code, compile everything, and finally run the simulation. To make a simulator with essent, you will need a JVM (compatible with Scala), and a C++ compiler capable of C++11.
+_Looking for Dedup (ASPLOS 2024)? Please check the [dedup branch](https://github.com/ucsc-vama/essent/tree/dedup)!_
+
+_Essent_ is a high-performance RTL simulator generator. It consumes hardware designs in the form of [firrtl](https://github.com/freechipsproject/firrtl), an IR for hardware with a well-defined [spec](https://github.com/chipsalliance/firrtl-spec/releases/latest/download/spec.pdf). Given a hardware design in firrtl, essent emits C++ that can be compiled to make a fast simulator of the design. Essent provides several optimizations to improve performance, and they can be turned on or off with command line flags. A typical flow using the tool will: use essent to make C++ from the firrtl input, write a C++ harness for the emitted code, compile everything, and finally run the simulation. To make a simulator with essent, you will need a JVM (compatible with Scala), and a C++ compiler capable of C++11.
 
 Essent incorporates a number of optimizations to deliver great performance. To learn more about essent as a whole as well as its optimizations, the [talk](https://woset-workshop.github.io/Videos/2021/a23-video.mp4) and [paper](https://woset-workshop.github.io/PDFs/2021/a23.pdf) from [WOSET 2021](https://woset-workshop.github.io) give a good overview. Our other publications (below) dive into the details of the optimizations and bottlenecks of current host CPUs.
 
-Without optimization, essent will generate a simulator that is a very literal translation of the firrtl design. Essent flattens the design, and typically represents each firrtl statement with a single line of C++. Most signals are ephemeral and are locally scoped, which gives the compiler the maximum flexibility to optimize them. Signals that must persist between cycles, such as state elements (registers or memories) or external IOs, are declared in structs which match the module hierarchy. Some optimizations require additional signals to persist between cycles, and these variables are declared effectively globally. Long chains of simple connect statements (no other modifications to signals) will be compressed down to just the chain endpoints. Without optimization, each register has two variables associated with it, and they represent the current value and the next value of the register (two-phase update).
+Without optimization, essent will generate a simulator that is a very literal translation of the firrtl design. Essent flattens the design, and typically represents each firrtl statement with a single line of C++. Most signals are ephemeral and are locally scoped, which gives the compiler maximum flexibility to optimize them. Signals that must persist between cycles, such as state elements (registers or memories) or external IOs, are declared in structs which match the module hierarchy. Some optimizations require additional signals to persist between cycles, and these variables are declared effectively globally. Long chains of simple connect statements (no other modifications to signals) will be compressed down to just the chain endpoints. Without optimization, each register has two variables associated with it, and they represent the current value and the next value of the register (two-phase update).
 
 
 Running essent
@@ -30,7 +32,7 @@ Example invocations:
 Interfacing with the generated code
 --------------------------------------------------------------------------------
 
-Essent will generate a single `.h` file, with the name of the firrtl circuit. We recommend writing a single `.cc` file to harness the design. Essent uses templated types `UInt` and `SInt` to represent their corresponding firrtl types, and these types are defined in the companion [firrtl-sig](https://github.com/ucsc-vama/firrtl-sig) repo. The harness file should: include the appropriate headers (UInt, SInt, and design's .h file), instantiate the design, and call `eval` on it for the desired number of cycles. The design will automatically randomly initialize itself when the object is created. Reset is typically an input to the circuit. This version of essent does not support multiple clocks or any sort of logic on clock signals.
+Essent will generate a single `.h` file, with the name of the firrtl circuit. We recommend writing a single `.cc` file to harness the design. Essent uses templated types `UInt` and `SInt` to represent their corresponding firrtl types, and these types are defined in the companion [firrtl-sig](https://github.com/ucsc-vama/firrtl-sig) repo. The harness file should: include the appropriate headers (UInt, SInt, and the design's .h file), instantiate the design, and call `eval` on it for the desired number of cycles. The design will automatically randomly initialize itself when the object is created. Reset is typically an input to the circuit. This version of essent does not support multiple clocks or any sort of logic on clock signals.
 
 A call to the eval function for a design progresses the design by at most one cycle, and takes three boolean arguments:
 
@@ -67,46 +69,33 @@ An example compile command:
 
     $ g++ -O3 -std=c++11 -I./firrtl-sig design-harness.cc -o simulator
     
-On macOS, when using clang, we also found `-fno-slp-vectorize` to improve compile time for large designs, and `-fbracket-depth=1024` allows it to handle designs with deeply nested muxes.
+On macOS, when using clang, we also found `-fno-slp-vectorize` improves the compile time for large designs, and `-fbracket-depth=1024` allows it to handle designs with deeply nested muxes.
 
-Running with waveform
+Recording waveforms
 --------------------------------------------------------------------------------
-To generate waveform with ESSENT you can choose either format , VCD or FST and then you can view using gtkwave waveform viewer.
 
-```
-Install gtkwave by entering the following commands in the terminal:
+The simulators generated by essent can produce waveforms (in VCD of FST formats) if they are compiled with the flags below. The waveforms are viewable with standard viewers such as [gtkwave](https://gtkwave.sourceforge.net). Waveforms are very helpful for debugging designs, but enabling waveforms will greatly slow down simulation speed and compiling the simulator.
 
-sudo apt update
-sudo apt install gtkwave
-```
-Compile: 
-+ `withVCD` - This flag enabled generates waveform in VCD format , which can be viewed using gtkwave; disabled by default 
-+ `withFST` - This flag enabled generates waveform in FST format , which can be viewed using gtkwave; disabled by default
++ `withVCD` - Enable waveform generation in VCD format (disabled by default)
++ `withFST` - Enabled generates waveform in FST format , which can be viewed using gtkwave; disabled by default
 
-Example invocations:
-
+Example:
 ```
     $ ./essent -O3 -withVCD my_design.fir
 ```
 
-Requitered update in Harness file:
+In the harness file, before starting the simulation, you will need to add `top->genWaveHeader();` to generate the header for the waveform file.
 
-Before we start the simulation , we need to add the below to the testbench file, which generates the header part of the VCD or FST. 
+**Running with VCD**  
+No extra arguments are needed for the simulator, and it will simply produce the `.vcd` file.
 
-  top->genWaveHeader();
-   
-Running:
-We do not need any extra argument to run with VCD , it is same as running essent without VCD.
+**Running with FST**  
+The FST format is compressed (e.g. 135x smaller) so it can not only save disk space but even simulate faster due to disk IO being less of a bottleneck. To use FST support you will need to install [vcd2fst](https://github.com/Silimate/vcd2fst) first. Our support for FST uses vcd2fst to convert our VCD output into FST steaming in parallel with the simulation.
 
-with FST:
-Please install vcd2fst before we run with FST.
-Instead of going into generating FST from scratch, we are using vcd2fst tool to convert our VCD related data into streams and compress parallely to generate 
-in a form of FST format, which is 135x smaller than VCD file. 
+Example compilation and exectuion:
 ```
-
-clang++ -O3 -std=c++11 -fno-slp-vectorize -fbracket-depth=1024 -Iriscv/include -I../firrtl-sig emulator.cc -o emulator_fst -Lriscv/lib -Wl,-rpath,riscv/lib -lfesvr -lpthread
-
-./emulator_fst dhrystone.riscv | **vcd2fst -p -v /dev/stdin -f** dump_mydesign.fst"
+    $ g++ -O3 -std=c++11 -I./firrtl-sig emulator.cc -o emulator_fst
+    $ ./emulator_fst | vcd2fst -p -v /dev/stdin -f mydesign.fst
 ```
 
 
